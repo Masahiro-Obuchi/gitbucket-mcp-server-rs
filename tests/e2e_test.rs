@@ -320,6 +320,46 @@ async fn create_test_pull_request(
     pr
 }
 
+async fn create_test_repository(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+) -> (String, String, Value) {
+    let authenticated = call_tool_json(client, "get_authenticated_user", json!({})).await;
+    let owner = authenticated["login"]
+        .as_str()
+        .filter(|login| !login.is_empty())
+        .expect("authenticated user should have login")
+        .to_string();
+    let suffix = unique_suffix();
+    let name = format!("mcp-e2e-repo-{suffix}");
+    let description = format!("repository e2e {suffix}");
+    let expected_full_name = format!("{owner}/{name}");
+
+    let repository = call_tool_json(
+        client,
+        "create_repository",
+        json!({
+            "name": name,
+            "description": description,
+            "private": false,
+            "auto_init": true,
+        }),
+    )
+    .await;
+
+    assert_eq!(repository["name"].as_str(), Some(name.as_str()));
+    assert_eq!(
+        repository["full_name"].as_str(),
+        Some(expected_full_name.as_str())
+    );
+    assert_eq!(
+        repository["description"].as_str(),
+        Some(description.as_str())
+    );
+    assert_eq!(repository["private"].as_bool(), Some(false));
+
+    (owner, name, repository)
+}
+
 #[tokio::test]
 #[ignore = "requires GITBUCKET_E2E_URL and GITBUCKET_E2E_TOKEN"]
 #[serial]
@@ -459,6 +499,81 @@ async fn test_e2e_get_repository() {
     assert_eq!(
         repository["full_name"].as_str(),
         Some(expected_full_name.as_str())
+    );
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL and GITBUCKET_E2E_TOKEN"]
+#[serial]
+async fn test_e2e_create_repository() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+
+    let (owner, repo, created) = create_test_repository(&client).await;
+    let expected_full_name = format!("{owner}/{repo}");
+    assert_eq!(
+        created["full_name"].as_str(),
+        Some(expected_full_name.as_str())
+    );
+    assert_eq!(created["fork"].as_bool(), Some(false));
+
+    let fetched = call_tool_json(
+        &client,
+        "get_repository",
+        json!({
+            "owner": owner,
+            "repo": repo,
+        }),
+    )
+    .await;
+
+    assert_eq!(fetched["name"].as_str(), Some(repo.as_str()));
+    assert_eq!(
+        fetched["full_name"].as_str(),
+        Some(expected_full_name.as_str())
+    );
+    assert_eq!(
+        fetched["description"].as_str(),
+        created["description"].as_str()
+    );
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL and GITBUCKET_E2E_TOKEN"]
+#[serial]
+async fn test_e2e_list_branches_for_created_repository() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+
+    let (owner, repo, created) = create_test_repository(&client).await;
+    let default_branch = created["default_branch"]
+        .as_str()
+        .filter(|branch| !branch.is_empty())
+        .expect("auto_init repository should have a default branch")
+        .to_string();
+
+    let branches = call_tool_json(
+        &client,
+        "list_branches",
+        json!({
+            "owner": owner,
+            "repo": repo,
+        }),
+    )
+    .await;
+
+    let branches = branches
+        .as_array()
+        .expect("list_branches should return an array");
+    assert!(
+        branches
+            .iter()
+            .any(|branch| branch["name"].as_str() == Some(default_branch.as_str())),
+        "expected branches to contain default branch {default_branch}"
     );
 
     client.cancel().await.unwrap();
