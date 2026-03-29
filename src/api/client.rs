@@ -18,6 +18,14 @@ pub struct GitBucketClient {
 
 impl GitBucketClient {
     pub fn new(base_url: &str, token: &str) -> Result<Self> {
+        Self::new_with_options(base_url, token, false)
+    }
+
+    pub fn new_with_options(
+        base_url: &str,
+        token: &str,
+        allow_invalid_certs: bool,
+    ) -> Result<Self> {
         let normalized = normalize_base_url(base_url)?;
 
         let mut headers = HeaderMap::new();
@@ -30,6 +38,7 @@ impl GitBucketClient {
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
+            .danger_accept_invalid_certs(allow_invalid_certs)
             .build()
             .map_err(GbMcpError::Http)?;
 

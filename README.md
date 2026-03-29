@@ -177,6 +177,7 @@ cargo test
 # Fast local checks without wiremock-based integration tests
 cargo test --lib
 cargo test --test mcp_server_test
+cargo test --test e2e_test
 ```
 
 ### Lint
@@ -226,7 +227,26 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
+- `tests/e2e_test.rs` provides ignored read-only E2E tests against a real GitBucket instance via environment variables.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
+
+### Manual E2E Tests
+
+Set the E2E environment variables, then run the ignored test target explicitly:
+
+```bash
+export GITBUCKET_E2E_URL="https://gitbucket.example.com/gitbucket"
+export GITBUCKET_E2E_TOKEN="your-token"
+export GITBUCKET_E2E_OWNER="owner"
+export GITBUCKET_E2E_REPO="repo"
+cargo test --test e2e_test -- --ignored --nocapture
+```
+
+Optional variables:
+
+- `GITBUCKET_E2E_OWNER`: defaults to the authenticated user for `list_repositories`
+- `GITBUCKET_E2E_REPO`: required for repository-scoped E2E tests
+- `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
 
 ## License
 
