@@ -133,7 +133,7 @@ ensure_repo_with_token() {
   esac
 
   create_payload=$(cat <<EOF
-{"name":"${repo_name}","private":false}
+{"name":"${repo_name}","private":false,"auto_init":true}
 EOF
 )
   status=$(curl_json \
@@ -163,6 +163,8 @@ export GITBUCKET_E2E_URL=${GITBUCKET_E2E_BASE_URL}
 export GITBUCKET_E2E_TOKEN=${token}
 export GITBUCKET_E2E_OWNER=${GITBUCKET_E2E_REPO_OWNER}
 export GITBUCKET_E2E_REPO=${GITBUCKET_E2E_REPO_NAME}
+export GITBUCKET_E2E_GIT_USERNAME=${GITBUCKET_E2E_GIT_USERNAME}
+export GITBUCKET_E2E_GIT_PASSWORD=${GITBUCKET_E2E_GIT_PASSWORD}
 EOF
 }
 

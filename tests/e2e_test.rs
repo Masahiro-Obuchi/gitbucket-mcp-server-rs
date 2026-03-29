@@ -4,13 +4,20 @@ use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
 use serde_json::{json, Value};
 use serial_test::serial;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
+use url::Url;
 
 struct E2eConfig {
     url: String,
     token: String,
     owner: Option<String>,
     repo: Option<String>,
+    git_username: Option<String>,
+    git_password: Option<String>,
     allow_invalid_certs: bool,
 }
 
@@ -21,6 +28,8 @@ impl E2eConfig {
             token: required_env("GITBUCKET_E2E_TOKEN"),
             owner: optional_env("GITBUCKET_E2E_OWNER"),
             repo: optional_env("GITBUCKET_E2E_REPO"),
+            git_username: optional_env("GITBUCKET_E2E_GIT_USERNAME"),
+            git_password: optional_env("GITBUCKET_E2E_GIT_PASSWORD"),
             allow_invalid_certs: optional_env("GITBUCKET_E2E_INSECURE_TLS")
                 .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
                 .unwrap_or(false),
@@ -37,6 +46,19 @@ impl E2eConfig {
             .as_deref()
             .expect("GITBUCKET_E2E_REPO is required for repository-scoped E2E tests");
         (owner, repo)
+    }
+
+    fn git_credentials(&self) -> (&str, &str) {
+        let username = self
+            .git_username
+            .as_deref()
+            .expect("GITBUCKET_E2E_GIT_USERNAME is required for PR write-path E2E tests");
+        let password = self
+            .git_password
+            .as_deref()
+            .expect("GITBUCKET_E2E_GIT_PASSWORD is required for PR write-path E2E tests");
+
+        (username, password)
     }
 }
 
@@ -119,6 +141,114 @@ fn unique_suffix() -> String {
     format!("{}-{}", std::process::id(), now)
 }
 
+fn git_repo_url(config: &E2eConfig, owner: &str, repo: &str) -> String {
+    let (username, password) = config.git_credentials();
+    let mut url = Url::parse(&config.url).expect("GITBUCKET_E2E_URL must be a valid URL");
+    let mut path = url.path().trim_end_matches('/').to_string();
+    path.push_str(&format!("/{owner}/{repo}.git"));
+    url.set_path(&path);
+    url.set_username(username)
+        .expect("git username should be URL-safe");
+    url.set_password(Some(password))
+        .expect("git password should be URL-safe");
+    url.to_string()
+}
+
+fn run_git(dir: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git command should start");
+
+    assert!(
+        output.status.success(),
+        "git command failed in {}:\nstdout:\n{}\nstderr:\n{}",
+        dir.display(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+async fn repository_default_branch(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    owner: &str,
+    repo: &str,
+) -> String {
+    let repository = call_tool_json(
+        client,
+        "get_repository",
+        json!({
+            "owner": owner,
+            "repo": repo,
+        }),
+    )
+    .await;
+
+    repository["default_branch"]
+        .as_str()
+        .filter(|branch| !branch.is_empty())
+        .expect("repository should expose a default branch for PR E2E")
+        .to_string()
+}
+
+#[derive(Debug)]
+struct PrBranchSeed {
+    base_branch: String,
+    feature_branch: String,
+}
+
+async fn push_test_pr_branch(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    config: &E2eConfig,
+    owner: &str,
+    repo: &str,
+) -> PrBranchSeed {
+    let base_branch = repository_default_branch(client, owner, repo).await;
+    let remote_url = git_repo_url(config, owner, repo);
+    let temp_dir = TempDir::new().expect("temporary directory should be created");
+    let worktree = temp_dir.path().join("repo");
+    let worktree_str = worktree.to_string_lossy().into_owned();
+    let suffix = unique_suffix();
+    let feature_branch = format!("e2e-pr-{suffix}");
+    let file_name = format!("e2e-pr-{suffix}.txt");
+
+    run_git(
+        temp_dir.path(),
+        &[
+            "clone",
+            "--branch",
+            &base_branch,
+            &remote_url,
+            &worktree_str,
+        ],
+    );
+    run_git(&worktree, &["config", "user.name", "GitBucket MCP E2E"]);
+    run_git(
+        &worktree,
+        &["config", "user.email", "gitbucket-mcp-e2e@example.test"],
+    );
+    run_git(&worktree, &["checkout", "-b", &feature_branch]);
+
+    fs::write(
+        worktree.join(&file_name),
+        format!("PR E2E change for {feature_branch}\n"),
+    )
+    .expect("test branch file should be written");
+
+    run_git(&worktree, &["add", &file_name]);
+    run_git(
+        &worktree,
+        &["commit", "-m", &format!("Add {file_name} for PR E2E")],
+    );
+    run_git(&worktree, &["push", "-u", "origin", &feature_branch]);
+
+    PrBranchSeed {
+        base_branch,
+        feature_branch,
+    }
+}
+
 async fn create_test_issue(
     client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
     owner: &str,
@@ -145,6 +275,38 @@ async fn create_test_issue(
     assert_eq!(issue["state"].as_str(), Some("open"));
 
     issue
+}
+
+async fn create_test_pull_request(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    config: &E2eConfig,
+    owner: &str,
+    repo: &str,
+) -> Value {
+    let seed = push_test_pr_branch(client, config, owner, repo).await;
+    let suffix = unique_suffix();
+    let title = format!("e2e-pr-{suffix}");
+    let body = format!("e2e pull request body {suffix}");
+
+    let pr = call_tool_json(
+        client,
+        "create_pull_request",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "title": title,
+            "head": seed.feature_branch,
+            "base": seed.base_branch,
+            "body": body,
+        }),
+    )
+    .await;
+
+    assert_eq!(pr["title"].as_str(), Some(title.as_str()));
+    assert_eq!(pr["body"].as_str(), Some(body.as_str()));
+    assert_eq!(pr["state"].as_str(), Some("open"));
+
+    pr
 }
 
 #[tokio::test]
@@ -457,6 +619,118 @@ async fn test_e2e_add_issue_comment() {
         entry["id"].as_u64() == Some(comment_id)
             && entry["body"].as_str() == Some(comment_body.as_str())
     }));
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, GITBUCKET_E2E_REPO, GITBUCKET_E2E_GIT_USERNAME, and GITBUCKET_E2E_GIT_PASSWORD"]
+#[serial]
+async fn test_e2e_create_pull_request() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+    let default_branch = repository_default_branch(&client, owner, repo).await;
+
+    let pr = create_test_pull_request(&client, &config, owner, repo).await;
+    assert!(pr["number"].as_u64().is_some());
+    assert_eq!(pr["base"]["ref"].as_str(), Some(default_branch.as_str()));
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, GITBUCKET_E2E_REPO, GITBUCKET_E2E_GIT_USERNAME, and GITBUCKET_E2E_GIT_PASSWORD"]
+#[serial]
+async fn test_e2e_add_pull_request_comment() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let pr = create_test_pull_request(&client, &config, owner, repo).await;
+    let pull_number = pr["number"]
+        .as_u64()
+        .expect("pull request should have a number");
+    let comment_body = format!("e2e pull request comment {}", unique_suffix());
+
+    let comment = call_tool_json(
+        &client,
+        "add_pull_request_comment",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "pull_number": pull_number,
+            "body": comment_body,
+        }),
+    )
+    .await;
+
+    let comment_id = comment["id"].as_u64().expect("comment should have an id");
+    assert_eq!(comment["body"].as_str(), Some(comment_body.as_str()));
+
+    let comments = call_tool_json(
+        &client,
+        "list_issue_comments",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "issue_number": pull_number,
+        }),
+    )
+    .await;
+
+    let comments = comments
+        .as_array()
+        .expect("pull request comments should be returned as an array");
+    assert!(comments.iter().any(|entry| {
+        entry["id"].as_u64() == Some(comment_id)
+            && entry["body"].as_str() == Some(comment_body.as_str())
+    }));
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, GITBUCKET_E2E_REPO, GITBUCKET_E2E_GIT_USERNAME, and GITBUCKET_E2E_GIT_PASSWORD"]
+#[serial]
+async fn test_e2e_merge_pull_request() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let pr = create_test_pull_request(&client, &config, owner, repo).await;
+    let pull_number = pr["number"]
+        .as_u64()
+        .expect("pull request should have a number");
+    let commit_message = format!("Merge PR E2E {}", unique_suffix());
+
+    let merge_result = call_tool_json(
+        &client,
+        "merge_pull_request",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "pull_number": pull_number,
+            "commit_message": commit_message,
+        }),
+    )
+    .await;
+
+    assert_eq!(merge_result["merged"].as_bool(), Some(true));
+    assert!(merge_result["sha"].as_str().is_some());
+
+    let merged_pr = call_tool_json(
+        &client,
+        "get_pull_request",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "pull_number": pull_number,
+        }),
+    )
+    .await;
+
+    assert_eq!(merged_pr["merged"].as_bool(), Some(true));
 
     client.cancel().await.unwrap();
 }
