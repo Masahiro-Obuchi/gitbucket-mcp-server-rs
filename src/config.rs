@@ -49,7 +49,11 @@ impl ConfigFile {
             return Ok(Self::default());
         }
         let content = std::fs::read_to_string(path).map_err(|e| {
-            GbMcpError::Config(format!("Failed to read config file {}: {}", path.display(), e))
+            GbMcpError::Config(format!(
+                "Failed to read config file {}: {}",
+                path.display(),
+                e
+            ))
         })?;
         toml::from_str(&content).map_err(|e| {
             GbMcpError::Config(format!(
@@ -80,9 +84,8 @@ impl ConfigFile {
             }
         }
 
-        let content = toml::to_string_pretty(self).map_err(|e| {
-            GbMcpError::Config(format!("Failed to serialize config: {}", e))
-        })?;
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| GbMcpError::Config(format!("Failed to serialize config: {}", e)))?;
 
         write_config_file(path, &content)
     }
@@ -470,7 +473,10 @@ token = "my-secret-token"
 
         let result = Config::load_with_file(&path);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to parse config file"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse config file"));
 
         clear_env();
     }
@@ -487,7 +493,10 @@ token = "my-secret-token"
 
         let result = Config::load();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to parse config file"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse config file"));
 
         clear_env();
     }
