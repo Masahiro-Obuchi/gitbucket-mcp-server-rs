@@ -150,6 +150,6 @@ Behavior:
 
 The following are intentionally deferred and may be specified later:
 
-- Additional write-path E2E coverage beyond Issue and pull request flows
+- Additional write-path E2E coverage beyond repository creation, Issue flows, and pull request flows
 - Additional GitBucket endpoints
 - Alternative transports beyond stdio

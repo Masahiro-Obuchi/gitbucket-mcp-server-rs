@@ -395,7 +395,7 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 | APIモックテスト | `wiremock` | APIクライアントのHTTPリクエスト/レスポンス |
 | ツールテスト | `src/tools/*` + モックAPI | MCPツールハンドラーの入力検証と成功系 |
 | MCP統合テスト | `tests/mcp_server_test.rs` | MCPプロトコル経由のツール列挙・schema・呼び出し |
-| E2Eテスト | `tests/e2e_test.rs` | 実 GitBucket に対する read-heavy smoke test |
+| E2Eテスト | `tests/e2e_test.rs` | 実 GitBucket に対する read/write smoke test |
 
 ### 5.2 TDDワークフロー
 
@@ -466,5 +466,5 @@ AIモデルが以下のようにツールを呼び出す:
 ## 7. 備考
 
 - GitBucket API は GitHub API v3 のサブセットであるため、一部のエンドポイントは利用できない可能性がある。`gitbucket-cli-rs` で動作確認済みのエンドポイントを優先的に実装する。
-- Web Session フォールバック（CLIで使用している `repo delete`, `repo fork`, `issue close/reopen` のWeb経由操作）はMCPサーバーでは実装しない。REST APIで対応可能な操作のみをサポートする。
+- `update_issue(state=...)` は、REST API が 404 を返す GitBucket では optional な Web Session フォールバックを使用する。title/body を含む更新や他の操作の Web 経由 fallback は未実装とする。
 - ログ出力は `tracing` クレートで stderr に出力する（stdio transport を使用するため、stdout はMCPプロトコル通信に使用）。

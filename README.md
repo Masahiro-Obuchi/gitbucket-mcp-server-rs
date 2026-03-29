@@ -234,7 +234,7 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
-- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including Issue write paths, state-only web fallback coverage, and pull request create/comment/merge flows.
+- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, Issue write paths, state-only web fallback coverage, and pull request create/comment/merge flows.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
 ### Manual E2E Tests
@@ -256,11 +256,11 @@ cargo test --test e2e_test -- --ignored --nocapture
 Optional variables:
 
 - `GITBUCKET_E2E_OWNER`: defaults to the authenticated user for `list_repositories`
-- `GITBUCKET_E2E_REPO`: required for repository-scoped E2E tests
+- `GITBUCKET_E2E_REPO`: required for issue and pull request E2E against an existing repository
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD`: required for pull request write-path E2E because the tests create and push temporary branches over HTTP
 - `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD`: optional explicit credentials for `update_issue` web fallback; if omitted, E2E reuses the git credentials
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
-- Write-path E2E tests leave created Issues, comments, pull requests, and merged branches in place; they use unique branch names, titles, and bodies to avoid collisions across reruns
+- Write-path E2E tests leave created repositories, Issues, comments, pull requests, and merged branches in place; they use unique repo names, branch names, titles, and bodies to avoid collisions across reruns
 
 ### Docker E2E Bootstrap
 
@@ -275,7 +275,7 @@ cargo test --test e2e_test -- --ignored --nocapture
 
 The same bootstrap flow is also automated in GitHub Actions through `.github/workflows/e2e.yml`. Use the regular `CI` workflow for fast feedback and the `E2E` workflow for full Docker-backed smoke coverage.
 
-The bootstrap script starts GitBucket with Docker, creates a validation user, issues a personal access token, creates an initialized target repository, and writes `./.tmp/e2e/runtime.env` with the `GITBUCKET_E2E_*` variables expected by `tests/e2e_test.rs`, including git-over-HTTP credentials for pull request E2E.
+The bootstrap script starts GitBucket with Docker, creates a validation user, issues a personal access token, creates an initialized target repository, and writes `./.tmp/e2e/runtime.env` with the `GITBUCKET_E2E_*` variables expected by `tests/e2e_test.rs`, including git-over-HTTP credentials for pull request E2E and the authenticated context needed for repository create-path E2E.
 
 ## License
 
