@@ -49,16 +49,20 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-schemars = "0.8"
+schemars = "1"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+toml = "0.8"
+dirs = "6"
 
 [dev-dependencies]
 wiremock = "0.6"
 tokio-test = "0.4"
-assert_json_diff = "2"
+assert-json-diff = "2"
+tempfile = "3"
+serial_test = "3.4.0"
 ```
 
 ### 2.2 アーキテクチャ
@@ -71,7 +75,7 @@ gitbucket-mcp-server-rs/
 │   ├── main.rs                    # エントリポイント（stdio transport起動）
 │   ├── lib.rs                     # ライブラリルート
 │   ├── server.rs                  # MCPサーバー定義（ServerHandler実装）
-│   ├── config.rs                  # 設定（環境変数からの読み込み）
+│   ├── config.rs                  # 設定（TOMLファイル + 環境変数）
 │   ├── error.rs                   # エラー型定義
 │   ├── api/
 │   │   ├── mod.rs                 # APIモジュールエクスポート
@@ -97,20 +101,32 @@ gitbucket-mcp-server-rs/
     ├── common/
     │   └── mod.rs                 # テストヘルパー（モックサーバー等）
     ├── api_client_test.rs         # APIクライアント単体テスト
-    ├── tool_repository_test.rs    # リポジトリツール統合テスト
-    ├── tool_issue_test.rs         # Issueツール統合テスト
-    ├── tool_pull_request_test.rs  # PRツール統合テスト
-    └── tool_user_test.rs          # ユーザーツール統合テスト
 ```
+
+現状、`tests/` 配下には API クライアント向けの統合テストがあり、MCPツール/プロトコルレベルの統合テストは今後の拡張ポイントとする。
 
 ### 2.3 設定・認証
 
-環境変数による設定:
+設定は **TOMLファイル** または **環境変数** で指定可能。環境変数が優先される:
 
 | 環境変数 | 必須 | 説明 | 例 |
 |---------|------|------|----|
-| `GITBUCKET_URL` | ✅ | GitBucketインスタンスのURL | `https://gitbucket.example.com` |
-| `GITBUCKET_TOKEN` | ✅ | Personal Access Token | `abc123...` |
+| `GITBUCKET_URL` | ✅* | GitBucketインスタンスのURL | `https://gitbucket.example.com` |
+| `GITBUCKET_TOKEN` | ✅* | Personal Access Token | `abc123...` |
+| `GITBUCKET_MCP_CONFIG_DIR` | ❌ | 設定ディレクトリの上書き | `/custom/path` |
+
+\* `config.toml` に未設定の場合に必須。
+
+設定ファイルのデフォルトパス:
+
+```text
+~/.config/gitbucket-mcp-server/config.toml
+```
+
+```toml
+url = "https://gitbucket.example.com"
+token = "your-personal-access-token"
+```
 
 ---
 
@@ -307,8 +323,8 @@ TDDサイクル: テスト先行で各コンポーネントを構築
    - 実装: `GbMcpError` enum定義
 
 2. **設定モジュール** (`config.rs`)
-   - テスト: 環境変数からの読み込み、バリデーション
-   - 実装: `Config` 構造体、`Config::from_env()`
+   - テスト: 環境変数 / TOMLファイルからの読み込み、優先順位、バリデーション
+   - 実装: `Config` 構造体、`Config::load()`, `Config::load_with_file()`, `Config::from_env()`
 
 3. **データモデル** (`models/`)
    - テスト: JSONデシリアライズ/シリアライズ（GitBucket APIレスポンスのサンプルJSONを使用）
@@ -351,13 +367,13 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 ### Phase 3: エントリポイント + 統合テスト
 1. **main.rs**
    - stdio transport起動
-   - 環境変数からConfig構築
+   - TOMLファイル + 環境変数からConfig構築
    - サーバー起動
 
 2. **統合テスト**
-   - MCPクライアントからの接続テスト
-   - ツール一覧取得テスト
-   - ツール呼び出し→APIリクエスト→レスポンスの一連のフロー
+   - 現状は API クライアント層を `wiremock` で重点的に検証
+   - 今後必要に応じて MCPクライアントからの接続テストを追加
+   - ツール呼び出し→APIリクエスト→レスポンスの一連のフローは未実装
 
 ### Phase 4: ドキュメント + 品質向上
 1. README.md（インストール方法、設定方法、使用例）
@@ -375,8 +391,8 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 |--------|--------|------|
 | 単体テスト | `#[cfg(test)]` | モデルのシリアライズ、設定バリデーション、URL正規化 |
 | APIモックテスト | `wiremock` | APIクライアントのHTTPリクエスト/レスポンス |
-| ツールテスト | モックAPIクライアント | MCPツールハンドラーのロジック |
-| 統合テスト | `tests/` | MCPプロトコル経由のEnd-to-End |
+| ツールテスト | 今後追加候補 | MCPツールハンドラーのロジック |
+| 統合テスト | 今後追加候補 | MCPプロトコル経由のEnd-to-End |
 
 ### 5.2 TDDワークフロー
 
@@ -398,11 +414,16 @@ GitBucket APIレスポンスのサンプルJSONをテストフィクスチャと
 ### 6.1 MCPサーバー起動
 
 ```bash
-# 環境変数設定
+# オプション1: 環境変数設定
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-personal-access-token"
 
 # サーバー起動（stdioモード）
+gitbucket-mcp-server
+```
+
+```bash
+# オプション2: ~/.config/gitbucket-mcp-server/config.toml を使用
 gitbucket-mcp-server
 ```
 
