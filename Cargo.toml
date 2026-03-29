@@ -1,0 +1,27 @@
+[package]
+name = "gitbucket-mcp-server"
+version = "0.1.0"
+edition = "2021"
+description = "A Model Context Protocol (MCP) server for GitBucket"
+license = "MIT"
+
+[dependencies]
+rmcp = { version = "1", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls-native-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+toml = "0.8"
+dirs = "6"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio-test = "0.4"
+assert-json-diff = "2"
+tempfile = "3"
+serial_test = "3.4.0"
