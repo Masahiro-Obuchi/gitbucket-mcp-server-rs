@@ -1,6 +1,7 @@
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde_json::Value;
 
 use super::{ApiFuture, GitBucketApi};
 use crate::error::{GbMcpError, Result};
@@ -125,7 +126,7 @@ impl GitBucketClient {
         let status = resp.status();
         if status.is_success() {
             let text = resp.text().await.map_err(GbMcpError::Http)?;
-            serde_json::from_str(&text).map_err(GbMcpError::Json)
+            parse_success_body(&text)
         } else {
             let status_code = status.as_u16();
             let message = resp.text().await.unwrap_or_default();
@@ -135,6 +136,25 @@ impl GitBucketClient {
             })
         }
     }
+}
+
+fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
+    let value: Value = serde_json::from_str(body).map_err(GbMcpError::Json)?;
+
+    if let Some(inner) = value.as_str() {
+        return serde_json::from_str(inner).map_err(GbMcpError::Json);
+    }
+
+    if value.get("status").is_some() {
+        if let Some(inner) = value.get("body") {
+            return match inner {
+                Value::String(text) => serde_json::from_str(text).map_err(GbMcpError::Json),
+                other => serde_json::from_value(other.clone()).map_err(GbMcpError::Json),
+            };
+        }
+    }
+
+    serde_json::from_value(value).map_err(GbMcpError::Json)
 }
 
 impl GitBucketApi for GitBucketClient {
@@ -322,6 +342,11 @@ pub fn normalize_base_url(input: &str) -> Result<String> {
 mod tests {
     use super::*;
 
+    #[derive(Debug, serde::Deserialize, PartialEq)]
+    struct WrappedValue {
+        name: String,
+    }
+
     #[test]
     fn test_normalize_simple_hostname() {
         let result = normalize_base_url("gitbucket.example.com").unwrap();
@@ -377,6 +402,29 @@ mod tests {
         assert_eq!(
             client.unwrap().base_url(),
             "https://gitbucket.example.com/api/v3"
+        );
+    }
+
+    #[test]
+    fn test_parse_success_body_accepts_wrapped_json_string() {
+        let value: WrappedValue = parse_success_body(r#""{\"name\":\"wrapped\"}""#).unwrap();
+        assert_eq!(
+            value,
+            WrappedValue {
+                name: "wrapped".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_success_body_accepts_status_body_wrapper() {
+        let value: WrappedValue =
+            parse_success_body(r#"{"status":"ok","body":"{\"name\":\"wrapped\"}"}"#).unwrap();
+        assert_eq!(
+            value,
+            WrappedValue {
+                name: "wrapped".to_string()
+            }
         );
     }
 }
