@@ -17,7 +17,6 @@ Supported capabilities:
 
 Out of scope:
 
-- Web-session-based fallbacks
 - Repository deletion
 - Streamable HTTP or SSE transport
 - Full MCP end-to-end integration guarantees beyond stdio transport
@@ -42,6 +41,8 @@ Supported variables:
 
 - `GITBUCKET_URL`
 - `GITBUCKET_TOKEN`
+- `GITBUCKET_USERNAME`
+- `GITBUCKET_PASSWORD`
 - `GITBUCKET_MCP_CONFIG_DIR`
 
 Default config path:
@@ -55,11 +56,14 @@ Config file format:
 ```toml
 url = "https://gitbucket.example.com"
 token = "your-personal-access-token"
+username = "your-gitbucket-username"
+password = "your-gitbucket-password"
 ```
 
 Requirements:
 
 - `GITBUCKET_URL` and `GITBUCKET_TOKEN` are required unless supplied by config file.
+- `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be supplied together when used.
 - Empty values are invalid.
 - Missing config files are treated as “not configured yet”.
 - Malformed or unreadable config files must fail startup with a configuration error.
@@ -71,6 +75,7 @@ Requirements:
 - Authentication uses the `Authorization: token <token>` header.
 - Requests accept JSON responses.
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
+- `update_issue(state=...)` may fall back to a GitBucket web session when the REST endpoint returns HTTP 404 and optional web credentials are configured.
 
 ## 6. MCP Tool Contract
 
@@ -115,6 +120,7 @@ All tools return a `String`.
 - `list_issues.state` and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
+- On GitBucket instances without REST issue update support, only state-only updates may fall back through the web UI.
 - Optional string fields may be trimmed before sending to GitBucket.
 - Validation failures must be returned without issuing an outbound API request.
 

@@ -5,7 +5,7 @@ This repository uses layered tests so failures can be isolated quickly:
 - Unit tests in `src/**` cover models, config loading, validation, and tool behavior.
 - `tests/api_client_test.rs` verifies HTTP request and response handling with `wiremock`.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport.
-- `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including Issue write paths and pull request create/comment/merge coverage.
+- `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including Issue write paths, state-only web fallback coverage, and pull request create/comment/merge coverage.
 
 ## Common Commands
 
@@ -35,6 +35,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 - `GITBUCKET_E2E_OWNER` for repository-scoped tests
 - `GITBUCKET_E2E_REPO` for repository-scoped tests
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD` for pull request write-path tests that create and push temporary branches
+- `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD` for explicit issue-state web fallback credentials; when omitted, the E2E suite reuses git credentials
 - `GITBUCKET_E2E_INSECURE_TLS=true` only when testing against local/self-signed HTTPS
 
 Run the ignored suite explicitly:
@@ -44,7 +45,7 @@ cargo test --test e2e_test -- --ignored --nocapture
 ```
 
 The write-path tests intentionally keep created Issues, comments, pull requests, and merged branches. Each run uses unique branch names, titles, file names, and comment bodies so reruns do not depend on cleanup.
-Current GitBucket Docker coverage also accepts a surfaced `404` from `update_issue`, because the official `4.44.0` image does not expose the REST update endpoint even though create/comment endpoints are available.
+Current GitBucket Docker coverage verifies that `update_issue(state=...)` falls back through the web UI on the official `4.44.0` image, while title/body updates on that image return an explicit unsupported error.
 
 ## Docker E2E Flow
 
@@ -57,7 +58,7 @@ cargo test --test e2e_test -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```
 
-The bootstrap script starts GitBucket with Docker, creates a validation user, creates a personal access token, provisions an initialized target repository, and writes `./.tmp/e2e/runtime.env`, including git-over-HTTP credentials for PR E2E.
+The bootstrap script starts GitBucket with Docker, creates a validation user, creates a personal access token, provisions an initialized target repository, and writes `./.tmp/e2e/runtime.env`, including git-over-HTTP credentials for PR E2E and web-fallback credentials for `update_issue(state=...)`.
 
 ## GitHub Actions E2E
 

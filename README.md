@@ -41,6 +41,8 @@ Create `~/.config/gitbucket-mcp-server/config.toml`:
 ```toml
 url = "https://gitbucket.example.com"
 token = "your-personal-access-token"
+username = "your-gitbucket-username"
+password = "your-gitbucket-password"
 ```
 
 The config file is created with `0600` permissions (owner-only read/write) to protect the token.
@@ -53,9 +55,11 @@ The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` envir
 |----------|----------|-------------|---------|
 | `GITBUCKET_URL` | ✅* | GitBucket instance URL | `https://gitbucket.example.com` |
 | `GITBUCKET_TOKEN` | ✅* | Personal Access Token | `abc123...` |
+| `GITBUCKET_USERNAME` | ❌ | GitBucket username for issue state web fallback | `alice` |
+| `GITBUCKET_PASSWORD` | ❌ | GitBucket password for issue state web fallback | `secret-pass` |
 | `GITBUCKET_MCP_CONFIG_DIR` | ❌ | Override config directory | `/custom/path` |
 
-\* Required if not set in config file. Environment variables override config file values.
+\* Required if not set in config file. Environment variables override config file values. `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be set together when used.
 
 ### Priority
 
@@ -230,7 +234,7 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
-- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including Issue write paths and pull request create/comment/merge flows.
+- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including Issue write paths, state-only web fallback coverage, and pull request create/comment/merge flows.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
 ### Manual E2E Tests
@@ -244,6 +248,8 @@ export GITBUCKET_E2E_OWNER="owner"
 export GITBUCKET_E2E_REPO="repo"
 export GITBUCKET_E2E_GIT_USERNAME="git-http-username"
 export GITBUCKET_E2E_GIT_PASSWORD="git-http-password"
+export GITBUCKET_E2E_WEB_USERNAME="gitbucket-username"
+export GITBUCKET_E2E_WEB_PASSWORD="gitbucket-password"
 cargo test --test e2e_test -- --ignored --nocapture
 ```
 
@@ -252,6 +258,7 @@ Optional variables:
 - `GITBUCKET_E2E_OWNER`: defaults to the authenticated user for `list_repositories`
 - `GITBUCKET_E2E_REPO`: required for repository-scoped E2E tests
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD`: required for pull request write-path E2E because the tests create and push temporary branches over HTTP
+- `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD`: optional explicit credentials for `update_issue` web fallback; if omitted, E2E reuses the git credentials
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
 - Write-path E2E tests leave created Issues, comments, pull requests, and merged branches in place; they use unique branch names, titles, and bodies to avoid collisions across reruns
 
