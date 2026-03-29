@@ -1,2 +1,9 @@
 /target
 /.tmp
+
+# Editor settings
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
