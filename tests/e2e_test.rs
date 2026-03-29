@@ -4,6 +4,7 @@ use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
 use serde_json::{json, Value};
 use serial_test::serial;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 struct E2eConfig {
     url: String,
@@ -85,6 +86,65 @@ fn parse_json(result: &rmcp::model::CallToolResult) -> Value {
         "expected JSON response, got error: {text}"
     );
     serde_json::from_str(text).expect("tool result should be valid JSON")
+}
+
+async fn call_tool(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    name: &'static str,
+    arguments: Value,
+) -> rmcp::model::CallToolResult {
+    client
+        .call_tool(
+            CallToolRequestParams::new(name).with_arguments(arguments.as_object().unwrap().clone()),
+        )
+        .await
+        .unwrap()
+}
+
+async fn call_tool_json(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    name: &'static str,
+    arguments: Value,
+) -> Value {
+    let result = call_tool(client, name, arguments).await;
+    parse_json(&result)
+}
+
+fn unique_suffix() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_nanos();
+
+    format!("{}-{}", std::process::id(), now)
+}
+
+async fn create_test_issue(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    owner: &str,
+    repo: &str,
+) -> Value {
+    let suffix = unique_suffix();
+    let title = format!("e2e-issue-{suffix}");
+    let body = format!("e2e issue body {suffix}");
+
+    let issue = call_tool_json(
+        client,
+        "create_issue",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "title": title,
+            "body": body,
+        }),
+    )
+    .await;
+
+    assert_eq!(issue["title"].as_str(), Some(title.as_str()));
+    assert_eq!(issue["body"].as_str(), Some(body.as_str()));
+    assert_eq!(issue["state"].as_str(), Some("open"));
+
+    issue
 }
 
 #[tokio::test]
@@ -285,6 +345,118 @@ async fn test_e2e_list_pull_requests() {
         .unwrap();
 
     assert!(parse_json(&result).is_array());
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
+#[serial]
+async fn test_e2e_create_issue() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let issue = create_test_issue(&client, owner, repo).await;
+    assert!(issue["number"].as_u64().is_some());
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
+#[serial]
+async fn test_e2e_update_issue() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let issue = create_test_issue(&client, owner, repo).await;
+    let issue_number = issue["number"]
+        .as_u64()
+        .expect("issue should have a number");
+    let suffix = unique_suffix();
+    let updated_title = format!("e2e-updated-issue-{suffix}");
+    let updated_body = format!("e2e updated body {suffix}");
+
+    let updated = call_tool(
+        &client,
+        "update_issue",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "issue_number": issue_number,
+            "state": "closed",
+            "title": updated_title,
+            "body": updated_body,
+        }),
+    )
+    .await;
+
+    let updated_text = first_text(&updated);
+    if updated_text.starts_with("Error:") {
+        assert!(
+            updated_text.contains("API error (404)"),
+            "expected a surfaced 404 for unsupported issue updates, got: {updated_text}"
+        );
+    } else {
+        let updated = parse_json(&updated);
+        assert_eq!(updated["number"].as_u64(), Some(issue_number));
+        assert_eq!(updated["state"].as_str(), Some("closed"));
+        assert_eq!(updated["title"].as_str(), Some(updated_title.as_str()));
+        assert_eq!(updated["body"].as_str(), Some(updated_body.as_str()));
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
+#[serial]
+async fn test_e2e_add_issue_comment() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let issue = create_test_issue(&client, owner, repo).await;
+    let issue_number = issue["number"]
+        .as_u64()
+        .expect("issue should have a number");
+    let comment_body = format!("e2e issue comment {}", unique_suffix());
+
+    let comment = call_tool_json(
+        &client,
+        "add_issue_comment",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "issue_number": issue_number,
+            "body": comment_body,
+        }),
+    )
+    .await;
+
+    let comment_id = comment["id"].as_u64().expect("comment should have an id");
+    assert_eq!(comment["body"].as_str(), Some(comment_body.as_str()));
+
+    let comments = call_tool_json(
+        &client,
+        "list_issue_comments",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "issue_number": issue_number,
+        }),
+    )
+    .await;
+
+    let comments = comments
+        .as_array()
+        .expect("issue comments should be returned as an array");
+    assert!(comments.iter().any(|entry| {
+        entry["id"].as_u64() == Some(comment_id)
+            && entry["body"].as_str() == Some(comment_body.as_str())
+    }));
 
     client.cancel().await.unwrap();
 }
