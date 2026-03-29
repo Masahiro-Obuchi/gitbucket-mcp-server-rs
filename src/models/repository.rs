@@ -11,6 +11,7 @@ pub struct Repository {
     pub clone_url: Option<String>,
     #[serde(rename = "private")]
     pub is_private: bool,
+    #[serde(default)]
     pub fork: bool,
     pub default_branch: Option<String>,
     pub owner: Option<User>,
