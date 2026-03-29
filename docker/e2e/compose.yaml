@@ -1,0 +1,10 @@
+services:
+  gitbucket:
+    image: ghcr.io/gitbucket/gitbucket:4.44.0
+    ports:
+      - "${GITBUCKET_E2E_HTTP_PORT:-18080}:8080"
+    volumes:
+      - gitbucket-data:/gitbucket
+
+volumes:
+  gitbucket-data:

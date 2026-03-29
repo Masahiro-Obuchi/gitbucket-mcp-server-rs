@@ -248,6 +248,19 @@ Optional variables:
 - `GITBUCKET_E2E_REPO`: required for repository-scoped E2E tests
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
 
+### Docker E2E Bootstrap
+
+You can provision a disposable local GitBucket instance for the E2E suite:
+
+```bash
+./scripts/e2e/bootstrap.sh
+source ./.tmp/e2e/runtime.env
+cargo test --test e2e_test -- --ignored --nocapture
+./scripts/e2e/down.sh
+```
+
+The bootstrap script starts GitBucket with Docker, creates a validation user, issues a personal access token, creates the target repository, and writes `./.tmp/e2e/runtime.env` with the `GITBUCKET_E2E_*` variables expected by `tests/e2e_test.rs`.
+
 ## License
 
 MIT
