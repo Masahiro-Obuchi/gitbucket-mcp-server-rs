@@ -46,10 +46,14 @@ impl GitBucketMcpServer {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
 
     use crate::api::client::GitBucketClient;
+    use crate::server::GitBucketMcpServer;
+    use crate::test_support::{MockApi, RecordedCall};
 
     #[tokio::test]
     async fn test_get_user_rejects_blank_username() {
@@ -63,5 +67,23 @@ mod tests {
             .await;
 
         assert_eq!(result, "Error: username must not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_uses_trimmed_username_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .get_user(Parameters(GetUserParams {
+                username: "  alice  ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"login\": \"mock-user\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::GetUser { username }] => assert_eq!(username, "alice"),
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
     }
 }

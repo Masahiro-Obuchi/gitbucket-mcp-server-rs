@@ -4,24 +4,33 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{tool_handler, ServerHandler};
 
-use crate::api::client::GitBucketClient;
+use crate::api::{client::GitBucketClient, GitBucketApi};
 
 #[derive(Debug, Clone)]
 pub struct GitBucketMcpServer {
-    pub(crate) client: Arc<GitBucketClient>,
+    pub(crate) client: Arc<dyn GitBucketApi>,
     tool_router: ToolRouter<Self>,
 }
 
 impl GitBucketMcpServer {
     pub fn new(client: GitBucketClient) -> Self {
+        Self::with_api(Arc::new(client))
+    }
+
+    fn with_api(client: Arc<dyn GitBucketApi>) -> Self {
         let tool_router = Self::tool_router_user()
             + Self::tool_router_repository()
             + Self::tool_router_issue()
             + Self::tool_router_pull_request();
         Self {
-            client: Arc::new(client),
+            client,
             tool_router,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_api(client: Arc<dyn GitBucketApi>) -> Self {
+        Self::with_api(client)
     }
 }
 

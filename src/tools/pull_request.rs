@@ -226,10 +226,14 @@ impl GitBucketMcpServer {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
 
     use crate::api::client::GitBucketClient;
+    use crate::server::GitBucketMcpServer;
+    use crate::test_support::{MockApi, RecordedCall};
 
     #[tokio::test]
     async fn test_list_pull_requests_rejects_invalid_state() {
@@ -281,5 +285,35 @@ mod tests {
             .await;
 
         assert_eq!(result, "Error: body must not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_create_pull_request_passes_trimmed_fields_to_api_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .create_pull_request(Parameters(CreatePullRequestParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                title: "  Add feature  ".to_string(),
+                head: "  feature-branch  ".to_string(),
+                base: "  main  ".to_string(),
+                body: Some("  PR body  ".to_string()),
+            }))
+            .await;
+
+        assert!(result.contains("\"title\": \"Mock PR\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::CreatePullRequest { owner, repo, body }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(body.title, "Add feature");
+                assert_eq!(body.head, "feature-branch");
+                assert_eq!(body.base, "main");
+                assert_eq!(body.body.as_deref(), Some("PR body"));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
     }
 }

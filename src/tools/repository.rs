@@ -157,10 +157,14 @@ impl GitBucketMcpServer {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
 
     use crate::api::client::GitBucketClient;
+    use crate::server::GitBucketMcpServer;
+    use crate::test_support::{MockApi, RecordedCall};
 
     #[tokio::test]
     async fn test_list_repositories_rejects_blank_owner() {
@@ -191,5 +195,31 @@ mod tests {
             .await;
 
         assert_eq!(result, "Error: name must not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_create_repository_passes_body_to_api_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .create_repository(Parameters(CreateRepositoryParams {
+                name: "  new-repo  ".to_string(),
+                description: Some("A repository".to_string()),
+                private: Some(true),
+                auto_init: Some(true),
+            }))
+            .await;
+
+        assert!(result.contains("\"full_name\": \"mock-user/mock-repo\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::CreateRepository { body }] => {
+                assert_eq!(body.name, "new-repo");
+                assert_eq!(body.description.as_deref(), Some("A repository"));
+                assert_eq!(body.is_private, Some(true));
+                assert_eq!(body.auto_init, Some(true));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
     }
 }

@@ -261,10 +261,14 @@ impl GitBucketMcpServer {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
 
     use crate::api::client::GitBucketClient;
+    use crate::server::GitBucketMcpServer;
+    use crate::test_support::{MockApi, RecordedCall};
 
     #[tokio::test]
     async fn test_list_issues_rejects_invalid_state() {
@@ -319,5 +323,40 @@ mod tests {
             .await;
 
         assert_eq!(result, "Error: body must not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_update_issue_passes_trimmed_body_to_api_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .update_issue(Parameters(UpdateIssueParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                issue_number: 42,
+                state: Some("closed".to_string()),
+                title: Some("  New title  ".to_string()),
+                body: Some("  Updated body  ".to_string()),
+            }))
+            .await;
+
+        assert!(result.contains("\"title\": \"Mock issue\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::UpdateIssue {
+                owner,
+                repo,
+                number,
+                body,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 42);
+                assert_eq!(body.state.as_deref(), Some("closed"));
+                assert_eq!(body.title.as_deref(), Some("New title"));
+                assert_eq!(body.body.as_deref(), Some("Updated body"));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
     }
 }
