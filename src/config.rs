@@ -144,7 +144,7 @@ impl Config {
     /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`
     /// 2. TOML config file: `~/.config/gitbucket-mcp-server/config.toml`
     pub fn load() -> Result<Self> {
-        let file_config = ConfigFile::load().unwrap_or_default();
+        let file_config = ConfigFile::load()?;
         Self::resolve(file_config)
     }
 
@@ -154,7 +154,7 @@ impl Config {
     /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`
     /// 2. Specified TOML config file
     pub fn load_with_file(config_path: &std::path::Path) -> Result<Self> {
-        let file_config = ConfigFile::load_from(config_path).unwrap_or_default();
+        let file_config = ConfigFile::load_from(config_path)?;
         Self::resolve(file_config)
     }
 
@@ -455,6 +455,39 @@ token = "my-secret-token"
         let result = Config::load_with_file(&path);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GITBUCKET_URL"));
+
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_with_file_invalid_toml_returns_parse_error() {
+        clear_env();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "url = [not valid toml").unwrap();
+
+        let result = Config::load_with_file(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to parse config file"));
+
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_invalid_toml_from_config_dir_returns_parse_error() {
+        clear_env();
+
+        let tmp = tempfile::tempdir().unwrap();
+        env::set_var("GITBUCKET_MCP_CONFIG_DIR", tmp.path());
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "token = { broken").unwrap();
+
+        let result = Config::load();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to parse config file"));
 
         clear_env();
     }
