@@ -222,4 +222,88 @@ mod tests {
             calls => panic!("unexpected calls: {calls:?}"),
         }
     }
+
+    #[tokio::test]
+    async fn test_list_repositories_passes_trimmed_owner_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .list_repositories(Parameters(ListRepositoriesParams {
+                owner: "  mock-user  ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"full_name\": \"mock-user/mock-repo\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::ListRepositories { owner }] => assert_eq!(owner, "mock-user"),
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_repository_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .get_repository(Parameters(GetRepositoryParams {
+                owner: "  mock-user ".to_string(),
+                repo: " mock-repo  ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"name\": \"mock-repo\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::GetRepository { owner, repo }] => {
+                assert_eq!(owner, "mock-user");
+                assert_eq!(repo, "mock-repo");
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fork_repository_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .fork_repository(Parameters(ForkRepositoryParams {
+                owner: "  upstream ".to_string(),
+                repo: " sample-repo  ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"full_name\": \"mock-user/mock-repo\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::ForkRepository { owner, repo }] => {
+                assert_eq!(owner, "upstream");
+                assert_eq!(repo, "sample-repo");
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_branches_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .list_branches(Parameters(ListBranchesParams {
+                owner: "  mock-user ".to_string(),
+                repo: " mock-repo ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"name\": \"main\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::ListBranches { owner, repo }] => {
+                assert_eq!(owner, "mock-user");
+                assert_eq!(repo, "mock-repo");
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
 }

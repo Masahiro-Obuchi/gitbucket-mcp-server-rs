@@ -1,4 +1,5 @@
 # GitBucket MCP Server
+[![CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/ci.yml)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [GitBucket](https://gitbucket.github.io/), written in Rust.
 
@@ -168,7 +169,14 @@ cargo build
 ### Test
 
 ```bash
+# Full test suite (used in CI)
 cargo test
+```
+
+```bash
+# Fast local checks without wiremock-based integration tests
+cargo test --lib
+cargo test --test mcp_server_test
 ```
 
 ### Lint
@@ -178,6 +186,14 @@ cargo fmt --all
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+### CI
+
+GitHub Actions runs the following on every push and pull request:
+
+- `cargo fmt --all --check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+
 ## Architecture
 
 ```
@@ -185,7 +201,7 @@ src/
 ├── main.rs          # Entry point (stdio transport)
 ├── lib.rs           # Library root
 ├── server.rs        # MCP ServerHandler implementation
-├── config.rs        # Environment variable configuration
+├── config.rs        # TOML file + environment variable configuration
 ├── error.rs         # Error types
 ├── api/             # GitBucket REST API client
 │   ├── client.rs    # HTTP client with auth
@@ -205,6 +221,12 @@ src/
     ├── pull_request.rs
     └── user.rs
 ```
+
+## Testing Notes
+
+- `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
+- `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
+- `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
 ## License
 

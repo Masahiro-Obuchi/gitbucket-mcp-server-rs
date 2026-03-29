@@ -86,4 +86,20 @@ mod tests {
             calls => panic!("unexpected calls: {calls:?}"),
         }
     }
+
+    #[tokio::test]
+    async fn test_get_authenticated_user_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .get_authenticated_user(Parameters(GetAuthenticatedUserParams {}))
+            .await;
+
+        assert!(result.contains("\"login\": \"mock-user\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::GetAuthenticatedUser] => {}
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
 }

@@ -316,4 +316,118 @@ mod tests {
             calls => panic!("unexpected calls: {calls:?}"),
         }
     }
+
+    #[tokio::test]
+    async fn test_list_pull_requests_passes_trimmed_fields_and_state_to_api() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .list_pull_requests(Parameters(ListPullRequestsParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                state: Some("closed".to_string()),
+            }))
+            .await;
+
+        assert!(result.contains("\"title\": \"Mock PR\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::ListPullRequests { owner, repo, state }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(state.as_deref(), Some("closed"));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_pull_request_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .get_pull_request(Parameters(GetPullRequestParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                pull_number: 7,
+            }))
+            .await;
+
+        assert!(result.contains("\"number\": 7"));
+        match mock.calls().as_slice() {
+            [RecordedCall::GetPullRequest {
+                owner,
+                repo,
+                number,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 7);
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_merge_pull_request_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .merge_pull_request(Parameters(MergePullRequestParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                pull_number: 7,
+                commit_message: Some("  merge message  ".to_string()),
+            }))
+            .await;
+
+        assert!(result.contains("\"merged\": true"));
+        match mock.calls().as_slice() {
+            [RecordedCall::MergePullRequest {
+                owner,
+                repo,
+                number,
+                body,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 7);
+                assert_eq!(body.commit_message.as_deref(), Some("merge message"));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_pull_request_comment_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .add_pull_request_comment(Parameters(AddPullRequestCommentParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                pull_number: 7,
+                body: "  Looks good  ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"body\": \"Mock comment\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::AddPullRequestComment {
+                owner,
+                repo,
+                number,
+                body,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 7);
+                assert_eq!(body.body, "Looks good");
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
 }

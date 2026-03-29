@@ -359,4 +359,145 @@ mod tests {
             calls => panic!("unexpected calls: {calls:?}"),
         }
     }
+
+    #[tokio::test]
+    async fn test_list_issues_passes_trimmed_fields_and_state_to_api() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .list_issues(Parameters(ListIssuesParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                state: Some("closed".to_string()),
+            }))
+            .await;
+
+        assert!(result.contains("\"title\": \"Mock issue\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::ListIssues { owner, repo, state }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(state.as_deref(), Some("closed"));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_issue_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .get_issue(Parameters(GetIssueParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                issue_number: 42,
+            }))
+            .await;
+
+        assert!(result.contains("\"number\": 42"));
+        match mock.calls().as_slice() {
+            [RecordedCall::GetIssue {
+                owner,
+                repo,
+                number,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 42);
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_issue_passes_body_to_api_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .create_issue(Parameters(CreateIssueParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                title: "  New issue  ".to_string(),
+                body: Some("  body text  ".to_string()),
+                labels: Some(vec!["bug".to_string()]),
+                assignees: Some(vec!["alice".to_string()]),
+            }))
+            .await;
+
+        assert!(result.contains("\"title\": \"Mock issue\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::CreateIssue { owner, repo, body }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(body.title, "New issue");
+                assert_eq!(body.body.as_deref(), Some("body text"));
+                assert_eq!(body.labels.as_deref(), Some(&["bug".to_string()][..]));
+                assert_eq!(body.assignees.as_deref(), Some(&["alice".to_string()][..]));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_issue_comments_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .list_issue_comments(Parameters(ListIssueCommentsParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                issue_number: 42,
+            }))
+            .await;
+
+        assert!(result.contains("\"body\": \"Mock comment\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::ListIssueComments {
+                owner,
+                repo,
+                number,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 42);
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_issue_comment_passes_trimmed_fields_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .add_issue_comment(Parameters(AddIssueCommentParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                issue_number: 42,
+                body: "  Nice work  ".to_string(),
+            }))
+            .await;
+
+        assert!(result.contains("\"body\": \"Mock comment\""));
+        match mock.calls().as_slice() {
+            [RecordedCall::AddIssueComment {
+                owner,
+                repo,
+                number,
+                body,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 42);
+                assert_eq!(body.body, "Nice work");
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
 }
