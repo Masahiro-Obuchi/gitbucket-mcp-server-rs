@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest};
 use crate::server::GitBucketMcpServer;
+use crate::tools::validation::{list_state, optional_trimmed, required_trimmed};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListPullRequestsParams {
@@ -74,9 +75,22 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListPullRequestsParams>,
     ) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let state = match list_state(params.state) {
+            Ok(state) => state,
+            Err(err) => return err,
+        };
+
         match self
             .client
-            .list_pull_requests(&params.owner, &params.repo, params.state.as_deref())
+            .list_pull_requests(&owner, &repo, state.as_deref())
             .await
         {
             Ok(prs) => serde_json::to_string_pretty(&prs)
@@ -90,9 +104,18 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<GetPullRequestParams>,
     ) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
         match self
             .client
-            .get_pull_request(&params.owner, &params.repo, params.pull_number)
+            .get_pull_request(&owner, &repo, params.pull_number)
             .await
         {
             Ok(pr) => serde_json::to_string_pretty(&pr)
@@ -106,17 +129,34 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<CreatePullRequestParams>,
     ) -> String {
-        let body = CreatePullRequest {
-            title: params.title,
-            head: params.head,
-            base: params.base,
-            body: params.body,
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
         };
-        match self
-            .client
-            .create_pull_request(&params.owner, &params.repo, &body)
-            .await
-        {
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let title = match required_trimmed(&params.title, "title") {
+            Ok(title) => title,
+            Err(err) => return err,
+        };
+        let head = match required_trimmed(&params.head, "head") {
+            Ok(head) => head,
+            Err(err) => return err,
+        };
+        let base = match required_trimmed(&params.base, "base") {
+            Ok(base) => base,
+            Err(err) => return err,
+        };
+
+        let body = CreatePullRequest {
+            title,
+            head,
+            base,
+            body: optional_trimmed(params.body),
+        };
+        match self.client.create_pull_request(&owner, &repo, &body).await {
             Ok(pr) => serde_json::to_string_pretty(&pr)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
@@ -128,14 +168,23 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<MergePullRequestParams>,
     ) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
         let body = MergePullRequest {
-            commit_message: params.commit_message,
+            commit_message: optional_trimmed(params.commit_message),
             sha: None,
             merge_method: None,
         };
         match self
             .client
-            .merge_pull_request(&params.owner, &params.repo, params.pull_number, &body)
+            .merge_pull_request(&owner, &repo, params.pull_number, &body)
             .await
         {
             Ok(result) => serde_json::to_string_pretty(&result)
@@ -149,15 +198,88 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<AddPullRequestCommentParams>,
     ) -> String {
-        let body = CreateComment { body: params.body };
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let comment = match required_trimmed(&params.body, "body") {
+            Ok(comment) => comment,
+            Err(err) => return err,
+        };
+
+        let body = CreateComment { body: comment };
         match self
             .client
-            .add_pull_request_comment(&params.owner, &params.repo, params.pull_number, &body)
+            .add_pull_request_comment(&owner, &repo, params.pull_number, &body)
             .await
         {
             Ok(comment) => serde_json::to_string_pretty(&comment)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    use crate::api::client::GitBucketClient;
+
+    #[tokio::test]
+    async fn test_list_pull_requests_rejects_invalid_state() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .list_pull_requests(Parameters(ListPullRequestsParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                state: Some("merged".to_string()),
+            }))
+            .await;
+
+        assert_eq!(result, "Error: state must be one of: open, closed, all");
+    }
+
+    #[tokio::test]
+    async fn test_create_pull_request_rejects_blank_head() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .create_pull_request(Parameters(CreatePullRequestParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                title: "Title".to_string(),
+                head: "  ".to_string(),
+                base: "main".to_string(),
+                body: None,
+            }))
+            .await;
+
+        assert_eq!(result, "Error: head must not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_add_pull_request_comment_rejects_blank_body() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .add_pull_request_comment(Parameters(AddPullRequestCommentParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                pull_number: 1,
+                body: "   ".to_string(),
+            }))
+            .await;
+
+        assert_eq!(result, "Error: body must not be empty");
     }
 }

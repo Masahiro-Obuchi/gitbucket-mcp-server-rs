@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::models::repository::CreateRepository;
 use crate::server::GitBucketMcpServer;
+use crate::tools::validation::required_trimmed;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListRepositoriesParams {
@@ -55,7 +56,12 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListRepositoriesParams>,
     ) -> String {
-        match self.client.list_repositories(&params.owner).await {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+
+        match self.client.list_repositories(&owner).await {
             Ok(repos) => serde_json::to_string_pretty(&repos)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
@@ -67,11 +73,16 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<GetRepositoryParams>,
     ) -> String {
-        match self
-            .client
-            .get_repository(&params.owner, &params.repo)
-            .await
-        {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
+        match self.client.get_repository(&owner, &repo).await {
             Ok(repo) => serde_json::to_string_pretty(&repo)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
@@ -83,8 +94,13 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<CreateRepositoryParams>,
     ) -> String {
+        let name = match required_trimmed(&params.name, "name") {
+            Ok(name) => name,
+            Err(err) => return err,
+        };
+
         let body = CreateRepository {
-            name: params.name,
+            name,
             description: params.description,
             is_private: params.private,
             auto_init: params.auto_init,
@@ -101,11 +117,16 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ForkRepositoryParams>,
     ) -> String {
-        match self
-            .client
-            .fork_repository(&params.owner, &params.repo)
-            .await
-        {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
+        match self.client.fork_repository(&owner, &repo).await {
             Ok(repo) => serde_json::to_string_pretty(&repo)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
@@ -117,10 +138,58 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListBranchesParams>,
     ) -> String {
-        match self.client.list_branches(&params.owner, &params.repo).await {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
+        match self.client.list_branches(&owner, &repo).await {
             Ok(branches) => serde_json::to_string_pretty(&branches)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    use crate::api::client::GitBucketClient;
+
+    #[tokio::test]
+    async fn test_list_repositories_rejects_blank_owner() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .list_repositories(Parameters(ListRepositoriesParams {
+                owner: "   ".to_string(),
+            }))
+            .await;
+
+        assert_eq!(result, "Error: owner must not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_create_repository_rejects_blank_name() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .create_repository(Parameters(CreateRepositoryParams {
+                name: "   ".to_string(),
+                description: None,
+                private: None,
+                auto_init: None,
+            }))
+            .await;
+
+        assert_eq!(result, "Error: name must not be empty");
     }
 }

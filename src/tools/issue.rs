@@ -6,6 +6,9 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::issue::{CreateIssue, UpdateIssue};
 use crate::server::GitBucketMcpServer;
+use crate::tools::validation::{
+    error, issue_state, list_state, optional_trimmed, required_trimmed,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListIssuesParams {
@@ -85,9 +88,22 @@ pub struct AddIssueCommentParams {
 impl GitBucketMcpServer {
     #[tool(description = "List issues in a GitBucket repository")]
     pub async fn list_issues(&self, Parameters(params): Parameters<ListIssuesParams>) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let state = match list_state(params.state) {
+            Ok(state) => state,
+            Err(err) => return err,
+        };
+
         match self
             .client
-            .list_issues(&params.owner, &params.repo, params.state.as_deref())
+            .list_issues(&owner, &repo, state.as_deref())
             .await
         {
             Ok(issues) => serde_json::to_string_pretty(&issues)
@@ -98,9 +114,18 @@ impl GitBucketMcpServer {
 
     #[tool(description = "Get details of a specific issue in a GitBucket repository")]
     pub async fn get_issue(&self, Parameters(params): Parameters<GetIssueParams>) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
         match self
             .client
-            .get_issue(&params.owner, &params.repo, params.issue_number)
+            .get_issue(&owner, &repo, params.issue_number)
             .await
         {
             Ok(issue) => serde_json::to_string_pretty(&issue)
@@ -111,17 +136,26 @@ impl GitBucketMcpServer {
 
     #[tool(description = "Create a new issue in a GitBucket repository")]
     pub async fn create_issue(&self, Parameters(params): Parameters<CreateIssueParams>) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let title = match required_trimmed(&params.title, "title") {
+            Ok(title) => title,
+            Err(err) => return err,
+        };
+
         let body = CreateIssue {
-            title: params.title,
-            body: params.body,
+            title,
+            body: optional_trimmed(params.body),
             labels: params.labels,
             assignees: params.assignees,
         };
-        match self
-            .client
-            .create_issue(&params.owner, &params.repo, &body)
-            .await
-        {
+        match self.client.create_issue(&owner, &repo, &body).await {
             Ok(issue) => serde_json::to_string_pretty(&issue)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
@@ -132,14 +166,35 @@ impl GitBucketMcpServer {
         description = "Update an issue in a GitBucket repository (change state, title, or body)"
     )]
     pub async fn update_issue(&self, Parameters(params): Parameters<UpdateIssueParams>) -> String {
-        let body = UpdateIssue {
-            state: params.state,
-            title: params.title,
-            body: params.body,
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
         };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let state = match issue_state(params.state) {
+            Ok(state) => state,
+            Err(err) => return err,
+        };
+        let title = match params.title {
+            Some(title) => match required_trimmed(&title, "title") {
+                Ok(title) => Some(title),
+                Err(err) => return err,
+            },
+            None => None,
+        };
+        let body = optional_trimmed(params.body);
+
+        if state.is_none() && title.is_none() && body.is_none() {
+            return error("at least one of state, title, or body must be provided");
+        }
+
+        let body = UpdateIssue { state, title, body };
         match self
             .client
-            .update_issue(&params.owner, &params.repo, params.issue_number, &body)
+            .update_issue(&owner, &repo, params.issue_number, &body)
             .await
         {
             Ok(issue) => serde_json::to_string_pretty(&issue)
@@ -153,9 +208,18 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListIssueCommentsParams>,
     ) -> String {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+
         match self
             .client
-            .list_issue_comments(&params.owner, &params.repo, params.issue_number)
+            .list_issue_comments(&owner, &repo, params.issue_number)
             .await
         {
             Ok(comments) => serde_json::to_string_pretty(&comments)
@@ -169,15 +233,91 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<AddIssueCommentParams>,
     ) -> String {
-        let body = CreateComment { body: params.body };
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return err,
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return err,
+        };
+        let comment = match required_trimmed(&params.body, "body") {
+            Ok(comment) => comment,
+            Err(err) => return err,
+        };
+
+        let body = CreateComment { body: comment };
         match self
             .client
-            .add_issue_comment(&params.owner, &params.repo, params.issue_number, &body)
+            .add_issue_comment(&owner, &repo, params.issue_number, &body)
             .await
         {
             Ok(comment) => serde_json::to_string_pretty(&comment)
                 .unwrap_or_else(|e| format!("Error serializing: {}", e)),
             Err(e) => format!("Error: {}", e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    use crate::api::client::GitBucketClient;
+
+    #[tokio::test]
+    async fn test_list_issues_rejects_invalid_state() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .list_issues(Parameters(ListIssuesParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                state: Some("draft".to_string()),
+            }))
+            .await;
+
+        assert_eq!(result, "Error: state must be one of: open, closed, all");
+    }
+
+    #[tokio::test]
+    async fn test_update_issue_requires_a_change() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .update_issue(Parameters(UpdateIssueParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                issue_number: 1,
+                state: None,
+                title: None,
+                body: None,
+            }))
+            .await;
+
+        assert_eq!(
+            result,
+            "Error: at least one of state, title, or body must be provided"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_add_issue_comment_rejects_blank_body() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .add_issue_comment(Parameters(AddIssueCommentParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                issue_number: 1,
+                body: "  ".to_string(),
+            }))
+            .await;
+
+        assert_eq!(result, "Error: body must not be empty");
     }
 }
