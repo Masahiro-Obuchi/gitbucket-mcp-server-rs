@@ -9,6 +9,8 @@ use crate::error::{GbMcpError, Result};
 pub struct Config {
     pub gitbucket_url: String,
     pub gitbucket_token: String,
+    pub gitbucket_username: Option<String>,
+    pub gitbucket_password: Option<String>,
 }
 
 /// TOML file structure (`~/.config/gitbucket-mcp-server/config.toml`).
@@ -23,6 +25,10 @@ pub struct ConfigFile {
     pub url: Option<String>,
     #[serde(default)]
     pub token: Option<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 /// Return the config directory path.
@@ -144,7 +150,7 @@ impl Config {
     /// Load configuration.
     ///
     /// Priority (highest wins):
-    /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`
+    /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`, optional web creds
     /// 2. TOML config file: `~/.config/gitbucket-mcp-server/config.toml`
     pub fn load() -> Result<Self> {
         let file_config = ConfigFile::load()?;
@@ -154,7 +160,7 @@ impl Config {
     /// Load configuration with an explicit config file path.
     ///
     /// Priority (highest wins):
-    /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`
+    /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`, optional web creds
     /// 2. Specified TOML config file
     pub fn load_with_file(config_path: &std::path::Path) -> Result<Self> {
         let file_config = ConfigFile::load_from(config_path)?;
@@ -195,9 +201,21 @@ impl Config {
             ));
         }
 
+        let gitbucket_username = std::env::var("GITBUCKET_USERNAME")
+            .ok()
+            .or(file_config.username);
+        let gitbucket_password = std::env::var("GITBUCKET_PASSWORD")
+            .ok()
+            .or(file_config.password);
+
+        let (gitbucket_username, gitbucket_password) =
+            resolve_optional_web_credentials(gitbucket_username, gitbucket_password)?;
+
         Ok(Self {
             gitbucket_url,
             gitbucket_token,
+            gitbucket_username,
+            gitbucket_password,
         })
     }
 
@@ -223,10 +241,43 @@ impl Config {
             ));
         }
 
+        let gitbucket_username = std::env::var("GITBUCKET_USERNAME").ok();
+        let gitbucket_password = std::env::var("GITBUCKET_PASSWORD").ok();
+        let (gitbucket_username, gitbucket_password) =
+            resolve_optional_web_credentials(gitbucket_username, gitbucket_password)?;
+
         Ok(Self {
             gitbucket_url,
             gitbucket_token,
+            gitbucket_username,
+            gitbucket_password,
         })
+    }
+}
+
+fn resolve_optional_web_credentials(
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<(Option<String>, Option<String>)> {
+    match (username, password) {
+        (None, None) => Ok((None, None)),
+        (Some(username), Some(password)) => {
+            if username.trim().is_empty() {
+                return Err(GbMcpError::Config(
+                    "GITBUCKET_USERNAME must not be empty".to_string(),
+                ));
+            }
+            if password.trim().is_empty() {
+                return Err(GbMcpError::Config(
+                    "GITBUCKET_PASSWORD must not be empty".to_string(),
+                ));
+            }
+
+            Ok((Some(username), Some(password)))
+        }
+        (Some(_), None) | (None, Some(_)) => Err(GbMcpError::Config(
+            "GITBUCKET_USERNAME and GITBUCKET_PASSWORD must be set together".to_string(),
+        )),
     }
 }
 
@@ -239,6 +290,8 @@ mod tests {
     fn clear_env() {
         env::remove_var("GITBUCKET_URL");
         env::remove_var("GITBUCKET_TOKEN");
+        env::remove_var("GITBUCKET_USERNAME");
+        env::remove_var("GITBUCKET_PASSWORD");
         env::remove_var("GITBUCKET_MCP_CONFIG_DIR");
     }
 
@@ -254,6 +307,8 @@ mod tests {
         let config = Config::from_env().unwrap();
         assert_eq!(config.gitbucket_url, "https://gitbucket.example.com");
         assert_eq!(config.gitbucket_token, "test-token-123");
+        assert!(config.gitbucket_username.is_none());
+        assert!(config.gitbucket_password.is_none());
         clear_env();
     }
 
@@ -320,6 +375,8 @@ mod tests {
         let toml_str = r#"
 url = "https://gitbucket.example.com"
 token = "my-secret-token"
+username = "alice"
+password = "secret-pass"
 "#;
         let config: ConfigFile = toml::from_str(toml_str).unwrap();
         assert_eq!(
@@ -327,6 +384,8 @@ token = "my-secret-token"
             Some("https://gitbucket.example.com".to_string())
         );
         assert_eq!(config.token, Some("my-secret-token".to_string()));
+        assert_eq!(config.username, Some("alice".to_string()));
+        assert_eq!(config.password, Some("secret-pass".to_string()));
     }
 
     #[test]
@@ -335,6 +394,8 @@ token = "my-secret-token"
         let config: ConfigFile = toml::from_str(toml_str).unwrap();
         assert!(config.url.is_none());
         assert!(config.token.is_none());
+        assert!(config.username.is_none());
+        assert!(config.password.is_none());
     }
 
     #[test]
@@ -342,10 +403,14 @@ token = "my-secret-token"
         let config = ConfigFile {
             url: Some("https://gitbucket.example.com".to_string()),
             token: Some("my-token".to_string()),
+            username: Some("alice".to_string()),
+            password: Some("secret-pass".to_string()),
         };
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("url = \"https://gitbucket.example.com\""));
         assert!(toml_str.contains("token = \"my-token\""));
+        assert!(toml_str.contains("username = \"alice\""));
+        assert!(toml_str.contains("password = \"secret-pass\""));
     }
 
     #[test]
@@ -356,12 +421,16 @@ token = "my-secret-token"
         let config = ConfigFile {
             url: Some("https://gb.test.local".to_string()),
             token: Some("saved-token".to_string()),
+            username: Some("saved-user".to_string()),
+            password: Some("saved-pass".to_string()),
         };
         config.save_to(&path).unwrap();
 
         let loaded = ConfigFile::load_from(&path).unwrap();
         assert_eq!(loaded.url, Some("https://gb.test.local".to_string()));
         assert_eq!(loaded.token, Some("saved-token".to_string()));
+        assert_eq!(loaded.username, Some("saved-user".to_string()));
+        assert_eq!(loaded.password, Some("saved-pass".to_string()));
     }
 
     #[test]
@@ -387,12 +456,16 @@ token = "my-secret-token"
         let file_config = ConfigFile {
             url: Some("https://from-file.example.com".to_string()),
             token: Some("file-token".to_string()),
+            username: Some("file-user".to_string()),
+            password: Some("file-pass".to_string()),
         };
         file_config.save_to(&path).unwrap();
 
         let config = Config::load_with_file(&path).unwrap();
         assert_eq!(config.gitbucket_url, "https://from-file.example.com");
         assert_eq!(config.gitbucket_token, "file-token");
+        assert_eq!(config.gitbucket_username.as_deref(), Some("file-user"));
+        assert_eq!(config.gitbucket_password.as_deref(), Some("file-pass"));
 
         clear_env();
     }
@@ -408,16 +481,22 @@ token = "my-secret-token"
         let file_config = ConfigFile {
             url: Some("https://from-file.example.com".to_string()),
             token: Some("file-token".to_string()),
+            username: Some("file-user".to_string()),
+            password: Some("file-pass".to_string()),
         };
         file_config.save_to(&path).unwrap();
 
         // Set env vars (should take priority)
         env::set_var("GITBUCKET_URL", "https://from-env.example.com");
         env::set_var("GITBUCKET_TOKEN", "env-token");
+        env::set_var("GITBUCKET_USERNAME", "env-user");
+        env::set_var("GITBUCKET_PASSWORD", "env-pass");
 
         let config = Config::load_with_file(&path).unwrap();
         assert_eq!(config.gitbucket_url, "https://from-env.example.com");
         assert_eq!(config.gitbucket_token, "env-token");
+        assert_eq!(config.gitbucket_username.as_deref(), Some("env-user"));
+        assert_eq!(config.gitbucket_password.as_deref(), Some("env-pass"));
 
         clear_env();
     }
@@ -434,6 +513,8 @@ token = "my-secret-token"
         let file_config = ConfigFile {
             url: None,
             token: Some("file-token".to_string()),
+            username: Some("file-user".to_string()),
+            password: Some("file-pass".to_string()),
         };
         file_config.save_to(&path).unwrap();
 
@@ -443,6 +524,8 @@ token = "my-secret-token"
         let config = Config::load_with_file(&path).unwrap();
         assert_eq!(config.gitbucket_url, "https://from-env.example.com");
         assert_eq!(config.gitbucket_token, "file-token");
+        assert_eq!(config.gitbucket_username.as_deref(), Some("file-user"));
+        assert_eq!(config.gitbucket_password.as_deref(), Some("file-pass"));
 
         clear_env();
     }
@@ -501,6 +584,47 @@ token = "my-secret-token"
         clear_env();
     }
 
+    #[test]
+    #[serial]
+    fn test_load_with_partial_web_credentials_fails() {
+        clear_env();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        let file_config = ConfigFile {
+            url: Some("https://from-file.example.com".to_string()),
+            token: Some("file-token".to_string()),
+            username: Some("file-user".to_string()),
+            password: None,
+        };
+        file_config.save_to(&path).unwrap();
+
+        let result = Config::load_with_file(&path);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must be set together"));
+
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn test_from_env_with_optional_web_credentials() {
+        clear_env();
+        env::set_var("GITBUCKET_URL", "https://gitbucket.example.com");
+        env::set_var("GITBUCKET_TOKEN", "test-token-123");
+        env::set_var("GITBUCKET_USERNAME", "alice");
+        env::set_var("GITBUCKET_PASSWORD", "secret-pass");
+
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.gitbucket_username.as_deref(), Some("alice"));
+        assert_eq!(config.gitbucket_password.as_deref(), Some("secret-pass"));
+
+        clear_env();
+    }
+
     // --- config_dir tests ---
 
     #[test]
@@ -533,6 +657,8 @@ token = "my-secret-token"
         let config = ConfigFile {
             url: Some("https://test.com".to_string()),
             token: Some("secret".to_string()),
+            username: None,
+            password: None,
         };
         config.save_to(&path).unwrap();
 

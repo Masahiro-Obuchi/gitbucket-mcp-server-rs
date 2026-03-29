@@ -1,7 +1,7 @@
 mod common;
 
 use common::TestServer;
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{body_string_contains, header, method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
 #[tokio::test]
@@ -322,6 +322,117 @@ async fn test_update_issue_close() {
         .await
         .unwrap();
     assert_eq!(issue.state, "closed");
+}
+
+#[tokio::test]
+async fn test_update_issue_state_falls_back_to_web_session_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .and(body_string_contains("userName=alice"))
+        .and(body_string_contains("password=secret-pass"))
+        .respond_with(
+            ResponseTemplate::new(200).insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+        )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issue_comments/state"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("issueId=1"))
+        .and(body_string_contains("action=close"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 1,
+            "title": "Bug",
+            "body": "original body",
+            "state": "closed"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::issue::UpdateIssue {
+        state: Some("closed".to_string()),
+        title: None,
+        body: None,
+    };
+    let issue = client
+        .update_issue("owner", "repo", 1, &body)
+        .await
+        .unwrap();
+
+    assert_eq!(issue.state, "closed");
+    assert_eq!(issue.title, "Bug");
+}
+
+#[tokio::test]
+async fn test_update_issue_title_body_fallback_returns_clear_error() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::issue::UpdateIssue {
+        state: Some("closed".to_string()),
+        title: Some("New title".to_string()),
+        body: None,
+    };
+    let err = client
+        .update_issue("owner", "repo", 1, &body)
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("title/body updates via REST"));
+}
+
+#[tokio::test]
+async fn test_update_issue_state_without_web_credentials_returns_clear_error() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::issue::UpdateIssue {
+        state: Some("closed".to_string()),
+        title: None,
+        body: None,
+    };
+    let err = client
+        .update_issue("owner", "repo", 1, &body)
+        .await
+        .unwrap_err();
+
+    assert!(err
+        .to_string()
+        .contains("Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD"));
 }
 
 #[tokio::test]

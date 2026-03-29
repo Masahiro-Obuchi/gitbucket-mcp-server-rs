@@ -22,7 +22,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     // Create API client
-    let client = GitBucketClient::new(&config.gitbucket_url, &config.gitbucket_token)?;
+    let client = GitBucketClient::new_with_web_auth(
+        &config.gitbucket_url,
+        &config.gitbucket_token,
+        false,
+        config.gitbucket_username.as_deref(),
+        config.gitbucket_password.as_deref(),
+    )?;
 
     // Create and start MCP server via stdio transport
     let server = GitBucketMcpServer::new(client);

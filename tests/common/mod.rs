@@ -18,4 +18,15 @@ impl TestServer {
     pub fn client(&self) -> GitBucketClient {
         GitBucketClient::new(&self.mock_server.uri(), &self.token).unwrap()
     }
+
+    pub fn client_with_web_auth(&self, username: &str, password: &str) -> GitBucketClient {
+        GitBucketClient::new_with_web_auth(
+            &self.mock_server.uri(),
+            &self.token,
+            false,
+            Some(username),
+            Some(password),
+        )
+        .unwrap()
+    }
 }

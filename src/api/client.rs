@@ -15,6 +15,14 @@ use crate::models::user::User;
 pub struct GitBucketClient {
     client: reqwest::Client,
     base_url: String,
+    allow_invalid_certs: bool,
+    web_credentials: Option<WebCredentials>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct WebCredentials {
+    pub username: String,
+    pub password: String,
 }
 
 impl GitBucketClient {
@@ -27,7 +35,18 @@ impl GitBucketClient {
         token: &str,
         allow_invalid_certs: bool,
     ) -> Result<Self> {
+        Self::new_with_web_auth(base_url, token, allow_invalid_certs, None, None)
+    }
+
+    pub fn new_with_web_auth(
+        base_url: &str,
+        token: &str,
+        allow_invalid_certs: bool,
+        web_username: Option<&str>,
+        web_password: Option<&str>,
+    ) -> Result<Self> {
         let normalized = normalize_base_url(base_url)?;
+        let web_credentials = resolve_web_credentials(web_username, web_password)?;
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -46,11 +65,21 @@ impl GitBucketClient {
         Ok(Self {
             client,
             base_url: normalized,
+            allow_invalid_certs,
+            web_credentials,
         })
     }
 
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    pub(crate) fn allow_invalid_certs(&self) -> bool {
+        self.allow_invalid_certs
+    }
+
+    pub(crate) fn web_credentials(&self) -> Option<&WebCredentials> {
+        self.web_credentials.as_ref()
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
@@ -155,6 +184,35 @@ fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
     }
 
     serde_json::from_value(value).map_err(GbMcpError::Json)
+}
+
+fn resolve_web_credentials(
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<Option<WebCredentials>> {
+    match (username, password) {
+        (None, None) => Ok(None),
+        (Some(username), Some(password)) => {
+            if username.trim().is_empty() {
+                return Err(GbMcpError::Config(
+                    "GITBUCKET_USERNAME must not be empty".to_string(),
+                ));
+            }
+            if password.trim().is_empty() {
+                return Err(GbMcpError::Config(
+                    "GITBUCKET_PASSWORD must not be empty".to_string(),
+                ));
+            }
+
+            Ok(Some(WebCredentials {
+                username: username.to_string(),
+                password: password.to_string(),
+            }))
+        }
+        (Some(_), None) | (None, Some(_)) => Err(GbMcpError::Config(
+            "GITBUCKET_USERNAME and GITBUCKET_PASSWORD must be set together".to_string(),
+        )),
+    }
 }
 
 impl GitBucketApi for GitBucketClient {
@@ -403,6 +461,34 @@ mod tests {
             client.unwrap().base_url(),
             "https://gitbucket.example.com/api/v3"
         );
+    }
+
+    #[test]
+    fn test_new_client_with_web_auth_creates_successfully() {
+        let client = GitBucketClient::new_with_web_auth(
+            "https://gitbucket.example.com",
+            "test-token",
+            false,
+            Some("alice"),
+            Some("secret-pass"),
+        )
+        .unwrap();
+
+        assert_eq!(client.web_credentials().unwrap().username, "alice");
+    }
+
+    #[test]
+    fn test_new_client_with_partial_web_auth_fails() {
+        let err = GitBucketClient::new_with_web_auth(
+            "https://gitbucket.example.com",
+            "test-token",
+            false,
+            Some("alice"),
+            None,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("must be set together"));
     }
 
     #[test]

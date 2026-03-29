@@ -13,6 +13,7 @@ pub mod issue;
 pub mod pull_request;
 pub mod repository;
 pub mod user;
+pub mod web;
 
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 

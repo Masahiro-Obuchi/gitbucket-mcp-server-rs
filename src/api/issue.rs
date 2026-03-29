@@ -3,6 +3,8 @@ use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 
 use super::client::GitBucketClient;
+use super::web::GitBucketWebSession;
+use crate::error::GbMcpError;
 
 impl GitBucketClient {
     /// List issues for a repository.
@@ -40,11 +42,20 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateIssue,
     ) -> Result<Issue> {
-        self.patch(
-            &format!("/repos/{}/{}/issues/{}", owner, repo, number),
-            body,
-        )
-        .await
+        match self
+            .patch(
+                &format!("/repos/{}/{}/issues/{}", owner, repo, number),
+                body,
+            )
+            .await
+        {
+            Ok(issue) => Ok(issue),
+            Err(GbMcpError::Api { status: 404, .. }) => {
+                self.update_issue_via_web_fallback(owner, repo, number, body)
+                    .await
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// List comments on an issue.
@@ -74,5 +85,54 @@ impl GitBucketClient {
             body,
         )
         .await
+    }
+
+    async fn update_issue_via_web_fallback(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &UpdateIssue,
+    ) -> Result<Issue> {
+        if body.title.is_some() || body.body.is_some() {
+            return Err(GbMcpError::Other(
+                "This GitBucket instance does not support issue title/body updates via REST. Only state-only updates can fall back to the web UI.".to_string(),
+            ));
+        }
+
+        let state = body.state.as_deref().ok_or_else(|| {
+            GbMcpError::Other(
+                "This GitBucket instance does not support issue updates via REST, and web fallback only supports state-only updates.".to_string(),
+            )
+        })?;
+
+        let action = match state {
+            "closed" => "close",
+            "open" => "reopen",
+            other => {
+                return Err(GbMcpError::Other(format!(
+                    "Web fallback does not support issue state '{}'",
+                    other
+                )));
+            }
+        };
+
+        let credentials = self.web_credentials().ok_or_else(|| {
+            GbMcpError::Other(
+                "This GitBucket instance does not support REST issue updates. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD to enable state-only web fallback.".to_string(),
+            )
+        })?;
+
+        let session = GitBucketWebSession::sign_in(
+            self.base_url(),
+            &credentials.username,
+            &credentials.password,
+            self.allow_invalid_certs(),
+        )
+        .await?;
+        session
+            .update_issue_state(owner, repo, number, action)
+            .await?;
+        self.get_issue(owner, repo, number).await
     }
 }
