@@ -1,0 +1,40 @@
+name: E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 18 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  docker-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate E2E scripts
+        run: bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
+
+      - name: Start Docker GitBucket and bootstrap E2E data
+        run: ./scripts/e2e/bootstrap.sh
+
+      - name: Load E2E runtime environment
+        run: sed 's/^export //' ./.tmp/e2e/runtime.env >> "$GITHUB_ENV"
+
+      - name: Run E2E tests
+        run: cargo test --test e2e_test -- --ignored --nocapture
+
+      - name: Tear down Docker GitBucket
+        if: always()
+        run: ./scripts/e2e/down.sh

@@ -1,5 +1,6 @@
 # GitBucket MCP Server
 [![CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/ci.yml)
+[![E2E](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/e2e.yml/badge.svg)](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/e2e.yml)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [GitBucket](https://gitbucket.github.io/), written in Rust.
 
@@ -195,6 +196,8 @@ GitHub Actions runs the following on every push and pull request:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test`
 
+The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward.
+
 ## Architecture
 
 ```
@@ -258,6 +261,8 @@ source ./.tmp/e2e/runtime.env
 cargo test --test e2e_test -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```
+
+The same bootstrap flow is also automated in GitHub Actions through `.github/workflows/e2e.yml`. Use the regular `CI` workflow for fast feedback and the `E2E` workflow for full Docker-backed smoke coverage.
 
 The bootstrap script starts GitBucket with Docker, creates a validation user, issues a personal access token, creates the target repository, and writes `./.tmp/e2e/runtime.env` with the `GITBUCKET_E2E_*` variables expected by `tests/e2e_test.rs`.
 

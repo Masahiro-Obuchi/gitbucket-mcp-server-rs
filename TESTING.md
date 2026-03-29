@@ -55,6 +55,15 @@ cargo test --test e2e_test -- --ignored --nocapture
 
 The bootstrap script starts GitBucket with Docker, creates a validation user, creates a personal access token, provisions the target repository, and writes `./.tmp/e2e/runtime.env`.
 
+## GitHub Actions E2E
+
+GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
+
+- `.github/workflows/ci.yml` runs `fmt`, `clippy`, and `cargo test` on every push and pull request.
+- `.github/workflows/e2e.yml` runs on `workflow_dispatch` and a nightly schedule.
+
+The `E2E` workflow validates the shell scripts, runs `./scripts/e2e/bootstrap.sh`, loads `./.tmp/e2e/runtime.env`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
+
 ## Adding Tests
 
 - Put API contract coverage in `tests/api_client_test.rs`.

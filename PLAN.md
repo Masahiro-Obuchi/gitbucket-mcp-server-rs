@@ -371,9 +371,11 @@ TDDサイクル: テスト先行で各コンポーネントを構築
    - サーバー起動
 
 2. **統合テスト**
-   - 現状は API クライアント層を `wiremock` で重点的に検証
-   - 今後必要に応じて MCPクライアントからの接続テストを追加
-   - ツール呼び出し→APIリクエスト→レスポンスの一連のフローは未実装
+   - API クライアント層を `wiremock` で検証
+   - MCPクライアントからのツール一覧・入力スキーマ・正常系/異常系を `tests/mcp_server_test.rs` で検証
+   - 実 GitBucket に対する ignored E2E を `tests/e2e_test.rs` で追加済み
+   - Docker bootstrap による再現可能な E2E 実行基盤を `scripts/e2e/` と `docker/e2e/` に追加済み
+   - GitHub Actions では高速 CI と別に manual/nightly の Docker E2E workflow を運用
 
 ### Phase 4: ドキュメント + 品質向上
 1. README.md（インストール方法、設定方法、使用例）
@@ -391,8 +393,9 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 |--------|--------|------|
 | 単体テスト | `#[cfg(test)]` | モデルのシリアライズ、設定バリデーション、URL正規化 |
 | APIモックテスト | `wiremock` | APIクライアントのHTTPリクエスト/レスポンス |
-| ツールテスト | 今後追加候補 | MCPツールハンドラーのロジック |
-| 統合テスト | 今後追加候補 | MCPプロトコル経由のEnd-to-End |
+| ツールテスト | `src/tools/*` + モックAPI | MCPツールハンドラーの入力検証と成功系 |
+| MCP統合テスト | `tests/mcp_server_test.rs` | MCPプロトコル経由のツール列挙・schema・呼び出し |
+| E2Eテスト | `tests/e2e_test.rs` | 実 GitBucket に対する read-heavy smoke test |
 
 ### 5.2 TDDワークフロー
 
