@@ -230,7 +230,7 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
-- `tests/e2e_test.rs` provides ignored read-only E2E tests against a real GitBucket instance via environment variables.
+- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including read-heavy coverage plus Issue create/comment flows and update-endpoint behavior checks.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
 ### Manual E2E Tests
@@ -250,6 +250,7 @@ Optional variables:
 - `GITBUCKET_E2E_OWNER`: defaults to the authenticated user for `list_repositories`
 - `GITBUCKET_E2E_REPO`: required for repository-scoped E2E tests
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
+- Write-path E2E tests leave created Issues and comments in place; they use unique titles and bodies to avoid collisions across reruns
 
 ### Docker E2E Bootstrap
 

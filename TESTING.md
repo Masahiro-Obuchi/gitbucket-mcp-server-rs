@@ -5,7 +5,7 @@ This repository uses layered tests so failures can be isolated quickly:
 - Unit tests in `src/**` cover models, config loading, validation, and tool behavior.
 - `tests/api_client_test.rs` verifies HTTP request and response handling with `wiremock`.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport.
-- `tests/e2e_test.rs` runs ignored read-only smoke tests against a real GitBucket instance.
+- `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including Issue create/comment coverage and update-endpoint behavior.
 
 ## Common Commands
 
@@ -42,6 +42,9 @@ Run the ignored suite explicitly:
 cargo test --test e2e_test -- --ignored --nocapture
 ```
 
+The write-path Issue tests intentionally keep created Issues and comments. Each run uses unique titles and comment bodies so reruns do not depend on cleanup.
+Current GitBucket Docker coverage also accepts a surfaced `404` from `update_issue`, because the official `4.44.0` image does not expose the REST update endpoint even though create/comment endpoints are available.
+
 ## Docker E2E Flow
 
 For a disposable local GitBucket:
@@ -69,5 +72,5 @@ The `E2E` workflow validates the shell scripts, runs `./scripts/e2e/bootstrap.sh
 - Put API contract coverage in `tests/api_client_test.rs`.
 - Put MCP protocol and tool-surface coverage in `tests/mcp_server_test.rs`.
 - Keep tool-module unit tests near the implementation in `src/tools/*.rs`.
-- Prefer read-only E2E coverage first; add write-path E2E only when setup and cleanup are explicit and repeatable.
+- Prefer write-path E2E only when setup is explicit and reruns are collision-safe; cleanup may be best-effort if tests use dedicated disposable data.
 - Never hardcode real tokens or instance URLs in tests or fixtures.

@@ -144,6 +144,6 @@ Behavior:
 
 The following are intentionally deferred and may be specified later:
 
-- MCP protocol integration tests
+- Additional write-path E2E coverage beyond Issue flows
 - Additional GitBucket endpoints
 - Alternative transports beyond stdio
