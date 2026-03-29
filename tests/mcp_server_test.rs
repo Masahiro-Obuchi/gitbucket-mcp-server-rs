@@ -1,24 +1,466 @@
 use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
 
-use gitbucket_mcp_server::api::client::GitBucketClient;
+use gitbucket_mcp_server::api::{ApiFuture, GitBucketApi};
+use gitbucket_mcp_server::models::comment::{Comment, CreateComment};
+use gitbucket_mcp_server::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
+use gitbucket_mcp_server::models::pull_request::{
+    CreatePullRequest, MergePullRequest, MergeResult, PullRequest,
+};
+use gitbucket_mcp_server::models::repository::{
+    Branch, BranchCommit, CreateRepository, Repository,
+};
+use gitbucket_mcp_server::models::user::User;
 use gitbucket_mcp_server::server::GitBucketMcpServer;
 use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
 use serde_json::json;
 
-async fn spawn_client_and_server() -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+enum RecordedCall {
+    GetAuthenticatedUser,
+    GetUser {
+        username: String,
+    },
+    ListRepositories {
+        owner: String,
+    },
+    GetRepository {
+        owner: String,
+        repo: String,
+    },
+    CreateRepository {
+        body: CreateRepository,
+    },
+    ForkRepository {
+        owner: String,
+        repo: String,
+    },
+    ListBranches {
+        owner: String,
+        repo: String,
+    },
+    ListIssues {
+        owner: String,
+        repo: String,
+        state: Option<String>,
+    },
+    GetIssue {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    CreateIssue {
+        owner: String,
+        repo: String,
+        body: CreateIssue,
+    },
+    UpdateIssue {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: UpdateIssue,
+    },
+    ListIssueComments {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    AddIssueComment {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: CreateComment,
+    },
+    ListPullRequests {
+        owner: String,
+        repo: String,
+        state: Option<String>,
+    },
+    GetPullRequest {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    CreatePullRequest {
+        owner: String,
+        repo: String,
+        body: CreatePullRequest,
+    },
+    MergePullRequest {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: MergePullRequest,
+    },
+    AddPullRequestComment {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: CreateComment,
+    },
+}
+
+#[derive(Debug)]
+struct IntegrationMockApi {
+    calls: Mutex<Vec<RecordedCall>>,
+    user: User,
+    repository: Repository,
+    issue: Issue,
+    comment: Comment,
+    pull_request: PullRequest,
+    merge_result: MergeResult,
+}
+
+impl Default for IntegrationMockApi {
+    fn default() -> Self {
+        let user = User {
+            login: "mock-user".to_string(),
+            email: Some("mock@example.com".to_string()),
+            user_type: Some("User".to_string()),
+            site_admin: Some(false),
+            created_at: None,
+            avatar_url: None,
+            url: None,
+            html_url: None,
+        };
+        let repository = Repository {
+            name: "mock-repo".to_string(),
+            full_name: "mock-user/mock-repo".to_string(),
+            description: Some("Mock repository".to_string()),
+            html_url: None,
+            clone_url: None,
+            is_private: false,
+            fork: false,
+            default_branch: Some("main".to_string()),
+            owner: Some(user.clone()),
+            watchers_count: None,
+            forks_count: None,
+            open_issues_count: None,
+        };
+        let issue = Issue {
+            number: 42,
+            title: "Mock issue".to_string(),
+            body: Some("Issue body".to_string()),
+            state: "open".to_string(),
+            user: Some(user.clone()),
+            labels: vec![Label {
+                name: "bug".to_string(),
+                color: None,
+                url: None,
+            }],
+            assignees: vec![],
+            html_url: None,
+            created_at: None,
+            updated_at: None,
+            closed_at: None,
+            comments: Some(1),
+        };
+        let comment = Comment {
+            id: 1,
+            body: Some("Mock comment".to_string()),
+            user: Some(user.clone()),
+            created_at: None,
+            updated_at: None,
+            html_url: None,
+        };
+        let pull_request = PullRequest {
+            number: 7,
+            title: "Mock PR".to_string(),
+            body: Some("PR body".to_string()),
+            state: "open".to_string(),
+            user: Some(user.clone()),
+            html_url: None,
+            head: None,
+            base: None,
+            merged: Some(false),
+            mergeable: Some(true),
+            created_at: None,
+            updated_at: None,
+            closed_at: None,
+            merged_at: None,
+        };
+        let merge_result = MergeResult {
+            sha: Some("merged-sha".to_string()),
+            merged: Some(true),
+            message: Some("Pull Request successfully merged".to_string()),
+        };
+
+        Self {
+            calls: Mutex::new(vec![]),
+            user,
+            repository,
+            issue,
+            comment,
+            pull_request,
+            merge_result,
+        }
+    }
+}
+
+impl IntegrationMockApi {
+    fn record(&self, call: RecordedCall) {
+        self.calls.lock().unwrap().push(call);
+    }
+
+    fn calls(&self) -> Vec<RecordedCall> {
+        self.calls.lock().unwrap().clone()
+    }
+
+    fn branch(&self) -> Branch {
+        Branch {
+            name: "main".to_string(),
+            commit: Some(BranchCommit {
+                sha: "abc123".to_string(),
+            }),
+        }
+    }
+}
+
+impl GitBucketApi for IntegrationMockApi {
+    fn get_authenticated_user(&self) -> ApiFuture<'_, User> {
+        self.record(RecordedCall::GetAuthenticatedUser);
+        let user = self.user.clone();
+        Box::pin(async move { Ok(user) })
+    }
+
+    fn get_user<'a>(&'a self, username: &'a str) -> ApiFuture<'a, User> {
+        self.record(RecordedCall::GetUser {
+            username: username.to_string(),
+        });
+        let user = self.user.clone();
+        Box::pin(async move { Ok(user) })
+    }
+
+    fn list_repositories<'a>(&'a self, owner: &'a str) -> ApiFuture<'a, Vec<Repository>> {
+        self.record(RecordedCall::ListRepositories {
+            owner: owner.to_string(),
+        });
+        let repository = self.repository.clone();
+        Box::pin(async move { Ok(vec![repository]) })
+    }
+
+    fn get_repository<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Repository> {
+        self.record(RecordedCall::GetRepository {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+        });
+        let repository = self.repository.clone();
+        Box::pin(async move { Ok(repository) })
+    }
+
+    fn create_repository<'a>(&'a self, body: &'a CreateRepository) -> ApiFuture<'a, Repository> {
+        self.record(RecordedCall::CreateRepository { body: body.clone() });
+        let repository = self.repository.clone();
+        Box::pin(async move { Ok(repository) })
+    }
+
+    fn fork_repository<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Repository> {
+        self.record(RecordedCall::ForkRepository {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+        });
+        let repository = self.repository.clone();
+        Box::pin(async move { Ok(repository) })
+    }
+
+    fn list_branches<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Branch>> {
+        self.record(RecordedCall::ListBranches {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+        });
+        let branch = self.branch();
+        Box::pin(async move { Ok(vec![branch]) })
+    }
+
+    fn list_issues<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        state: Option<&'a str>,
+    ) -> ApiFuture<'a, Vec<Issue>> {
+        self.record(RecordedCall::ListIssues {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            state: state.map(str::to_string),
+        });
+        let issue = self.issue.clone();
+        Box::pin(async move { Ok(vec![issue]) })
+    }
+
+    fn get_issue<'a>(&'a self, owner: &'a str, repo: &'a str, number: u64) -> ApiFuture<'a, Issue> {
+        self.record(RecordedCall::GetIssue {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        });
+        let issue = self.issue.clone();
+        Box::pin(async move { Ok(issue) })
+    }
+
+    fn create_issue<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateIssue,
+    ) -> ApiFuture<'a, Issue> {
+        self.record(RecordedCall::CreateIssue {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let issue = self.issue.clone();
+        Box::pin(async move { Ok(issue) })
+    }
+
+    fn update_issue<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdateIssue,
+    ) -> ApiFuture<'a, Issue> {
+        self.record(RecordedCall::UpdateIssue {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let issue = self.issue.clone();
+        Box::pin(async move { Ok(issue) })
+    }
+
+    fn list_issue_comments<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, Vec<Comment>> {
+        self.record(RecordedCall::ListIssueComments {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        });
+        let comment = self.comment.clone();
+        Box::pin(async move { Ok(vec![comment]) })
+    }
+
+    fn add_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a CreateComment,
+    ) -> ApiFuture<'a, Comment> {
+        self.record(RecordedCall::AddIssueComment {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let comment = self.comment.clone();
+        Box::pin(async move { Ok(comment) })
+    }
+
+    fn list_pull_requests<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        state: Option<&'a str>,
+    ) -> ApiFuture<'a, Vec<PullRequest>> {
+        self.record(RecordedCall::ListPullRequests {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            state: state.map(str::to_string),
+        });
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(vec![pull_request]) })
+    }
+
+    fn get_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, PullRequest> {
+        self.record(RecordedCall::GetPullRequest {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        });
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(pull_request) })
+    }
+
+    fn create_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreatePullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        self.record(RecordedCall::CreatePullRequest {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(pull_request) })
+    }
+
+    fn merge_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a MergePullRequest,
+    ) -> ApiFuture<'a, MergeResult> {
+        self.record(RecordedCall::MergePullRequest {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let merge_result = self.merge_result.clone();
+        Box::pin(async move { Ok(merge_result) })
+    }
+
+    fn add_pull_request_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a CreateComment,
+    ) -> ApiFuture<'a, Comment> {
+        self.record(RecordedCall::AddPullRequestComment {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let comment = self.comment.clone();
+        Box::pin(async move { Ok(comment) })
+    }
+}
+
+async fn spawn_client_and_server() -> (
+    rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    Arc<IntegrationMockApi>,
+) {
     let (server_transport, client_transport) = tokio::io::duplex(4096);
+    let api = Arc::new(IntegrationMockApi::default());
+    let server_api = api.clone();
 
     tokio::spawn(async move {
-        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
-        let server = GitBucketMcpServer::new(client)
+        let server = GitBucketMcpServer::with_api(server_api)
             .serve(server_transport)
             .await
             .unwrap();
         server.waiting().await.unwrap();
     });
 
-    ().serve(client_transport).await.unwrap()
+    let client = ().serve(client_transport).await.unwrap();
+    (client, api)
 }
 
 fn first_text(result: &rmcp::model::CallToolResult) -> &str {
@@ -30,9 +472,20 @@ fn first_text(result: &rmcp::model::CallToolResult) -> &str {
         .expect("expected text tool result")
 }
 
+fn required_fields(tools: &[rmcp::model::Tool], tool_name: &str) -> serde_json::Value {
+    tools
+        .iter()
+        .find(|tool| tool.name == tool_name)
+        .expect("tool should be listed")
+        .input_schema
+        .get("required")
+        .cloned()
+        .expect("required schema array")
+}
+
 #[tokio::test]
-async fn test_mcp_lists_all_expected_tools() {
-    let client = spawn_client_and_server().await;
+async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
+    let (client, _) = spawn_client_and_server().await;
 
     let tools = client.list_all_tools().await.unwrap();
     let tool_names: BTreeSet<_> = tools.iter().map(|tool| tool.name.as_ref()).collect();
@@ -59,24 +512,225 @@ async fn test_mcp_lists_all_expected_tools() {
     ]);
 
     assert_eq!(tool_names, expected);
+    assert_eq!(required_fields(&tools, "get_user"), json!(["username"]));
+    assert_eq!(
+        required_fields(&tools, "list_repositories"),
+        json!(["owner"])
+    );
+    assert_eq!(
+        required_fields(&tools, "create_issue"),
+        json!(["owner", "repo", "title"])
+    );
+    assert_eq!(
+        required_fields(&tools, "merge_pull_request"),
+        json!(["owner", "repo", "pull_number"])
+    );
 
-    let get_user = tools
-        .iter()
-        .find(|tool| tool.name == "get_user")
-        .expect("get_user tool should be listed");
-    let required = get_user
-        .input_schema
-        .get("required")
-        .and_then(|value| value.as_array())
-        .expect("required schema array");
-    assert!(required.iter().any(|value| value == "username"));
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_get_authenticated_user_returns_json_and_hits_api() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("get_authenticated_user")
+                .with_arguments(json!({}).as_object().unwrap().clone()),
+        )
+        .await
+        .unwrap();
+
+    assert!(first_text(&result).starts_with("{\n"));
+    assert!(first_text(&result).contains("\"login\": \"mock-user\""));
+    match api.calls().as_slice() {
+        [RecordedCall::GetAuthenticatedUser] => {}
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_list_repositories_trims_owner_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("list_repositories").with_arguments(
+                json!({
+                    "owner": "  mock-user  "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert!(first_text(&result).starts_with("[\n"));
+    assert!(first_text(&result).contains("\"full_name\": \"mock-user/mock-repo\""));
+    match api.calls().as_slice() {
+        [RecordedCall::ListRepositories { owner }] => assert_eq!(owner, "mock-user"),
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_get_repository_trims_fields_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("get_repository").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert!(first_text(&result).starts_with("{\n"));
+    assert!(first_text(&result).contains("\"name\": \"mock-repo\""));
+    match api.calls().as_slice() {
+        [RecordedCall::GetRepository { owner, repo }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_create_issue_trims_fields_and_hits_api() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("create_issue").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "title": "  New issue  ",
+                    "body": "  body text  ",
+                    "labels": ["bug"],
+                    "assignees": ["alice"]
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert!(first_text(&result).starts_with("{\n"));
+    assert!(first_text(&result).contains("\"title\": \"Mock issue\""));
+    match api.calls().as_slice() {
+        [RecordedCall::CreateIssue { owner, repo, body }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(body.title, "New issue");
+            assert_eq!(body.body.as_deref(), Some("body text"));
+            assert_eq!(body.labels.as_deref(), Some(&["bug".to_string()][..]));
+            assert_eq!(body.assignees.as_deref(), Some(&["alice".to_string()][..]));
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_list_pull_requests_passes_state_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("list_pull_requests").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "state": "closed"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert!(first_text(&result).starts_with("[\n"));
+    assert!(first_text(&result).contains("\"title\": \"Mock PR\""));
+    match api.calls().as_slice() {
+        [RecordedCall::ListPullRequests { owner, repo, state }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(state.as_deref(), Some("closed"));
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_merge_pull_request_trims_commit_message_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("merge_pull_request").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "pull_number": 7,
+                    "commit_message": "  merge message  "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert!(first_text(&result).starts_with("{\n"));
+    assert!(first_text(&result).contains("\"merged\": true"));
+    match api.calls().as_slice() {
+        [RecordedCall::MergePullRequest {
+            owner,
+            repo,
+            number,
+            body,
+        }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(*number, 7);
+            assert_eq!(body.commit_message.as_deref(), Some("merge message"));
+            assert_eq!(body.sha, None);
+            assert_eq!(body.merge_method, None);
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
 
     client.cancel().await.unwrap();
 }
 
 #[tokio::test]
 async fn test_mcp_call_tool_returns_validation_error_for_blank_username() {
-    let client = spawn_client_and_server().await;
+    let (client, api) = spawn_client_and_server().await;
 
     let result = client
         .call_tool(
@@ -93,13 +747,14 @@ async fn test_mcp_call_tool_returns_validation_error_for_blank_username() {
         .unwrap();
 
     assert_eq!(first_text(&result), "Error: username must not be empty");
+    assert!(api.calls().is_empty());
 
     client.cancel().await.unwrap();
 }
 
 #[tokio::test]
 async fn test_mcp_call_tool_returns_validation_error_for_empty_issue_update() {
-    let client = spawn_client_and_server().await;
+    let (client, api) = spawn_client_and_server().await;
 
     let result = client
         .call_tool(
@@ -121,13 +776,14 @@ async fn test_mcp_call_tool_returns_validation_error_for_empty_issue_update() {
         first_text(&result),
         "Error: at least one of state, title, or body must be provided"
     );
+    assert!(api.calls().is_empty());
 
     client.cancel().await.unwrap();
 }
 
 #[tokio::test]
 async fn test_mcp_call_tool_rejects_invalid_state_before_api_call() {
-    let client = spawn_client_and_server().await;
+    let (client, api) = spawn_client_and_server().await;
 
     let result = client
         .call_tool(
@@ -149,6 +805,7 @@ async fn test_mcp_call_tool_rejects_invalid_state_before_api_call() {
         first_text(&result),
         "Error: state must be one of: open, closed, all"
     );
+    assert!(api.calls().is_empty());
 
     client.cancel().await.unwrap();
 }

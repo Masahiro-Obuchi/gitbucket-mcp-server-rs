@@ -17,7 +17,7 @@ impl GitBucketMcpServer {
         Self::with_api(Arc::new(client))
     }
 
-    fn with_api(client: Arc<dyn GitBucketApi>) -> Self {
+    pub fn with_api(client: Arc<dyn GitBucketApi>) -> Self {
         let tool_router = Self::tool_router_user()
             + Self::tool_router_repository()
             + Self::tool_router_issue()
