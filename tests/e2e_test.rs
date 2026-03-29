@@ -18,6 +18,8 @@ struct E2eConfig {
     repo: Option<String>,
     git_username: Option<String>,
     git_password: Option<String>,
+    web_username: Option<String>,
+    web_password: Option<String>,
     allow_invalid_certs: bool,
 }
 
@@ -30,6 +32,10 @@ impl E2eConfig {
             repo: optional_env("GITBUCKET_E2E_REPO"),
             git_username: optional_env("GITBUCKET_E2E_GIT_USERNAME"),
             git_password: optional_env("GITBUCKET_E2E_GIT_PASSWORD"),
+            web_username: optional_env("GITBUCKET_E2E_WEB_USERNAME")
+                .or_else(|| optional_env("GITBUCKET_E2E_GIT_USERNAME")),
+            web_password: optional_env("GITBUCKET_E2E_WEB_PASSWORD")
+                .or_else(|| optional_env("GITBUCKET_E2E_GIT_PASSWORD")),
             allow_invalid_certs: optional_env("GITBUCKET_E2E_INSECURE_TLS")
                 .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
                 .unwrap_or(false),
@@ -66,9 +72,14 @@ async fn spawn_client_and_server(
     config: &E2eConfig,
 ) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
     let (server_transport, client_transport) = tokio::io::duplex(4096);
-    let client =
-        GitBucketClient::new_with_options(&config.url, &config.token, config.allow_invalid_certs)
-            .unwrap();
+    let client = GitBucketClient::new_with_web_auth(
+        &config.url,
+        &config.token,
+        config.allow_invalid_certs,
+        config.web_username.as_deref(),
+        config.web_password.as_deref(),
+    )
+    .unwrap();
 
     tokio::spawn(async move {
         let server = GitBucketMcpServer::new(client)
@@ -540,8 +551,74 @@ async fn test_e2e_update_issue() {
     let suffix = unique_suffix();
     let updated_title = format!("e2e-updated-issue-{suffix}");
     let updated_body = format!("e2e updated body {suffix}");
+    let has_web_fallback = config.web_username.is_some() && config.web_password.is_some();
+    if has_web_fallback {
+        let updated = call_tool(
+            &client,
+            "update_issue",
+            json!({
+                "owner": owner,
+                "repo": repo,
+                "issue_number": issue_number,
+                "state": "closed",
+            }),
+        )
+        .await;
+        let updated = parse_json(&updated);
+        assert_eq!(updated["number"].as_u64(), Some(issue_number));
+        assert_eq!(updated["state"].as_str(), Some("closed"));
+        assert_eq!(updated["title"].as_str(), issue["title"].as_str());
+        assert_eq!(updated["body"].as_str(), issue["body"].as_str());
+    } else {
+        let updated = call_tool(
+            &client,
+            "update_issue",
+            json!({
+                "owner": owner,
+                "repo": repo,
+                "issue_number": issue_number,
+                "state": "closed",
+                "title": updated_title,
+                "body": updated_body,
+            }),
+        )
+        .await;
+        let updated_text = first_text(&updated);
+        if updated_text.starts_with("Error:") {
+            assert!(
+                updated_text.contains("API error (404)")
+                    || updated_text.contains("Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD"),
+                "expected a surfaced compatibility error, got: {updated_text}"
+            );
+        } else {
+            let updated = parse_json(&updated);
+            assert_eq!(updated["number"].as_u64(), Some(issue_number));
+            assert_eq!(updated["state"].as_str(), Some("closed"));
+            assert_eq!(updated["title"].as_str(), Some(updated_title.as_str()));
+            assert_eq!(updated["body"].as_str(), Some(updated_body.as_str()));
+        }
+    }
 
-    let updated = call_tool(
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
+#[serial]
+async fn test_e2e_update_issue_with_title_body_on_web_fallback_instance_errors() {
+    let config = E2eConfig::from_env();
+    if config.web_username.is_none() || config.web_password.is_none() {
+        return;
+    }
+
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let issue = create_test_issue(&client, owner, repo).await;
+    let issue_number = issue["number"]
+        .as_u64()
+        .expect("issue should have a number");
+    let result = call_tool(
         &client,
         "update_issue",
         json!({
@@ -549,25 +626,17 @@ async fn test_e2e_update_issue() {
             "repo": repo,
             "issue_number": issue_number,
             "state": "closed",
-            "title": updated_title,
-            "body": updated_body,
+            "title": format!("unsupported-title-{}", unique_suffix()),
         }),
     )
     .await;
 
-    let updated_text = first_text(&updated);
-    if updated_text.starts_with("Error:") {
-        assert!(
-            updated_text.contains("API error (404)"),
-            "expected a surfaced 404 for unsupported issue updates, got: {updated_text}"
-        );
-    } else {
-        let updated = parse_json(&updated);
-        assert_eq!(updated["number"].as_u64(), Some(issue_number));
-        assert_eq!(updated["state"].as_str(), Some("closed"));
-        assert_eq!(updated["title"].as_str(), Some(updated_title.as_str()));
-        assert_eq!(updated["body"].as_str(), Some(updated_body.as_str()));
-    }
+    let updated_text = first_text(&result);
+    assert!(
+        updated_text.contains("title/body updates via REST")
+            || updated_text.contains("state-only updates can fall back"),
+        "expected explicit unsupported error, got: {updated_text}"
+    );
 
     client.cancel().await.unwrap();
 }
