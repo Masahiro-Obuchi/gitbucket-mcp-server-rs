@@ -23,7 +23,7 @@ gitbucket-mcp-server --help
 Verify one of these is in place:
 
 - `GITBUCKET_URL` and `GITBUCKET_TOKEN` are set
-- `~/.config/gitbucket-mcp-server/config.toml` exists and contains `url` and `token`
+- Either `$GITBUCKET_MCP_CONFIG_DIR/config.toml` (when `GITBUCKET_MCP_CONFIG_DIR` is set) or `~/.config/gitbucket-mcp-server/config.toml` exists and contains `url` and `token`
 
 Optional web fallback credentials must come from environment variables only:
 

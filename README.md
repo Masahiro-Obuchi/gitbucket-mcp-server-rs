@@ -35,7 +35,7 @@ Download the archive that matches your platform from GitHub Releases, extract it
 Typical install locations:
 
 - Linux/macOS: `~/.local/bin/gitbucket-mcp-server` or another directory already on `PATH`
-- Windows: a directory on `PATH`, such as `%USERPROFILE%\\bin\\gitbucket-mcp-server.exe`
+- Windows: a directory on `PATH`, such as `%USERPROFILE%\bin\gitbucket-mcp-server.exe`
 
 Archive names follow this pattern:
 
@@ -60,7 +60,7 @@ To install a tagged release:
 cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.1.0 --locked
 ```
 
-`cargo install` places the binary in `$CARGO_HOME/bin`, which is usually `~/.cargo/bin/` on Linux/macOS and `%USERPROFILE%\\.cargo\\bin\\` on Windows.
+`cargo install` places the binary in `$CARGO_HOME/bin`, which is usually `~/.cargo/bin` on Linux/macOS and `%CARGO_HOME%\bin` on Windows (by default `%USERPROFILE%\.cargo\bin`).
 
 ### From source
 
