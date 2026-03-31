@@ -20,6 +20,40 @@ This server enables AI assistants (Claude Desktop, GitHub Copilot, etc.) to inte
 
 ## Installation
 
+### GitHub Releases
+
+Tagged releases publish prebuilt archives for:
+
+- `x86_64-unknown-linux-gnu`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
+
+Download the archive that matches your platform from GitHub Releases, extract it, and place `gitbucket-mcp-server` on your `PATH`.
+
+Archive names follow this pattern:
+
+```text
+gitbucket-mcp-server-<version>-<target>.tar.gz
+gitbucket-mcp-server-<version>-<target>.zip
+```
+
+Each release also includes a `.sha256` checksum file.
+
+### cargo install
+
+This project is not published to crates.io yet, so install from Git:
+
+```bash
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --locked
+```
+
+To install a tagged release:
+
+```bash
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.1.0 --locked
+```
+
 ### From source
 
 ```bash
@@ -203,6 +237,8 @@ GitHub Actions runs the following on every push and pull request:
 - `cargo test`
 
 The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward.
+
+The `Release` workflow runs on `v*` tags and publishes prebuilt binary archives to GitHub Releases.
 
 ## Architecture
 
