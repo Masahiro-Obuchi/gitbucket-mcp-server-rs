@@ -266,6 +266,104 @@ async fn test_list_branches() {
 }
 
 #[tokio::test]
+async fn test_list_labels() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/myrepo/labels"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "name": "bug",
+                "color": "fc2929",
+                "description": "Broken behavior",
+                "url": "http://example.test/api/v3/repos/testuser/myrepo/labels/bug"
+            }
+        ])))
+        .mount(&server.mock_server)
+        .await;
+
+    let labels = client.list_labels("testuser", "myrepo").await.unwrap();
+    assert_eq!(labels.len(), 1);
+    assert_eq!(labels[0].name, "bug");
+    assert_eq!(labels[0].color.as_deref(), Some("fc2929"));
+}
+
+#[tokio::test]
+async fn test_get_label_url_encodes_name() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "needs review",
+            "color": "a1b2c3",
+            "description": "Needs extra review"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let label = client
+        .get_label("testuser", "myrepo", "needs review")
+        .await
+        .unwrap();
+    assert_eq!(label.name, "needs review");
+}
+
+#[tokio::test]
+async fn test_create_label() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("POST"))
+        .and(path("/api/v3/repos/testuser/myrepo/labels"))
+        .and(body_string_contains("\"name\":\"needs-review\""))
+        .and(body_string_contains("\"color\":\"a1b2c3\""))
+        .and(body_string_contains(
+            "\"description\":\"Needs extra review\"",
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "name": "needs-review",
+            "color": "a1b2c3",
+            "description": "Needs extra review"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::label::CreateLabel {
+        name: "needs-review".to_string(),
+        color: "a1b2c3".to_string(),
+        description: Some("Needs extra review".to_string()),
+    };
+    let label = client
+        .create_label("testuser", "myrepo", &body)
+        .await
+        .unwrap();
+    assert_eq!(label.name, "needs-review");
+    assert_eq!(label.color.as_deref(), Some("a1b2c3"));
+}
+
+#[tokio::test]
+async fn test_delete_label_url_encodes_name() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("DELETE"))
+        .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server.mock_server)
+        .await;
+
+    client
+        .delete_label("testuser", "myrepo", "needs review")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn test_list_issues() {
     let server = TestServer::start().await;
     let client = server.client();

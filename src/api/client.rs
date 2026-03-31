@@ -9,6 +9,7 @@ use super::{ApiFuture, GitBucketApi};
 use crate::error::{GbMcpError, Result};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
+use crate::models::label::{CreateLabel, Label};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
@@ -313,6 +314,37 @@ impl GitBucketApi for GitBucketClient {
 
     fn list_branches<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Branch>> {
         Box::pin(async move { GitBucketClient::list_branches(self, owner, repo).await })
+    }
+
+    fn list_labels<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Label>> {
+        Box::pin(async move { GitBucketClient::list_labels(self, owner, repo).await })
+    }
+
+    fn get_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, Label> {
+        Box::pin(async move { GitBucketClient::get_label(self, owner, repo, name).await })
+    }
+
+    fn create_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateLabel,
+    ) -> ApiFuture<'a, Label> {
+        Box::pin(async move { GitBucketClient::create_label(self, owner, repo, body).await })
+    }
+
+    fn delete_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move { GitBucketClient::delete_label(self, owner, repo, name).await })
     }
 
     fn list_issues<'a>(

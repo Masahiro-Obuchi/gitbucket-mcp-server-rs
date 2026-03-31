@@ -295,6 +295,34 @@ async fn create_test_issue(
     issue
 }
 
+async fn create_test_label(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    owner: &str,
+    repo: &str,
+) -> Value {
+    let suffix = unique_suffix();
+    let name = format!("e2e-label-{suffix}");
+    let description = format!("e2e label description {suffix}");
+
+    let label = call_tool_json(
+        client,
+        "create_label",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "name": name,
+            "color": "#A1B2C3",
+            "description": description,
+        }),
+    )
+    .await;
+
+    assert_eq!(label["name"].as_str(), Some(name.as_str()));
+    assert_eq!(label["color"].as_str(), Some("a1b2c3"));
+
+    label
+}
+
 async fn create_test_pull_request(
     client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
     config: &E2eConfig,
@@ -582,6 +610,65 @@ async fn test_e2e_list_branches_for_created_repository() {
             .any(|branch| branch["name"].as_str() == Some(default_branch.as_str())),
         "expected branches to contain default branch {default_branch}"
     );
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
+#[serial]
+async fn test_e2e_label_lifecycle() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let created = create_test_label(&client, owner, repo).await;
+    let name = created["name"]
+        .as_str()
+        .expect("create_label should return a label name");
+
+    let fetched = call_tool_json(
+        &client,
+        "get_label",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "name": name,
+        }),
+    )
+    .await;
+    assert_eq!(fetched["name"].as_str(), Some(name));
+
+    let labels = call_tool_json(
+        &client,
+        "list_labels",
+        json!({
+            "owner": owner,
+            "repo": repo,
+        }),
+    )
+    .await;
+    assert!(
+        labels
+            .as_array()
+            .expect("list_labels should return an array")
+            .iter()
+            .any(|label| label["name"] == name),
+        "expected created label to appear in list_labels output: {labels}"
+    );
+
+    let deleted = call_tool_json(
+        &client,
+        "delete_label",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "name": name,
+        }),
+    )
+    .await;
+    assert_eq!(deleted["deleted"].as_bool(), Some(true));
+    assert_eq!(deleted["name"].as_str(), Some(name));
 
     client.cancel().await.unwrap();
 }
