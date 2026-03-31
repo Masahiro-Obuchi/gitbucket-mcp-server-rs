@@ -5,6 +5,7 @@
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [GitBucket](https://gitbucket.github.io/), written in Rust.
 
 This server enables AI assistants (Claude Desktop, GitHub Copilot, etc.) to interact with GitBucket repositories, issues, and pull requests through the MCP protocol.
+This is an unofficial community project and is not affiliated with the GitBucket project.
 
 ## Features
 
@@ -315,6 +316,10 @@ cargo test --test e2e_test -- --ignored --nocapture
 The same bootstrap flow is also automated in GitHub Actions through `.github/workflows/e2e.yml`. Use the regular `CI` workflow for fast feedback and the `E2E` workflow for full Docker-backed smoke coverage.
 
 The bootstrap script starts GitBucket with Docker, creates a validation user, issues a personal access token, creates an initialized target repository, and writes `./.tmp/e2e/runtime.env` with the `GITBUCKET_E2E_*` variables expected by `tests/e2e_test.rs`, including git-over-HTTP credentials for pull request E2E and the authenticated context needed for repository create-path E2E.
+
+## Acknowledgements
+
+This project exists thanks to [GitBucket](https://gitbucket.github.io/) and the community around it. Thank you for building and maintaining the software that made this MCP server worth creating.
 
 ## License
 
