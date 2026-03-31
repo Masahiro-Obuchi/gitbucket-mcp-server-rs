@@ -1,5 +1,5 @@
 pub fn error(message: impl Into<String>) -> String {
-    format!("Error: {}", message.into())
+    message.into()
 }
 
 pub fn required_trimmed(value: &str, field: &str) -> std::result::Result<String, String> {
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn test_required_trimmed_rejects_blank() {
         let err = required_trimmed("   ", "owner").unwrap_err();
-        assert_eq!(err, "Error: owner must not be empty");
+        assert_eq!(err, "owner must not be empty");
     }
 
     #[test]
@@ -59,12 +59,12 @@ mod tests {
     #[test]
     fn test_list_state_rejects_invalid_value() {
         let err = list_state(Some("draft".to_string())).unwrap_err();
-        assert_eq!(err, "Error: state must be one of: open, closed, all");
+        assert_eq!(err, "state must be one of: open, closed, all");
     }
 
     #[test]
     fn test_issue_state_rejects_invalid_value() {
         let err = issue_state(Some("all".to_string())).unwrap_err();
-        assert_eq!(err, "Error: state must be one of: open, closed");
+        assert_eq!(err, "state must be one of: open, closed");
     }
 }

@@ -12,9 +12,10 @@ use gitbucket_mcp_server::models::repository::{
 };
 use gitbucket_mcp_server::models::user::User;
 use gitbucket_mcp_server::server::GitBucketMcpServer;
+use gitbucket_mcp_server::tools::response::ToolErrorPayload;
 use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
-use serde_json::json;
+use serde_json::{json, Value};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -463,13 +464,23 @@ async fn spawn_client_and_server() -> (
     (client, api)
 }
 
-fn first_text(result: &rmcp::model::CallToolResult) -> &str {
+fn structured_json(result: &rmcp::model::CallToolResult) -> &Value {
+    assert_eq!(result.is_error, Some(false));
     result
-        .content
-        .first()
-        .and_then(|content| content.raw.as_text())
-        .map(|text| text.text.as_str())
-        .expect("expected text tool result")
+        .structured_content
+        .as_ref()
+        .expect("expected structured content")
+}
+
+fn structured_error(result: &rmcp::model::CallToolResult) -> ToolErrorPayload {
+    assert_eq!(result.is_error, Some(true));
+    serde_json::from_value(
+        result
+            .structured_content
+            .clone()
+            .expect("expected structured error content"),
+    )
+    .expect("structured error payload should deserialize")
 }
 
 fn required_fields(tools: &[rmcp::model::Tool], tool_name: &str) -> serde_json::Value {
@@ -541,8 +552,10 @@ async fn test_mcp_call_tool_get_authenticated_user_returns_json_and_hits_api() {
         .await
         .unwrap();
 
-    assert!(first_text(&result).starts_with("{\n"));
-    assert!(first_text(&result).contains("\"login\": \"mock-user\""));
+    assert_eq!(
+        structured_json(&result)["login"].as_str(),
+        Some("mock-user")
+    );
     match api.calls().as_slice() {
         [RecordedCall::GetAuthenticatedUser] => {}
         calls => panic!("unexpected calls: {calls:?}"),
@@ -569,8 +582,10 @@ async fn test_mcp_call_tool_list_repositories_trims_owner_and_serializes_json() 
         .await
         .unwrap();
 
-    assert!(first_text(&result).starts_with("[\n"));
-    assert!(first_text(&result).contains("\"full_name\": \"mock-user/mock-repo\""));
+    assert_eq!(
+        structured_json(&result)[0]["full_name"].as_str(),
+        Some("mock-user/mock-repo")
+    );
     match api.calls().as_slice() {
         [RecordedCall::ListRepositories { owner }] => assert_eq!(owner, "mock-user"),
         calls => panic!("unexpected calls: {calls:?}"),
@@ -598,8 +613,7 @@ async fn test_mcp_call_tool_get_repository_trims_fields_and_serializes_json() {
         .await
         .unwrap();
 
-    assert!(first_text(&result).starts_with("{\n"));
-    assert!(first_text(&result).contains("\"name\": \"mock-repo\""));
+    assert_eq!(structured_json(&result)["name"].as_str(), Some("mock-repo"));
     match api.calls().as_slice() {
         [RecordedCall::GetRepository { owner, repo }] => {
             assert_eq!(owner, "owner");
@@ -634,8 +648,10 @@ async fn test_mcp_call_tool_create_issue_trims_fields_and_hits_api() {
         .await
         .unwrap();
 
-    assert!(first_text(&result).starts_with("{\n"));
-    assert!(first_text(&result).contains("\"title\": \"Mock issue\""));
+    assert_eq!(
+        structured_json(&result)["title"].as_str(),
+        Some("Mock issue")
+    );
     match api.calls().as_slice() {
         [RecordedCall::CreateIssue { owner, repo, body }] => {
             assert_eq!(owner, "owner");
@@ -671,8 +687,10 @@ async fn test_mcp_call_tool_list_pull_requests_passes_state_and_serializes_json(
         .await
         .unwrap();
 
-    assert!(first_text(&result).starts_with("[\n"));
-    assert!(first_text(&result).contains("\"title\": \"Mock PR\""));
+    assert_eq!(
+        structured_json(&result)[0]["title"].as_str(),
+        Some("Mock PR")
+    );
     match api.calls().as_slice() {
         [RecordedCall::ListPullRequests { owner, repo, state }] => {
             assert_eq!(owner, "owner");
@@ -706,8 +724,7 @@ async fn test_mcp_call_tool_merge_pull_request_trims_commit_message_and_serializ
         .await
         .unwrap();
 
-    assert!(first_text(&result).starts_with("{\n"));
-    assert!(first_text(&result).contains("\"merged\": true"));
+    assert_eq!(structured_json(&result)["merged"].as_bool(), Some(true));
     match api.calls().as_slice() {
         [RecordedCall::MergePullRequest {
             owner,
@@ -746,7 +763,14 @@ async fn test_mcp_call_tool_returns_validation_error_for_blank_username() {
         .await
         .unwrap();
 
-    assert_eq!(first_text(&result), "Error: username must not be empty");
+    assert_eq!(
+        structured_error(&result),
+        ToolErrorPayload {
+            kind: "validation_error".to_string(),
+            message: "username must not be empty".to_string(),
+            status: None,
+        }
+    );
     assert!(api.calls().is_empty());
 
     client.cancel().await.unwrap();
@@ -773,8 +797,12 @@ async fn test_mcp_call_tool_returns_validation_error_for_empty_issue_update() {
         .unwrap();
 
     assert_eq!(
-        first_text(&result),
-        "Error: at least one of state, title, or body must be provided"
+        structured_error(&result),
+        ToolErrorPayload {
+            kind: "validation_error".to_string(),
+            message: "at least one of state, title, or body must be provided".to_string(),
+            status: None,
+        }
     );
     assert!(api.calls().is_empty());
 
@@ -802,8 +830,12 @@ async fn test_mcp_call_tool_rejects_invalid_state_before_api_call() {
         .unwrap();
 
     assert_eq!(
-        first_text(&result),
-        "Error: state must be one of: open, closed, all"
+        structured_error(&result),
+        ToolErrorPayload {
+            kind: "validation_error".to_string(),
+            message: "state must be one of: open, closed, all".to_string(),
+            status: None,
+        }
     );
     assert!(api.calls().is_empty());
 

@@ -1,5 +1,6 @@
 use gitbucket_mcp_server::api::client::GitBucketClient;
 use gitbucket_mcp_server::server::GitBucketMcpServer;
+use gitbucket_mcp_server::tools::response::ToolErrorPayload;
 use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
 use serde_json::{json, Value};
@@ -113,12 +114,18 @@ fn first_text(result: &rmcp::model::CallToolResult) -> &str {
 }
 
 fn parse_json(result: &rmcp::model::CallToolResult) -> Value {
-    let text = first_text(result);
-    assert!(
-        !text.starts_with("Error:"),
-        "expected JSON response, got error: {text}"
-    );
-    serde_json::from_str(text).expect("tool result should be valid JSON")
+    assert_eq!(result.is_error, Some(false), "expected success tool result");
+    result.structured_content.clone().unwrap_or_else(|| {
+        serde_json::from_str(first_text(result)).expect("tool result should be valid JSON")
+    })
+}
+
+fn parse_error(result: &rmcp::model::CallToolResult) -> ToolErrorPayload {
+    assert_eq!(result.is_error, Some(true), "expected error tool result");
+    serde_json::from_value(result.structured_content.clone().unwrap_or_else(|| {
+        serde_json::from_str(first_text(result)).expect("tool result should be valid JSON")
+    }))
+    .expect("tool error should deserialize")
 }
 
 async fn call_tool(
@@ -698,12 +705,15 @@ async fn test_e2e_update_issue() {
             }),
         )
         .await;
-        let updated_text = first_text(&updated);
-        if updated_text.starts_with("Error:") {
+        if updated.is_error == Some(true) {
+            let updated_error = parse_error(&updated);
             assert!(
-                updated_text.contains("API error (404)")
-                    || updated_text.contains("Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD"),
-                "expected a surfaced compatibility error, got: {updated_text}"
+                updated_error.message.contains("API error (404)")
+                    || updated_error
+                        .message
+                        .contains("Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD"),
+                "expected a surfaced compatibility error, got: {:?}",
+                updated_error
             );
         } else {
             let updated = parse_json(&updated);
@@ -746,11 +756,16 @@ async fn test_e2e_update_issue_with_title_body_on_web_fallback_instance_errors()
     )
     .await;
 
-    let updated_text = first_text(&result);
+    let updated_error = parse_error(&result);
     assert!(
-        updated_text.contains("title/body updates via REST")
-            || updated_text.contains("state-only updates can fall back"),
-        "expected explicit unsupported error, got: {updated_text}"
+        updated_error
+            .message
+            .contains("title/body updates via REST")
+            || updated_error
+                .message
+                .contains("state-only updates can fall back"),
+        "expected explicit unsupported error, got: {:?}",
+        updated_error
     );
 
     client.cancel().await.unwrap();

@@ -1,4 +1,5 @@
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -6,6 +7,7 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest};
 use crate::server::GitBucketMcpServer;
+use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
 use crate::tools::validation::{list_state, optional_trimmed, required_trimmed};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -74,18 +76,18 @@ impl GitBucketMcpServer {
     pub async fn list_pull_requests(
         &self,
         Parameters(params): Parameters<ListPullRequestsParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let state = match list_state(params.state) {
             Ok(state) => state,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         match self
@@ -93,9 +95,8 @@ impl GitBucketMcpServer {
             .list_pull_requests(&owner, &repo, state.as_deref())
             .await
         {
-            Ok(prs) => serde_json::to_string_pretty(&prs)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(prs) => success(&prs),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -103,14 +104,14 @@ impl GitBucketMcpServer {
     pub async fn get_pull_request(
         &self,
         Parameters(params): Parameters<GetPullRequestParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         match self
@@ -118,9 +119,8 @@ impl GitBucketMcpServer {
             .get_pull_request(&owner, &repo, params.pull_number)
             .await
         {
-            Ok(pr) => serde_json::to_string_pretty(&pr)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(pr) => success(&pr),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -128,26 +128,26 @@ impl GitBucketMcpServer {
     pub async fn create_pull_request(
         &self,
         Parameters(params): Parameters<CreatePullRequestParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let title = match required_trimmed(&params.title, "title") {
             Ok(title) => title,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let head = match required_trimmed(&params.head, "head") {
             Ok(head) => head,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let base = match required_trimmed(&params.base, "base") {
             Ok(base) => base,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         let body = CreatePullRequest {
@@ -157,9 +157,8 @@ impl GitBucketMcpServer {
             body: optional_trimmed(params.body),
         };
         match self.client.create_pull_request(&owner, &repo, &body).await {
-            Ok(pr) => serde_json::to_string_pretty(&pr)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(pr) => success(&pr),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -167,14 +166,14 @@ impl GitBucketMcpServer {
     pub async fn merge_pull_request(
         &self,
         Parameters(params): Parameters<MergePullRequestParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         let body = MergePullRequest {
@@ -187,9 +186,8 @@ impl GitBucketMcpServer {
             .merge_pull_request(&owner, &repo, params.pull_number, &body)
             .await
         {
-            Ok(result) => serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(result) => success(&result),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -197,18 +195,18 @@ impl GitBucketMcpServer {
     pub async fn add_pull_request_comment(
         &self,
         Parameters(params): Parameters<AddPullRequestCommentParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let comment = match required_trimmed(&params.body, "body") {
             Ok(comment) => comment,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         let body = CreateComment { body: comment };
@@ -217,9 +215,8 @@ impl GitBucketMcpServer {
             .add_pull_request_comment(&owner, &repo, params.pull_number, &body)
             .await
         {
-            Ok(comment) => serde_json::to_string_pretty(&comment)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(comment) => success(&comment),
+            Err(e) => from_gb_error(e),
         }
     }
 }
@@ -230,10 +227,31 @@ mod tests {
 
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
+    use serde_json::Value;
 
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
     use crate::test_support::{MockApi, RecordedCall};
+    use crate::tools::response::ToolErrorPayload;
+
+    fn success_json(result: ToolResult) -> Value {
+        let result = result.unwrap();
+        assert_eq!(result.is_error, Some(false));
+        result
+            .structured_content
+            .expect("expected structured content for success")
+    }
+
+    fn error_payload(result: ToolResult) -> ToolErrorPayload {
+        let result = result.unwrap();
+        assert_eq!(result.is_error, Some(true));
+        serde_json::from_value(
+            result
+                .structured_content
+                .expect("expected structured content for error"),
+        )
+        .expect("error payload should deserialize")
+    }
 
     #[tokio::test]
     async fn test_list_pull_requests_rejects_invalid_state() {
@@ -248,7 +266,14 @@ mod tests {
             }))
             .await;
 
-        assert_eq!(result, "Error: state must be one of: open, closed, all");
+        assert_eq!(
+            error_payload(result),
+            ToolErrorPayload {
+                kind: "validation_error".to_string(),
+                message: "state must be one of: open, closed, all".to_string(),
+                status: None,
+            }
+        );
     }
 
     #[tokio::test]
@@ -267,7 +292,14 @@ mod tests {
             }))
             .await;
 
-        assert_eq!(result, "Error: head must not be empty");
+        assert_eq!(
+            error_payload(result),
+            ToolErrorPayload {
+                kind: "validation_error".to_string(),
+                message: "head must not be empty".to_string(),
+                status: None,
+            }
+        );
     }
 
     #[tokio::test]
@@ -284,7 +316,14 @@ mod tests {
             }))
             .await;
 
-        assert_eq!(result, "Error: body must not be empty");
+        assert_eq!(
+            error_payload(result),
+            ToolErrorPayload {
+                kind: "validation_error".to_string(),
+                message: "body must not be empty".to_string(),
+                status: None,
+            }
+        );
     }
 
     #[tokio::test]
@@ -303,7 +342,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"title\": \"Mock PR\""));
+        let result = success_json(result);
+        assert_eq!(result["title"].as_str(), Some("Mock PR"));
         match mock.calls().as_slice() {
             [RecordedCall::CreatePullRequest { owner, repo, body }] => {
                 assert_eq!(owner, "owner");
@@ -330,7 +370,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"title\": \"Mock PR\""));
+        let result = success_json(result);
+        assert_eq!(result[0]["title"].as_str(), Some("Mock PR"));
         match mock.calls().as_slice() {
             [RecordedCall::ListPullRequests { owner, repo, state }] => {
                 assert_eq!(owner, "owner");
@@ -354,7 +395,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"number\": 7"));
+        let result = success_json(result);
+        assert_eq!(result["number"].as_u64(), Some(7));
         match mock.calls().as_slice() {
             [RecordedCall::GetPullRequest {
                 owner,
@@ -383,7 +425,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"merged\": true"));
+        let result = success_json(result);
+        assert_eq!(result["merged"].as_bool(), Some(true));
         match mock.calls().as_slice() {
             [RecordedCall::MergePullRequest {
                 owner,
@@ -414,7 +457,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"body\": \"Mock comment\""));
+        let result = success_json(result);
+        assert_eq!(result["body"].as_str(), Some("Mock comment"));
         match mock.calls().as_slice() {
             [RecordedCall::AddPullRequestComment {
                 owner,

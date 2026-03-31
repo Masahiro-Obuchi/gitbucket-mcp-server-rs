@@ -1,10 +1,12 @@
 use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::models::repository::CreateRepository;
 use crate::server::GitBucketMcpServer;
+use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
 use crate::tools::validation::required_trimmed;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,16 +57,15 @@ impl GitBucketMcpServer {
     pub async fn list_repositories(
         &self,
         Parameters(params): Parameters<ListRepositoriesParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         match self.client.list_repositories(&owner).await {
-            Ok(repos) => serde_json::to_string_pretty(&repos)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(repos) => success(&repos),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -72,20 +73,19 @@ impl GitBucketMcpServer {
     pub async fn get_repository(
         &self,
         Parameters(params): Parameters<GetRepositoryParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         match self.client.get_repository(&owner, &repo).await {
-            Ok(repo) => serde_json::to_string_pretty(&repo)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(repo) => success(&repo),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -93,10 +93,10 @@ impl GitBucketMcpServer {
     pub async fn create_repository(
         &self,
         Parameters(params): Parameters<CreateRepositoryParams>,
-    ) -> String {
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let name = match required_trimmed(&params.name, "name") {
             Ok(name) => name,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         let body = CreateRepository {
@@ -106,9 +106,8 @@ impl GitBucketMcpServer {
             auto_init: params.auto_init,
         };
         match self.client.create_repository(&body).await {
-            Ok(repo) => serde_json::to_string_pretty(&repo)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(repo) => success(&repo),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -116,20 +115,19 @@ impl GitBucketMcpServer {
     pub async fn fork_repository(
         &self,
         Parameters(params): Parameters<ForkRepositoryParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         match self.client.fork_repository(&owner, &repo).await {
-            Ok(repo) => serde_json::to_string_pretty(&repo)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(repo) => success(&repo),
+            Err(e) => from_gb_error(e),
         }
     }
 
@@ -137,20 +135,19 @@ impl GitBucketMcpServer {
     pub async fn list_branches(
         &self,
         Parameters(params): Parameters<ListBranchesParams>,
-    ) -> String {
+    ) -> ToolResult {
         let owner = match required_trimmed(&params.owner, "owner") {
             Ok(owner) => owner,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
         let repo = match required_trimmed(&params.repo, "repo") {
             Ok(repo) => repo,
-            Err(err) => return err,
+            Err(err) => return validation_error(err),
         };
 
         match self.client.list_branches(&owner, &repo).await {
-            Ok(branches) => serde_json::to_string_pretty(&branches)
-                .unwrap_or_else(|e| format!("Error serializing: {}", e)),
-            Err(e) => format!("Error: {}", e),
+            Ok(branches) => success(&branches),
+            Err(e) => from_gb_error(e),
         }
     }
 }
@@ -161,10 +158,31 @@ mod tests {
 
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
+    use serde_json::Value;
 
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
     use crate::test_support::{MockApi, RecordedCall};
+    use crate::tools::response::ToolErrorPayload;
+
+    fn success_json(result: ToolResult) -> Value {
+        let result = result.unwrap();
+        assert_eq!(result.is_error, Some(false));
+        result
+            .structured_content
+            .expect("expected structured content for success")
+    }
+
+    fn error_payload(result: ToolResult) -> ToolErrorPayload {
+        let result = result.unwrap();
+        assert_eq!(result.is_error, Some(true));
+        serde_json::from_value(
+            result
+                .structured_content
+                .expect("expected structured content for error"),
+        )
+        .expect("error payload should deserialize")
+    }
 
     #[tokio::test]
     async fn test_list_repositories_rejects_blank_owner() {
@@ -177,7 +195,14 @@ mod tests {
             }))
             .await;
 
-        assert_eq!(result, "Error: owner must not be empty");
+        assert_eq!(
+            error_payload(result),
+            ToolErrorPayload {
+                kind: "validation_error".to_string(),
+                message: "owner must not be empty".to_string(),
+                status: None,
+            }
+        );
     }
 
     #[tokio::test]
@@ -194,7 +219,14 @@ mod tests {
             }))
             .await;
 
-        assert_eq!(result, "Error: name must not be empty");
+        assert_eq!(
+            error_payload(result),
+            ToolErrorPayload {
+                kind: "validation_error".to_string(),
+                message: "name must not be empty".to_string(),
+                status: None,
+            }
+        );
     }
 
     #[tokio::test]
@@ -211,7 +243,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"full_name\": \"mock-user/mock-repo\""));
+        let result = success_json(result);
+        assert_eq!(result["full_name"].as_str(), Some("mock-user/mock-repo"));
         match mock.calls().as_slice() {
             [RecordedCall::CreateRepository { body }] => {
                 assert_eq!(body.name, "new-repo");
@@ -234,7 +267,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"full_name\": \"mock-user/mock-repo\""));
+        let result = success_json(result);
+        assert_eq!(result[0]["full_name"].as_str(), Some("mock-user/mock-repo"));
         match mock.calls().as_slice() {
             [RecordedCall::ListRepositories { owner }] => assert_eq!(owner, "mock-user"),
             calls => panic!("unexpected calls: {calls:?}"),
@@ -253,7 +287,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"name\": \"mock-repo\""));
+        let result = success_json(result);
+        assert_eq!(result["name"].as_str(), Some("mock-repo"));
         match mock.calls().as_slice() {
             [RecordedCall::GetRepository { owner, repo }] => {
                 assert_eq!(owner, "mock-user");
@@ -275,7 +310,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"full_name\": \"mock-user/mock-repo\""));
+        let result = success_json(result);
+        assert_eq!(result["full_name"].as_str(), Some("mock-user/mock-repo"));
         match mock.calls().as_slice() {
             [RecordedCall::ForkRepository { owner, repo }] => {
                 assert_eq!(owner, "upstream");
@@ -297,7 +333,8 @@ mod tests {
             }))
             .await;
 
-        assert!(result.contains("\"name\": \"main\""));
+        let result = success_json(result);
+        assert_eq!(result[0]["name"].as_str(), Some("main"));
         match mock.calls().as_slice() {
             [RecordedCall::ListBranches { owner, repo }] => {
                 assert_eq!(owner, "mock-user");
