@@ -2,6 +2,8 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
+use tracing::{debug, warn};
+use url::Url;
 
 use super::{ApiFuture, GitBucketApi};
 use crate::error::{GbMcpError, Result};
@@ -26,6 +28,9 @@ pub(crate) struct WebCredentials {
 }
 
 impl GitBucketClient {
+    const DEFAULT_PER_PAGE: usize = 100;
+    const MAX_PAGINATION_PAGES: usize = 100;
+
     pub fn new(base_url: &str, token: &str) -> Result<Self> {
         Self::new_with_options(base_url, token, false)
     }
@@ -90,7 +95,7 @@ impl GitBucketClient {
             .send()
             .await
             .map_err(GbMcpError::Http)?;
-        self.handle_response(resp).await
+        self.handle_response(resp, "GET", path).await
     }
 
     pub async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
@@ -102,7 +107,7 @@ impl GitBucketClient {
             .send()
             .await
             .map_err(GbMcpError::Http)?;
-        self.handle_response(resp).await
+        self.handle_response(resp, "POST", path).await
     }
 
     pub async fn patch<T: DeserializeOwned, B: Serialize>(
@@ -118,7 +123,7 @@ impl GitBucketClient {
             .send()
             .await
             .map_err(GbMcpError::Http)?;
-        self.handle_response(resp).await
+        self.handle_response(resp, "PATCH", path).await
     }
 
     pub async fn put<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
@@ -130,7 +135,7 @@ impl GitBucketClient {
             .send()
             .await
             .map_err(GbMcpError::Http)?;
-        self.handle_response(resp).await
+        self.handle_response(resp, "PUT", path).await
     }
 
     pub async fn delete(&self, path: &str) -> Result<()> {
@@ -147,23 +152,89 @@ impl GitBucketClient {
         } else {
             let status = resp.status().as_u16();
             let message = resp.text().await.unwrap_or_default();
+            warn!(
+                method = "DELETE",
+                path, status, "GitBucket API request failed"
+            );
             Err(GbMcpError::Api { status, message })
         }
     }
 
-    async fn handle_response<T: DeserializeOwned>(&self, resp: reqwest::Response) -> Result<T> {
+    pub async fn get_paginated<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<Vec<T>> {
+        let mut results = Vec::new();
+
+        for page in 1..=Self::MAX_PAGINATION_PAGES {
+            let url = self.paginated_url(path, query, page)?;
+            let resp = self
+                .client
+                .get(url)
+                .send()
+                .await
+                .map_err(GbMcpError::Http)?;
+            let items: Vec<T> = self.handle_response(resp, "GET", path).await?;
+            let item_count = items.len();
+            results.extend(items);
+
+            if item_count < Self::DEFAULT_PER_PAGE {
+                return Ok(results);
+            }
+        }
+
+        Err(GbMcpError::Other(format!(
+            "Pagination exceeded {} pages for {}",
+            Self::MAX_PAGINATION_PAGES,
+            path
+        )))
+    }
+
+    async fn handle_response<T: DeserializeOwned>(
+        &self,
+        resp: reqwest::Response,
+        method: &str,
+        path: &str,
+    ) -> Result<T> {
         let status = resp.status();
         if status.is_success() {
             let text = resp.text().await.map_err(GbMcpError::Http)?;
+            debug!(
+                method,
+                path,
+                status = status.as_u16(),
+                "GitBucket API request succeeded"
+            );
             parse_success_body(&text)
         } else {
             let status_code = status.as_u16();
             let message = resp.text().await.unwrap_or_default();
+            warn!(
+                method,
+                path,
+                status = status_code,
+                "GitBucket API request failed"
+            );
             Err(GbMcpError::Api {
                 status: status_code,
                 message,
             })
         }
+    }
+
+    fn paginated_url(&self, path: &str, query: &[(&str, &str)], page: usize) -> Result<Url> {
+        let mut url =
+            Url::parse(&format!("{}{}", self.base_url, path)).map_err(GbMcpError::UrlParse)?;
+        {
+            let mut pairs = url.query_pairs_mut();
+            for (key, value) in query {
+                pairs.append_pair(key, value);
+            }
+            pairs.append_pair("per_page", &Self::DEFAULT_PER_PAGE.to_string());
+            pairs.append_pair("page", &page.to_string());
+        }
+        Ok(url)
     }
 }
 

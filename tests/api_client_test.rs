@@ -151,6 +151,48 @@ async fn test_list_repositories_fallback_to_org() {
 }
 
 #[tokio::test]
+async fn test_list_repositories_paginates_across_user_pages() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/users/testuser/repos"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
+            (1..=100)
+                .map(|i| serde_json::json!({
+                    "name": format!("repo-{i}"),
+                    "full_name": format!("testuser/repo-{i}"),
+                    "private": false,
+                    "fork": false
+                }))
+                .collect::<Vec<_>>()
+        )))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/users/testuser/repos"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "name": "repo-101",
+                "full_name": "testuser/repo-101",
+                "private": false,
+                "fork": false
+            }
+        ])))
+        .mount(&server.mock_server)
+        .await;
+
+    let repos = client.list_repositories("testuser").await.unwrap();
+    assert_eq!(repos.len(), 101);
+    assert_eq!(repos[100].name, "repo-101");
+}
+
+#[tokio::test]
 async fn test_get_repository() {
     let server = TestServer::start().await;
     let client = server.client();
@@ -208,6 +250,8 @@ async fn test_list_branches() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/testuser/myrepo/branches"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {"name": "main", "commit": {"sha": "abc123"}},
             {"name": "develop", "commit": {"sha": "def456"}}
@@ -229,6 +273,8 @@ async fn test_list_issues() {
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues"))
         .and(query_param("state", "open"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
                 "number": 1,
@@ -248,6 +294,47 @@ async fn test_list_issues() {
     assert_eq!(issues[0].number, 1);
     assert_eq!(issues[0].title, "Bug");
     assert_eq!(issues[0].labels[0].name, "bug");
+}
+
+#[tokio::test]
+async fn test_list_issue_comments_paginates() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/42/comments"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
+            (1..=100)
+                .map(|i| serde_json::json!({
+                    "id": i,
+                    "body": format!("comment-{i}")
+                }))
+                .collect::<Vec<_>>()
+        )))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/42/comments"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "id": 101,
+                "body": "comment-101"
+            }
+        ])))
+        .mount(&server.mock_server)
+        .await;
+
+    let comments = client
+        .list_issue_comments("owner", "repo", 42)
+        .await
+        .unwrap();
+    assert_eq!(comments.len(), 101);
+    assert_eq!(comments[100].id, 101);
 }
 
 #[tokio::test]
@@ -337,13 +424,34 @@ async fn test_update_issue_state_falls_back_to_web_session_on_404() {
         .mount(&server.mock_server)
         .await;
 
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 1,
+            "title": "Bug",
+            "body": "original body",
+            "state": "closed"
+        })))
+        .expect(2)
+        .mount(&server.mock_server)
+        .await;
+
     Mock::given(method("POST"))
         .and(path("/signin"))
         .and(body_string_contains("userName=alice"))
         .and(body_string_contains("password=secret-pass"))
         .respond_with(
-            ResponseTemplate::new(200).insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
         )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
         .mount(&server.mock_server)
         .await;
 
@@ -353,17 +461,6 @@ async fn test_update_issue_state_falls_back_to_web_session_on_404() {
         .and(body_string_contains("issueId=1"))
         .and(body_string_contains("action=close"))
         .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number": 1,
-            "title": "Bug",
-            "body": "original body",
-            "state": "closed"
-        })))
         .mount(&server.mock_server)
         .await;
 
@@ -382,6 +479,39 @@ async fn test_update_issue_state_falls_back_to_web_session_on_404() {
 }
 
 #[tokio::test]
+async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/issues/404"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/404"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::issue::UpdateIssue {
+        state: Some("closed".to_string()),
+        title: None,
+        body: None,
+    };
+    let err = client
+        .update_issue("owner", "repo", 404, &body)
+        .await
+        .unwrap_err();
+
+    match err {
+        gitbucket_mcp_server::error::GbMcpError::Api { status, .. } => assert_eq!(status, 404),
+        other => panic!("expected API 404, got {:?}", other),
+    }
+}
+
+#[tokio::test]
 async fn test_update_issue_title_body_fallback_returns_clear_error() {
     let server = TestServer::start().await;
     let client = server.client_with_web_auth("alice", "secret-pass");
@@ -390,6 +520,16 @@ async fn test_update_issue_title_body_fallback_returns_clear_error() {
         .and(path("/api/v3/repos/owner/repo/issues/1"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
             "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 1,
+            "title": "Bug",
+            "state": "open"
         })))
         .mount(&server.mock_server)
         .await;
@@ -416,6 +556,16 @@ async fn test_update_issue_state_without_web_credentials_returns_clear_error() {
         .and(path("/api/v3/repos/owner/repo/issues/1"))
         .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
             "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 1,
+            "title": "Bug",
+            "state": "open"
         })))
         .mount(&server.mock_server)
         .await;
@@ -469,6 +619,8 @@ async fn test_list_pull_requests() {
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/pulls"))
         .and(query_param("state", "open"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
                 "number": 3,
@@ -488,6 +640,51 @@ async fn test_list_pull_requests() {
     assert_eq!(prs.len(), 1);
     assert_eq!(prs[0].number, 3);
     assert_eq!(prs[0].head.as_ref().unwrap().ref_name, "feature");
+}
+
+#[tokio::test]
+async fn test_list_pull_requests_paginates() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls"))
+        .and(query_param("state", "open"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
+            (1..=100)
+                .map(|i| serde_json::json!({
+                    "number": i,
+                    "title": format!("PR {i}"),
+                    "state": "open"
+                }))
+                .collect::<Vec<_>>()
+        )))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls"))
+        .and(query_param("state", "open"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "number": 101,
+                "title": "PR 101",
+                "state": "open"
+            }
+        ])))
+        .mount(&server.mock_server)
+        .await;
+
+    let prs = client
+        .list_pull_requests("owner", "repo", Some("open"))
+        .await
+        .unwrap();
+    assert_eq!(prs.len(), 101);
+    assert_eq!(prs[100].number, 101);
 }
 
 #[tokio::test]

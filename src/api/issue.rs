@@ -15,10 +15,10 @@ impl GitBucketClient {
         state: Option<&str>,
     ) -> Result<Vec<Issue>> {
         let state_param = state.unwrap_or("open");
-        self.get(&format!(
-            "/repos/{}/{}/issues?state={}",
-            owner, repo, state_param
-        ))
+        self.get_paginated(
+            &format!("/repos/{}/{}/issues", owner, repo),
+            &[("state", state_param)],
+        )
         .await
     }
 
@@ -50,8 +50,8 @@ impl GitBucketClient {
             .await
         {
             Ok(issue) => Ok(issue),
-            Err(GbMcpError::Api { status: 404, .. }) => {
-                self.update_issue_via_web_fallback(owner, repo, number, body)
+            Err(err @ GbMcpError::Api { status: 404, .. }) => {
+                self.update_issue_with_404_handling(owner, repo, number, body, err)
                     .await
             }
             Err(err) => Err(err),
@@ -65,10 +65,10 @@ impl GitBucketClient {
         repo: &str,
         number: u64,
     ) -> Result<Vec<Comment>> {
-        self.get(&format!(
-            "/repos/{}/{}/issues/{}/comments",
-            owner, repo, number
-        ))
+        self.get_paginated(
+            &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
+            &[],
+        )
         .await
     }
 
@@ -85,6 +85,24 @@ impl GitBucketClient {
             body,
         )
         .await
+    }
+
+    async fn update_issue_with_404_handling(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &UpdateIssue,
+        original_error: GbMcpError,
+    ) -> Result<Issue> {
+        match self.get_issue(owner, repo, number).await {
+            Ok(_) => {
+                self.update_issue_via_web_fallback(owner, repo, number, body)
+                    .await
+            }
+            Err(GbMcpError::Api { status: 404, .. }) => Err(original_error),
+            Err(err) => Err(err),
+        }
     }
 
     async fn update_issue_via_web_fallback(

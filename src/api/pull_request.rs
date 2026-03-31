@@ -13,10 +13,10 @@ impl GitBucketClient {
         state: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
         let state_param = state.unwrap_or("open");
-        self.get(&format!(
-            "/repos/{}/{}/pulls?state={}",
-            owner, repo, state_param
-        ))
+        self.get_paginated(
+            &format!("/repos/{}/{}/pulls", owner, repo),
+            &[("state", state_param)],
+        )
         .await
     }
 

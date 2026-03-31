@@ -33,10 +33,9 @@ impl GitBucketWebSession {
 
         let status = response.status();
         let final_path = response.url().path().to_string();
-        let body = response.text().await.unwrap_or_default();
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
-            || (final_path.ends_with("/signin") && body.contains("incorrect"))
+            || final_path.ends_with("/signin")
         {
             return Err(GbMcpError::Other(format!(
                 "GitBucket web sign-in failed for '{}'. Check GITBUCKET_USERNAME and GITBUCKET_PASSWORD.",

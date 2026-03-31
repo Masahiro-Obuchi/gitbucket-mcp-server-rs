@@ -6,11 +6,14 @@ use super::client::GitBucketClient;
 impl GitBucketClient {
     /// List repositories for a user. Falls back to org endpoint on 404.
     pub async fn list_repositories(&self, owner: &str) -> Result<Vec<Repository>> {
-        let result = self.get(&format!("/users/{}/repos", owner)).await;
+        let result = self
+            .get_paginated::<Repository>(&format!("/users/{}/repos", owner), &[])
+            .await;
         match result {
             Ok(repos) => Ok(repos),
             Err(crate::error::GbMcpError::Api { status: 404, .. }) => {
-                self.get(&format!("/orgs/{}/repos", owner)).await
+                self.get_paginated::<Repository>(&format!("/orgs/{}/repos", owner), &[])
+                    .await
             }
             Err(e) => Err(e),
         }
@@ -37,7 +40,7 @@ impl GitBucketClient {
 
     /// List branches for a repository.
     pub async fn list_branches(&self, owner: &str, repo: &str) -> Result<Vec<Branch>> {
-        self.get(&format!("/repos/{}/{}/branches", owner, repo))
+        self.get_paginated(&format!("/repos/{}/{}/branches", owner, repo), &[])
             .await
     }
 }
