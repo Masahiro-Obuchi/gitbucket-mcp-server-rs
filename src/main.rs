@@ -9,17 +9,22 @@ use gitbucket_mcp_server::server::GitBucketMcpServer;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging to stderr (stdout is used for MCP protocol)
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .with_writer(std::io::stderr)
         .init();
-
-    tracing::info!("Starting GitBucket MCP Server");
 
     // Load configuration (TOML file + environment variables)
     let config = Config::load().map_err(|e| {
         eprintln!("Configuration error: {}", e);
         e
     })?;
+    eprintln!(
+        "gitbucket-mcp-server starting for {} over stdio",
+        config.gitbucket_url
+    );
+    tracing::info!("Starting GitBucket MCP Server");
 
     // Create API client
     let client = GitBucketClient::new_with_web_auth(
@@ -40,6 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
 
     tracing::info!("GitBucket MCP Server is running");
+    eprintln!("gitbucket-mcp-server ready");
     service.waiting().await?;
 
     Ok(())

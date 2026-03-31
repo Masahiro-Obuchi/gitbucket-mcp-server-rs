@@ -56,14 +56,13 @@ Config file format:
 ```toml
 url = "https://gitbucket.example.com"
 token = "your-personal-access-token"
-username = "your-gitbucket-username"
-password = "your-gitbucket-password"
 ```
 
 Requirements:
 
 - `GITBUCKET_URL` and `GITBUCKET_TOKEN` are required unless supplied by config file.
 - `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be supplied together when used.
+- `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are environment-variable only; `config.toml` must not contain `username` or `password`.
 - Empty values are invalid.
 - Missing config files are treated as “not configured yet”.
 - Malformed or unreadable config files must fail startup with a configuration error.
@@ -75,14 +74,15 @@ Requirements:
 - Authentication uses the `Authorization: token <token>` header.
 - Requests accept JSON responses.
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
-- `update_issue(state=...)` may fall back to a GitBucket web session when the REST endpoint returns HTTP 404 and optional web credentials are configured.
+- List endpoints auto-paginate with `page` and `per_page=100` until the final short page.
+- `update_issue(state=...)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target Issue still exists via `GET`, and optional web credentials are configured.
 
 ## 6. MCP Tool Contract
 
-All tools return a `String`.
+All tools return MCP tool results.
 
-- Success responses are pretty-printed JSON.
-- Failures return strings prefixed with `Error:`.
+- Success responses use structured JSON content.
+- Failures use MCP error tool results with `is_error=true` and a structured payload.
 
 ### 6.1 Repository Tools
 
@@ -138,13 +138,14 @@ Behavior:
 
 - Startup configuration failures stop the process.
 - Non-success GitBucket responses are surfaced as API errors with HTTP status and body text when available.
-- Tool handlers convert internal errors to user-visible `Error: ...` strings.
+- Tool handlers convert internal errors to structured MCP error payloads.
 
 ## 9. Security Requirements
 
 - Tokens must never be hardcoded in repository files.
 - Documentation and examples must use placeholders only.
 - Config persistence must preserve restricted file permissions where supported.
+- Web fallback passwords must not be stored in `config.toml`.
 
 ## 10. Future Extensions
 

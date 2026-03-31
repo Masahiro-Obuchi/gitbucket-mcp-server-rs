@@ -25,8 +25,10 @@ pub struct ConfigFile {
     pub url: Option<String>,
     #[serde(default)]
     pub token: Option<String>,
+    // Kept for migration detection only. Web fallback credentials are env-only.
     #[serde(default)]
     pub username: Option<String>,
+    // Kept for migration detection only. Web fallback credentials are env-only.
     #[serde(default)]
     pub password: Option<String>,
 }
@@ -61,13 +63,15 @@ impl ConfigFile {
                 e
             ))
         })?;
-        toml::from_str(&content).map_err(|e| {
+        let config: Self = toml::from_str(&content).map_err(|e| {
             GbMcpError::Config(format!(
                 "Failed to parse config file {}: {}",
                 path.display(),
                 e
             ))
-        })
+        })?;
+        config.validate_file_web_credentials(path)?;
+        Ok(config)
     }
 
     /// Load config from TOML file. Returns default (empty) if file does not exist.
@@ -78,6 +82,8 @@ impl ConfigFile {
 
     /// Save config to a specific TOML file path, creating parent directories if needed.
     pub fn save_to(&self, path: &std::path::Path) -> Result<()> {
+        self.validate_file_web_credentials(path)?;
+
         if let Some(dir) = path.parent() {
             if !dir.exists() {
                 std::fs::create_dir_all(dir).map_err(|e| {
@@ -100,6 +106,17 @@ impl ConfigFile {
     pub fn save(&self) -> Result<()> {
         let path = config_file_path()?;
         self.save_to(&path)
+    }
+
+    fn validate_file_web_credentials(&self, path: &std::path::Path) -> Result<()> {
+        if self.username.is_some() || self.password.is_some() {
+            return Err(GbMcpError::Config(format!(
+                "Config file {} must not contain username/password. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD via environment variables instead.",
+                path.display()
+            )));
+        }
+
+        Ok(())
     }
 }
 
@@ -201,12 +218,8 @@ impl Config {
             ));
         }
 
-        let gitbucket_username = std::env::var("GITBUCKET_USERNAME")
-            .ok()
-            .or(file_config.username);
-        let gitbucket_password = std::env::var("GITBUCKET_PASSWORD")
-            .ok()
-            .or(file_config.password);
+        let gitbucket_username = std::env::var("GITBUCKET_USERNAME").ok();
+        let gitbucket_password = std::env::var("GITBUCKET_PASSWORD").ok();
 
         let (gitbucket_username, gitbucket_password) =
             resolve_optional_web_credentials(gitbucket_username, gitbucket_password)?;
@@ -375,8 +388,6 @@ mod tests {
         let toml_str = r#"
 url = "https://gitbucket.example.com"
 token = "my-secret-token"
-username = "alice"
-password = "secret-pass"
 "#;
         let config: ConfigFile = toml::from_str(toml_str).unwrap();
         assert_eq!(
@@ -384,8 +395,8 @@ password = "secret-pass"
             Some("https://gitbucket.example.com".to_string())
         );
         assert_eq!(config.token, Some("my-secret-token".to_string()));
-        assert_eq!(config.username, Some("alice".to_string()));
-        assert_eq!(config.password, Some("secret-pass".to_string()));
+        assert!(config.username.is_none());
+        assert!(config.password.is_none());
     }
 
     #[test]
@@ -403,14 +414,14 @@ password = "secret-pass"
         let config = ConfigFile {
             url: Some("https://gitbucket.example.com".to_string()),
             token: Some("my-token".to_string()),
-            username: Some("alice".to_string()),
-            password: Some("secret-pass".to_string()),
+            username: None,
+            password: None,
         };
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("url = \"https://gitbucket.example.com\""));
         assert!(toml_str.contains("token = \"my-token\""));
-        assert!(toml_str.contains("username = \"alice\""));
-        assert!(toml_str.contains("password = \"secret-pass\""));
+        assert!(!toml_str.contains("username ="));
+        assert!(!toml_str.contains("password ="));
     }
 
     #[test]
@@ -421,16 +432,16 @@ password = "secret-pass"
         let config = ConfigFile {
             url: Some("https://gb.test.local".to_string()),
             token: Some("saved-token".to_string()),
-            username: Some("saved-user".to_string()),
-            password: Some("saved-pass".to_string()),
+            username: None,
+            password: None,
         };
         config.save_to(&path).unwrap();
 
         let loaded = ConfigFile::load_from(&path).unwrap();
         assert_eq!(loaded.url, Some("https://gb.test.local".to_string()));
         assert_eq!(loaded.token, Some("saved-token".to_string()));
-        assert_eq!(loaded.username, Some("saved-user".to_string()));
-        assert_eq!(loaded.password, Some("saved-pass".to_string()));
+        assert!(loaded.username.is_none());
+        assert!(loaded.password.is_none());
     }
 
     #[test]
@@ -456,16 +467,16 @@ password = "secret-pass"
         let file_config = ConfigFile {
             url: Some("https://from-file.example.com".to_string()),
             token: Some("file-token".to_string()),
-            username: Some("file-user".to_string()),
-            password: Some("file-pass".to_string()),
+            username: None,
+            password: None,
         };
         file_config.save_to(&path).unwrap();
 
         let config = Config::load_with_file(&path).unwrap();
         assert_eq!(config.gitbucket_url, "https://from-file.example.com");
         assert_eq!(config.gitbucket_token, "file-token");
-        assert_eq!(config.gitbucket_username.as_deref(), Some("file-user"));
-        assert_eq!(config.gitbucket_password.as_deref(), Some("file-pass"));
+        assert!(config.gitbucket_username.is_none());
+        assert!(config.gitbucket_password.is_none());
 
         clear_env();
     }
@@ -481,8 +492,8 @@ password = "secret-pass"
         let file_config = ConfigFile {
             url: Some("https://from-file.example.com".to_string()),
             token: Some("file-token".to_string()),
-            username: Some("file-user".to_string()),
-            password: Some("file-pass".to_string()),
+            username: None,
+            password: None,
         };
         file_config.save_to(&path).unwrap();
 
@@ -513,8 +524,8 @@ password = "secret-pass"
         let file_config = ConfigFile {
             url: None,
             token: Some("file-token".to_string()),
-            username: Some("file-user".to_string()),
-            password: Some("file-pass".to_string()),
+            username: None,
+            password: None,
         };
         file_config.save_to(&path).unwrap();
 
@@ -524,8 +535,8 @@ password = "secret-pass"
         let config = Config::load_with_file(&path).unwrap();
         assert_eq!(config.gitbucket_url, "https://from-env.example.com");
         assert_eq!(config.gitbucket_token, "file-token");
-        assert_eq!(config.gitbucket_username.as_deref(), Some("file-user"));
-        assert_eq!(config.gitbucket_password.as_deref(), Some("file-pass"));
+        assert!(config.gitbucket_username.is_none());
+        assert!(config.gitbucket_password.is_none());
 
         clear_env();
     }
@@ -591,20 +602,49 @@ password = "secret-pass"
 
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("config.toml");
-        let file_config = ConfigFile {
-            url: Some("https://from-file.example.com".to_string()),
-            token: Some("file-token".to_string()),
-            username: Some("file-user".to_string()),
-            password: None,
-        };
-        file_config.save_to(&path).unwrap();
+        std::fs::write(
+            &path,
+            r#"
+url = "https://from-file.example.com"
+token = "file-token"
+username = "file-user"
+"#,
+        )
+        .unwrap();
 
         let result = Config::load_with_file(&path);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("must be set together"));
+            .contains("must not contain username/password"));
+
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_with_file_password_in_toml_fails() {
+        clear_env();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+url = "https://from-file.example.com"
+token = "file-token"
+password = "secret-pass"
+"#,
+        )
+        .unwrap();
+
+        let result = Config::load_with_file(&path);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must not contain username/password"));
 
         clear_env();
     }

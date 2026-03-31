@@ -41,11 +41,9 @@ Create `~/.config/gitbucket-mcp-server/config.toml`:
 ```toml
 url = "https://gitbucket.example.com"
 token = "your-personal-access-token"
-username = "your-gitbucket-username"
-password = "your-gitbucket-password"
 ```
 
-The config file is created with `0600` permissions (owner-only read/write) to protect the token.
+The config file is created with `0600` permissions (owner-only read/write) to protect the token. Web fallback credentials are intentionally **not** read from `config.toml`; set `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` via environment variables only.
 
 The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` environment variable.
 
@@ -84,8 +82,12 @@ gitbucket-mcp-server
 # Option 2: Using environment variables
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-token"
+export GITBUCKET_USERNAME="alice"         # optional, for issue state web fallback only
+export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only
 gitbucket-mcp-server
 ```
+
+At startup the server prints a short readiness message to `stderr`, for example `gitbucket-mcp-server ready`, while `stdout` remains reserved for MCP protocol traffic.
 
 ### Claude Desktop
 
@@ -235,6 +237,7 @@ src/
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
 - `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, Issue write paths, state-only web fallback coverage, and pull request create/comment/merge flows.
+- MCP tool calls now return structured success payloads and structured error payloads (`is_error=true`) instead of `"Error: ..."` text conventions.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
 ### Manual E2E Tests

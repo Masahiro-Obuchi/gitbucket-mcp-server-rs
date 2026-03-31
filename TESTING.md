@@ -4,7 +4,7 @@ This repository uses layered tests so failures can be isolated quickly:
 
 - Unit tests in `src/**` cover models, config loading, validation, and tool behavior.
 - `tests/api_client_test.rs` verifies HTTP request and response handling with `wiremock`.
-- `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport.
+- `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, Issue write paths, state-only web fallback coverage, and pull request create/comment/merge coverage.
 
 ## Common Commands
@@ -46,6 +46,7 @@ cargo test --test e2e_test -- --ignored --nocapture
 
 The write-path tests intentionally keep created repositories, Issues, comments, pull requests, and merged branches. Each run uses unique repo names, branch names, titles, file names, and comment bodies so reruns do not depend on cleanup.
 Current GitBucket Docker coverage verifies that `update_issue(state=...)` falls back through the web UI on the official `4.44.0` image, while title/body updates on that image return an explicit unsupported error.
+The API client also auto-paginates list endpoints with `per_page=100` until the last short page, so multi-page fixtures should be used when adding regression tests for list behavior.
 
 ## Docker E2E Flow
 
@@ -75,4 +76,5 @@ The `E2E` workflow validates the shell scripts, runs `./scripts/e2e/bootstrap.sh
 - Put MCP protocol and tool-surface coverage in `tests/mcp_server_test.rs`.
 - Keep tool-module unit tests near the implementation in `src/tools/*.rs`.
 - Prefer write-path E2E only when setup is explicit and reruns are collision-safe; cleanup may be best-effort if tests use dedicated disposable data such as uniquely named repositories and branches.
+- Prefer asserting structured MCP payloads (`structured_content`, `is_error`) instead of `"Error: ..."` text.
 - Never hardcode real tokens or instance URLs in tests or fixtures.
