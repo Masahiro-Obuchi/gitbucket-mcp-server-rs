@@ -32,6 +32,11 @@ Tagged releases publish prebuilt archives for:
 
 Download the archive that matches your platform from GitHub Releases, extract it, and place `gitbucket-mcp-server` on your `PATH`.
 
+Typical install locations:
+
+- Linux/macOS: `~/.local/bin/gitbucket-mcp-server` or another directory already on `PATH`
+- Windows: a directory on `PATH`, such as `%USERPROFILE%\bin\gitbucket-mcp-server.exe`
+
 Archive names follow this pattern:
 
 ```text
@@ -55,6 +60,8 @@ To install a tagged release:
 cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.1.0 --locked
 ```
 
+`cargo install` places the binary in `$CARGO_HOME/bin`, which is usually `~/.cargo/bin` on Linux/macOS and `%CARGO_HOME%\bin` on Windows (by default `%USERPROFILE%\.cargo\bin`).
+
 ### From source
 
 ```bash
@@ -64,6 +71,7 @@ cargo build --release
 ```
 
 The binary will be at `target/release/gitbucket-mcp-server`.
+If you want to use it directly from your shell or MCP client config, copy it to a directory on `PATH`, for example `~/.local/bin/`.
 
 ## Configuration
 
@@ -123,6 +131,8 @@ gitbucket-mcp-server
 ```
 
 At startup the server prints a short readiness message to `stderr`, for example `gitbucket-mcp-server ready`, while `stdout` remains reserved for MCP protocol traffic.
+
+For a post-install smoke check, see [VERIFICATION.md](./VERIFICATION.md).
 
 ### Claude Desktop
 
