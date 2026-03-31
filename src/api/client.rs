@@ -9,6 +9,7 @@ use super::{ApiFuture, GitBucketApi};
 use crate::error::{GbMcpError, Result};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
+use crate::models::label::{CreateLabel, Label};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
@@ -98,6 +99,16 @@ impl GitBucketClient {
         self.handle_response(resp, "GET", path).await
     }
 
+    pub(crate) async fn get_url<T: DeserializeOwned>(&self, url: Url, path: &str) -> Result<T> {
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+        self.handle_response(resp, "GET", path).await
+    }
+
     pub async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
@@ -143,6 +154,27 @@ impl GitBucketClient {
         let resp = self
             .client
             .delete(&url)
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            let status = resp.status().as_u16();
+            let message = resp.text().await.unwrap_or_default();
+            warn!(
+                method = "DELETE",
+                path, status, "GitBucket API request failed"
+            );
+            Err(GbMcpError::Api { status, message })
+        }
+    }
+
+    pub(crate) async fn delete_url(&self, url: Url, path: &str) -> Result<()> {
+        let resp = self
+            .client
+            .delete(url)
             .send()
             .await
             .map_err(GbMcpError::Http)?;
@@ -313,6 +345,37 @@ impl GitBucketApi for GitBucketClient {
 
     fn list_branches<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Branch>> {
         Box::pin(async move { GitBucketClient::list_branches(self, owner, repo).await })
+    }
+
+    fn list_labels<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Label>> {
+        Box::pin(async move { GitBucketClient::list_labels(self, owner, repo).await })
+    }
+
+    fn get_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, Label> {
+        Box::pin(async move { GitBucketClient::get_label(self, owner, repo, name).await })
+    }
+
+    fn create_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateLabel,
+    ) -> ApiFuture<'a, Label> {
+        Box::pin(async move { GitBucketClient::create_label(self, owner, repo, body).await })
+    }
+
+    fn delete_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move { GitBucketClient::delete_label(self, owner, repo, name).await })
     }
 
     fn list_issues<'a>(

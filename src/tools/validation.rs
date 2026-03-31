@@ -14,6 +14,15 @@ pub fn optional_trimmed(value: Option<String>) -> Option<String> {
     value.map(|v| v.trim().to_string())
 }
 
+pub fn label_color(value: &str) -> std::result::Result<String, String> {
+    let trimmed = required_trimmed(value, "color")?;
+    let normalized = trimmed.strip_prefix('#').unwrap_or(&trimmed);
+    if normalized.len() != 6 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(error("color must be a 6-digit hex value like ff0000"));
+    }
+    Ok(normalized.to_ascii_lowercase())
+}
+
 pub fn list_state(value: Option<String>) -> std::result::Result<Option<String>, String> {
     match value {
         Some(state) => {
@@ -60,6 +69,24 @@ mod tests {
     fn test_list_state_rejects_invalid_value() {
         let err = list_state(Some("draft".to_string())).unwrap_err();
         assert_eq!(err, "state must be one of: open, closed, all");
+    }
+
+    #[test]
+    fn test_label_color_accepts_hash_prefix() {
+        let color = label_color(" #A1B2C3 ").unwrap();
+        assert_eq!(color, "a1b2c3");
+    }
+
+    #[test]
+    fn test_label_color_rejects_invalid_value() {
+        let err = label_color("zzz").unwrap_err();
+        assert_eq!(err, "color must be a 6-digit hex value like ff0000");
+    }
+
+    #[test]
+    fn test_label_color_rejects_multiple_hash_prefix() {
+        let err = label_color("##A1B2C3").unwrap_err();
+        assert_eq!(err, "color must be a 6-digit hex value like ff0000");
     }
 
     #[test]

@@ -5,7 +5,7 @@ This repository uses layered tests so failures can be isolated quickly:
 - Unit tests in `src/**` cover models, config loading, validation, and tool behavior.
 - `tests/api_client_test.rs` verifies HTTP request and response handling with `wiremock`.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
-- `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, Issue write paths, state-only web fallback coverage, and pull request create/comment/merge coverage.
+- `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label lifecycle coverage, Issue write paths, state-only web fallback coverage, and pull request create/comment/merge coverage.
 
 ## Common Commands
 
@@ -45,6 +45,7 @@ cargo test --test e2e_test -- --ignored --nocapture
 ```
 
 The write-path tests intentionally keep created repositories, Issues, comments, pull requests, and merged branches. Each run uses unique repo names, branch names, titles, file names, and comment bodies so reruns do not depend on cleanup.
+Label E2E creates and deletes a unique label within the test itself so it does not leave label fixtures behind.
 Current GitBucket Docker coverage verifies that `update_issue(state=...)` falls back through the web UI on the official `4.44.0` image, while title/body updates on that image return an explicit unsupported error.
 The API client also auto-paginates list endpoints with `per_page=100` until the last short page, so multi-page fixtures should be used when adding regression tests for list behavior.
 

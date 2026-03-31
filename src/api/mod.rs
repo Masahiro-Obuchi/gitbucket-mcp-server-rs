@@ -4,12 +4,14 @@ use std::pin::Pin;
 use crate::error::Result;
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
+use crate::models::label::{CreateLabel, Label};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 pub mod client;
 pub mod issue;
+pub mod label;
 pub mod pull_request;
 pub mod repository;
 pub mod user;
@@ -26,6 +28,25 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
     fn create_repository<'a>(&'a self, body: &'a CreateRepository) -> ApiFuture<'a, Repository>;
     fn fork_repository<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Repository>;
     fn list_branches<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Branch>>;
+    fn list_labels<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Label>>;
+    fn get_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, Label>;
+    fn create_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateLabel,
+    ) -> ApiFuture<'a, Label>;
+    fn delete_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()>;
 
     fn list_issues<'a>(
         &'a self,

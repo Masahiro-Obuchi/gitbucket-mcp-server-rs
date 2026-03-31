@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use gitbucket_mcp_server::api::{ApiFuture, GitBucketApi};
 use gitbucket_mcp_server::models::comment::{Comment, CreateComment};
 use gitbucket_mcp_server::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
+use gitbucket_mcp_server::models::label::{CreateLabel, Label as RepositoryLabel};
 use gitbucket_mcp_server::models::pull_request::{
     CreatePullRequest, MergePullRequest, MergeResult, PullRequest,
 };
@@ -41,6 +42,25 @@ enum RecordedCall {
     ListBranches {
         owner: String,
         repo: String,
+    },
+    ListLabels {
+        owner: String,
+        repo: String,
+    },
+    GetLabel {
+        owner: String,
+        repo: String,
+        name: String,
+    },
+    CreateLabel {
+        owner: String,
+        repo: String,
+        body: CreateLabel,
+    },
+    DeleteLabel {
+        owner: String,
+        repo: String,
+        name: String,
     },
     ListIssues {
         owner: String,
@@ -108,6 +128,7 @@ struct IntegrationMockApi {
     calls: Mutex<Vec<RecordedCall>>,
     user: User,
     repository: Repository,
+    label: RepositoryLabel,
     issue: Issue,
     comment: Comment,
     pull_request: PullRequest,
@@ -158,6 +179,12 @@ impl Default for IntegrationMockApi {
             closed_at: None,
             comments: Some(1),
         };
+        let label = RepositoryLabel {
+            name: "bug".to_string(),
+            color: Some("fc2929".to_string()),
+            description: Some("Broken behavior".to_string()),
+            url: None,
+        };
         let comment = Comment {
             id: 1,
             body: Some("Mock comment".to_string()),
@@ -192,6 +219,7 @@ impl Default for IntegrationMockApi {
             calls: Mutex::new(vec![]),
             user,
             repository,
+            label,
             issue,
             comment,
             pull_request,
@@ -273,6 +301,63 @@ impl GitBucketApi for IntegrationMockApi {
         });
         let branch = self.branch();
         Box::pin(async move { Ok(vec![branch]) })
+    }
+
+    fn list_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        self.record(RecordedCall::ListLabels {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+        });
+        let label = self.label.clone();
+        Box::pin(async move { Ok(vec![label]) })
+    }
+
+    fn get_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, RepositoryLabel> {
+        self.record(RecordedCall::GetLabel {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            name: name.to_string(),
+        });
+        let label = self.label.clone();
+        Box::pin(async move { Ok(label) })
+    }
+
+    fn create_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateLabel,
+    ) -> ApiFuture<'a, RepositoryLabel> {
+        self.record(RecordedCall::CreateLabel {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let label = self.label.clone();
+        Box::pin(async move { Ok(label) })
+    }
+
+    fn delete_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+    ) -> ApiFuture<'a, ()> {
+        self.record(RecordedCall::DeleteLabel {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            name: name.to_string(),
+        });
+        Box::pin(async move { Ok(()) })
     }
 
     fn list_issues<'a>(
@@ -505,17 +590,21 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "add_issue_comment",
         "add_pull_request_comment",
         "create_issue",
+        "create_label",
         "create_pull_request",
         "create_repository",
+        "delete_label",
         "fork_repository",
         "get_authenticated_user",
         "get_issue",
+        "get_label",
         "get_pull_request",
         "get_repository",
         "get_user",
         "list_branches",
         "list_issue_comments",
         "list_issues",
+        "list_labels",
         "list_pull_requests",
         "list_repositories",
         "merge_pull_request",
@@ -527,6 +616,18 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     assert_eq!(
         required_fields(&tools, "list_repositories"),
         json!(["owner"])
+    );
+    assert_eq!(
+        required_fields(&tools, "get_label"),
+        json!(["owner", "repo", "name"])
+    );
+    assert_eq!(
+        required_fields(&tools, "create_label"),
+        json!(["owner", "repo", "name", "color"])
+    );
+    assert_eq!(
+        required_fields(&tools, "delete_label"),
+        json!(["owner", "repo", "name"])
     );
     assert_eq!(
         required_fields(&tools, "create_issue"),
@@ -618,6 +719,108 @@ async fn test_mcp_call_tool_get_repository_trims_fields_and_serializes_json() {
         [RecordedCall::GetRepository { owner, repo }] => {
             assert_eq!(owner, "owner");
             assert_eq!(repo, "repo");
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_list_labels_trims_fields_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("list_labels").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)[0]["name"].as_str(), Some("bug"));
+    match api.calls().as_slice() {
+        [RecordedCall::ListLabels { owner, repo }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_create_label_normalizes_color_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("create_label").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "name": "  needs-review  ",
+                    "color": "  #A1B2C3  ",
+                    "description": "  Needs extra review  "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)["name"].as_str(), Some("bug"));
+    match api.calls().as_slice() {
+        [RecordedCall::CreateLabel { owner, repo, body }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(body.name, "needs-review");
+            assert_eq!(body.color, "a1b2c3");
+            assert_eq!(body.description.as_deref(), Some("Needs extra review"));
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_delete_label_trims_fields_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("delete_label").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "name": "  bug  "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)["deleted"].as_bool(), Some(true));
+    assert_eq!(structured_json(&result)["name"].as_str(), Some("bug"));
+    match api.calls().as_slice() {
+        [RecordedCall::DeleteLabel { owner, repo, name }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(name, "bug");
         }
         calls => panic!("unexpected calls: {calls:?}"),
     }
@@ -768,6 +971,40 @@ async fn test_mcp_call_tool_returns_validation_error_for_blank_username() {
         ToolErrorPayload {
             kind: "validation_error".to_string(),
             message: "username must not be empty".to_string(),
+            status: None,
+        }
+    );
+    assert!(api.calls().is_empty());
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_rejects_invalid_label_color_before_api_call() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("create_label").with_arguments(
+                json!({
+                    "owner": "owner",
+                    "repo": "repo",
+                    "name": "bug",
+                    "color": "zzz"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        structured_error(&result),
+        ToolErrorPayload {
+            kind: "validation_error".to_string(),
+            message: "color must be a 6-digit hex value like ff0000".to_string(),
             status: None,
         }
     );

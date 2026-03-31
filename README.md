@@ -4,12 +4,13 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [GitBucket](https://gitbucket.github.io/), written in Rust.
 
-This server enables AI assistants (Claude Desktop, GitHub Copilot, etc.) to interact with GitBucket repositories, issues, and pull requests through the MCP protocol.
+This server enables AI assistants (Claude Desktop, GitHub Copilot, etc.) to interact with GitBucket repositories, labels, issues, and pull requests through the MCP protocol.
 This is an unofficial community project and is not affiliated with the GitBucket project.
 
 ## Features
 
 - **Repository Management**: List, view, create, fork repositories and list branches
+- **Labels**: List, view, create, and delete repository labels
 - **Issue Tracking**: List, view, create, update issues; manage comments
 - **Pull Requests**: List, view, create, merge PRs; add comments
 - **User Info**: Get authenticated user and look up other users
@@ -193,6 +194,15 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 | `list_issue_comments` | List comments on an issue |
 | `add_issue_comment` | Add a comment to an issue |
 
+### Labels
+
+| Tool | Description |
+|------|-------------|
+| `list_labels` | List labels for a repository |
+| `get_label` | Get label details |
+| `create_label` | Create a new label |
+| `delete_label` | Delete a label |
+
 ### Pull Requests
 
 | Tool | Description |
@@ -247,7 +257,7 @@ GitHub Actions runs the following on every push and pull request:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test`
 
-The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward.
+The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label lifecycle, issue flows, issue-state web fallback, and pull request write paths.
 
 The `Release` workflow runs on `v*` tags and publishes prebuilt binary archives to GitHub Releases.
 
