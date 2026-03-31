@@ -10,7 +10,7 @@ The server provides AI clients with a stable tool interface for common GitBucket
 
 Supported capabilities:
 
-- Repository lookup, creation, forking, and branch listing
+- Repository lookup, creation, forking, branch listing, and label management
 - Issue lookup, creation, update, comment listing, and comment creation
 - Pull request lookup, creation, merge, and comment creation
 - Authenticated user lookup and username-based user lookup
@@ -92,7 +92,14 @@ All tools return MCP tool results.
 - `fork_repository(owner, repo)`
 - `list_branches(owner, repo)`
 
-### 6.2 Issue Tools
+### 6.2 Label Tools
+
+- `list_labels(owner, repo)`
+- `get_label(owner, repo, name)`
+- `create_label(owner, repo, name, color, description?)`
+- `delete_label(owner, repo, name)`
+
+### 6.3 Issue Tools
 
 - `list_issues(owner, repo, state?)`
 - `get_issue(owner, repo, issue_number)`
@@ -101,7 +108,7 @@ All tools return MCP tool results.
 - `list_issue_comments(owner, repo, issue_number)`
 - `add_issue_comment(owner, repo, issue_number, body)`
 
-### 6.3 Pull Request Tools
+### 6.4 Pull Request Tools
 
 - `list_pull_requests(owner, repo, state?)`
 - `get_pull_request(owner, repo, pull_number)`
@@ -109,7 +116,7 @@ All tools return MCP tool results.
 - `merge_pull_request(owner, repo, pull_number, commit_message?)`
 - `add_pull_request_comment(owner, repo, pull_number, body)`
 
-### 6.4 User Tools
+### 6.5 User Tools
 
 - `get_authenticated_user()`
 - `get_user(username)`
@@ -117,6 +124,7 @@ All tools return MCP tool results.
 ## 7. Input Validation Rules
 
 - Required string fields must not be blank after trimming.
+- `create_label.color` must be a 6-digit hex value and may optionally include a leading `#`.
 - `list_issues.state` and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
