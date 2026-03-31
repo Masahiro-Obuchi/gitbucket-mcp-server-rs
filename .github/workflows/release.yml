@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-assets:
+    name: Release ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            binary_name: gitbucket-mcp-server
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+            binary_name: gitbucket-mcp-server
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            binary_name: gitbucket-mcp-server
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+            binary_name: gitbucket-mcp-server.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.value }}"
+          archive_base="gitbucket-mcp-server-${version}-${{ matrix.target }}"
+          archive_dir="dist/${archive_base}"
+          mkdir -p "${archive_dir}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "${archive_dir}/gitbucket-mcp-server"
+          cp README.md LICENSE "${archive_dir}/"
+          tar -C dist -czf "dist/${archive_base}.${{ matrix.archive_ext }}" "${archive_base}"
+          shasum -a 256 "dist/${archive_base}.${{ matrix.archive_ext }}" > "dist/${archive_base}.${{ matrix.archive_ext }}.sha256"
+
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.value }}"
+          $archiveBase = "gitbucket-mcp-server-$version-${{ matrix.target }}"
+          $archiveDir = Join-Path "dist" $archiveBase
+          New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" (Join-Path $archiveDir "gitbucket-mcp-server.exe")
+          Copy-Item README.md, LICENSE $archiveDir
+          Compress-Archive -Path (Join-Path $archiveDir '*') -DestinationPath "dist/$archiveBase.${{ matrix.archive_ext }}" -Force
+          $hash = (Get-FileHash "dist/$archiveBase.${{ matrix.archive_ext }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $archiveBase.${{ matrix.archive_ext }}" | Set-Content "dist/$archiveBase.${{ matrix.archive_ext }}.sha256"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+
+      - name: Upload GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.${{ matrix.archive_ext }}
+            dist/*.${{ matrix.archive_ext }}.sha256
