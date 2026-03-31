@@ -16,7 +16,7 @@ pub fn optional_trimmed(value: Option<String>) -> Option<String> {
 
 pub fn label_color(value: &str) -> std::result::Result<String, String> {
     let trimmed = required_trimmed(value, "color")?;
-    let normalized = trimmed.trim_start_matches('#');
+    let normalized = trimmed.strip_prefix('#').unwrap_or(&trimmed);
     if normalized.len() != 6 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return Err(error("color must be a 6-digit hex value like ff0000"));
     }
@@ -80,6 +80,12 @@ mod tests {
     #[test]
     fn test_label_color_rejects_invalid_value() {
         let err = label_color("zzz").unwrap_err();
+        assert_eq!(err, "color must be a 6-digit hex value like ff0000");
+    }
+
+    #[test]
+    fn test_label_color_rejects_multiple_hash_prefix() {
+        let err = label_color("##A1B2C3").unwrap_err();
         assert_eq!(err, "color must be a 6-digit hex value like ff0000");
     }
 
