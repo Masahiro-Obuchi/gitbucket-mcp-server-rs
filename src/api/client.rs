@@ -99,6 +99,16 @@ impl GitBucketClient {
         self.handle_response(resp, "GET", path).await
     }
 
+    pub(crate) async fn get_url<T: DeserializeOwned>(&self, url: Url, path: &str) -> Result<T> {
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+        self.handle_response(resp, "GET", path).await
+    }
+
     pub async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = format!("{}{}", self.base_url, path);
         let resp = self
@@ -144,6 +154,27 @@ impl GitBucketClient {
         let resp = self
             .client
             .delete(&url)
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            let status = resp.status().as_u16();
+            let message = resp.text().await.unwrap_or_default();
+            warn!(
+                method = "DELETE",
+                path, status, "GitBucket API request failed"
+            );
+            Err(GbMcpError::Api { status, message })
+        }
+    }
+
+    pub(crate) async fn delete_url(&self, url: Url, path: &str) -> Result<()> {
+        let resp = self
+            .client
+            .delete(url)
             .send()
             .await
             .map_err(GbMcpError::Http)?;
