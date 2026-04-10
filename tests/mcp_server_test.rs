@@ -569,14 +569,22 @@ fn structured_error(result: &rmcp::model::CallToolResult) -> ToolErrorPayload {
 }
 
 fn required_fields(tools: &[rmcp::model::Tool], tool_name: &str) -> serde_json::Value {
+    input_schema(tools, tool_name)
+        .get("required")
+        .cloned()
+        .expect("required schema array")
+}
+
+fn input_schema<'a>(
+    tools: &'a [rmcp::model::Tool],
+    tool_name: &str,
+) -> &'a serde_json::Map<String, serde_json::Value> {
     tools
         .iter()
         .find(|tool| tool.name == tool_name)
         .expect("tool should be listed")
         .input_schema
-        .get("required")
-        .cloned()
-        .expect("required schema array")
+        .as_ref()
 }
 
 #[tokio::test]
@@ -612,6 +620,18 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     ]);
 
     assert_eq!(tool_names, expected);
+    for tool in &tools {
+        assert_eq!(
+            tool.input_schema.get("type"),
+            Some(&json!("object")),
+            "tool {} must expose an object input schema for OpenAI/Copilot compatibility",
+            tool.name
+        );
+    }
+    let auth_schema = input_schema(&tools, "get_authenticated_user");
+    assert_eq!(auth_schema.get("type"), Some(&json!("object")));
+    assert_eq!(auth_schema.get("properties"), Some(&json!({})));
+    assert_eq!(auth_schema.get("required"), Some(&json!([])));
     assert_eq!(required_fields(&tools, "get_user"), json!(["username"]));
     assert_eq!(
         required_fields(&tools, "list_repositories"),

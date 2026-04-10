@@ -72,6 +72,40 @@ impl GitBucketWebSession {
         .await
     }
 
+    pub async fn edit_issue_title(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        title: &str,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/edit_title/{number}"),
+            vec![("title", title.to_string())],
+            "edit the issue title",
+        )
+        .await
+    }
+
+    pub async fn edit_issue_content(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        title: &str,
+        content: &str,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/edit/{number}"),
+            vec![
+                ("title", title.to_string()),
+                ("content", content.to_string()),
+            ],
+            "edit the issue",
+        )
+        .await
+    }
+
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
             .client

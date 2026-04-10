@@ -97,8 +97,8 @@ The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` envir
 |----------|----------|-------------|---------|
 | `GITBUCKET_URL` | ✅* | GitBucket instance URL | `https://gitbucket.example.com` |
 | `GITBUCKET_TOKEN` | ✅* | Personal Access Token | `abc123...` |
-| `GITBUCKET_USERNAME` | ❌ | GitBucket username for issue state web fallback | `alice` |
-| `GITBUCKET_PASSWORD` | ❌ | GitBucket password for issue state web fallback | `secret-pass` |
+| `GITBUCKET_USERNAME` | ❌ | GitBucket username for issue update web fallback | `alice` |
+| `GITBUCKET_PASSWORD` | ❌ | GitBucket password for issue update web fallback | `secret-pass` |
 | `GITBUCKET_MCP_CONFIG_DIR` | ❌ | Override config directory | `/custom/path` |
 
 \* Required if not set in config file. Environment variables override config file values. `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be set together when used.
@@ -126,7 +126,7 @@ gitbucket-mcp-server
 # Option 2: Using environment variables
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-token"
-export GITBUCKET_USERNAME="alice"         # optional, for issue state web fallback only
+export GITBUCKET_USERNAME="alice"         # optional, for issue update web fallback only
 export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only
 gitbucket-mcp-server
 ```
@@ -257,7 +257,7 @@ GitHub Actions runs the following on every push and pull request:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test`
 
-The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label lifecycle, issue flows, issue-state web fallback, and pull request write paths.
+The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label lifecycle, issue flows, issue web fallback, and pull request write paths.
 
 The `Release` workflow runs on `v*` tags and publishes prebuilt binary archives to GitHub Releases.
 
@@ -293,7 +293,7 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
-- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, Issue write paths, state-only web fallback coverage, and pull request create/comment/merge flows.
+- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, Issue write paths, issue web fallback coverage, and pull request create/comment/merge flows.
 - MCP tool calls now return structured success payloads and structured error payloads (`is_error=true`) instead of `"Error: ..."` text conventions.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
