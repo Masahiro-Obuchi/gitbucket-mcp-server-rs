@@ -96,8 +96,8 @@ impl GitBucketClient {
         original_error: GbMcpError,
     ) -> Result<Issue> {
         match self.get_issue(owner, repo, number).await {
-            Ok(_) => {
-                self.update_issue_via_web_fallback(owner, repo, number, body)
+            Ok(current_issue) => {
+                self.update_issue_via_web_fallback(owner, repo, number, body, &current_issue)
                     .await
             }
             Err(GbMcpError::Api { status: 404, .. }) => Err(original_error),
@@ -111,33 +111,44 @@ impl GitBucketClient {
         repo: &str,
         number: u64,
         body: &UpdateIssue,
+        current_issue: &Issue,
     ) -> Result<Issue> {
-        if body.title.is_some() || body.body.is_some() {
-            return Err(GbMcpError::Other(
-                "This GitBucket instance does not support issue title/body updates via REST. Only state-only updates can fall back to the web UI.".to_string(),
-            ));
-        }
+        let current_body = current_issue.body.as_deref().unwrap_or_default();
+        let next_title = body
+            .title
+            .as_deref()
+            .unwrap_or(current_issue.title.as_str());
+        let next_body = body.body.as_deref().unwrap_or(current_body);
 
-        let state = body.state.as_deref().ok_or_else(|| {
-            GbMcpError::Other(
-                "This GitBucket instance does not support issue updates via REST, and web fallback only supports state-only updates.".to_string(),
-            )
-        })?;
-
-        let action = match state {
-            "closed" => "close",
-            "open" => "reopen",
-            other => {
-                return Err(GbMcpError::Other(format!(
-                    "Web fallback does not support issue state '{}'",
-                    other
-                )));
-            }
+        let needs_title_update = body
+            .title
+            .as_deref()
+            .is_some_and(|title| title != current_issue.title);
+        let needs_body_update = body
+            .body
+            .as_deref()
+            .is_some_and(|content| content != current_body);
+        let state_action = match body.state.as_deref() {
+            Some(state) if state != current_issue.state => Some(match state {
+                "closed" => "close",
+                "open" => "reopen",
+                other => {
+                    return Err(GbMcpError::Other(format!(
+                        "Web fallback does not support issue state '{}'",
+                        other
+                    )));
+                }
+            }),
+            _ => None,
         };
+
+        if !needs_title_update && !needs_body_update && state_action.is_none() {
+            return Ok(current_issue.clone());
+        }
 
         let credentials = self.web_credentials().ok_or_else(|| {
             GbMcpError::Other(
-                "This GitBucket instance does not support REST issue updates. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD to enable state-only web fallback.".to_string(),
+                "This GitBucket instance does not support REST issue updates. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD to enable web fallback.".to_string(),
             )
         })?;
 
@@ -148,9 +159,25 @@ impl GitBucketClient {
             self.allow_invalid_certs(),
         )
         .await?;
-        session
-            .update_issue_state(owner, repo, number, action)
-            .await?;
+
+        if needs_title_update {
+            session
+                .edit_issue_title(owner, repo, number, next_title)
+                .await?;
+        }
+
+        if needs_body_update {
+            session
+                .edit_issue_content(owner, repo, number, next_title, next_body)
+                .await?;
+        }
+
+        if let Some(action) = state_action {
+            session
+                .update_issue_state(owner, repo, number, action)
+                .await?;
+        }
+
         self.get_issue(owner, repo, number).await
     }
 }

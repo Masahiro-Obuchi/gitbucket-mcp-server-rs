@@ -1,15 +1,32 @@
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
-use schemars::JsonSchema;
+use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::Deserialize;
+use serde_json::{json, Map};
+use std::borrow::Cow;
 
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
 use crate::tools::validation::required_trimmed;
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Deserialize)]
 pub struct GetAuthenticatedUserParams {}
+
+impl JsonSchema for GetAuthenticatedUserParams {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("GetAuthenticatedUserParams")
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        let mut schema = Map::new();
+        schema.insert("type".to_string(), json!("object"));
+        schema.insert("properties".to_string(), json!({}));
+        schema.insert("required".to_string(), json!([]));
+        schema.insert("additionalProperties".to_string(), json!(false));
+        Schema::from(schema)
+    }
+}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetUserParams {

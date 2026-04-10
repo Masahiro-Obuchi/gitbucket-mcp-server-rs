@@ -1,5 +1,10 @@
 mod common;
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
 use common::TestServer;
 use wiremock::matchers::{body_string_contains, header, method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
@@ -513,6 +518,7 @@ async fn test_update_issue_close() {
 async fn test_update_issue_state_falls_back_to_web_session_on_404() {
     let server = TestServer::start().await;
     let client = server.client_with_web_auth("alice", "secret-pass");
+    let get_issue_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
@@ -524,13 +530,27 @@ async fn test_update_issue_state_falls_back_to_web_session_on_404() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number": 1,
-            "title": "Bug",
-            "body": "original body",
-            "state": "closed"
-        })))
-        .expect(2)
+        .respond_with({
+            let get_issue_call_count = Arc::clone(&get_issue_call_count);
+            move |_request: &wiremock::Request| {
+                let call_index = get_issue_call_count.fetch_add(1, Ordering::SeqCst);
+                if call_index == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 1,
+                        "title": "Bug",
+                        "body": "original body",
+                        "state": "open"
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 1,
+                        "title": "Bug",
+                        "body": "original body",
+                        "state": "closed"
+                    }))
+                }
+            }
+        })
         .mount(&server.mock_server)
         .await;
 
@@ -610,9 +630,10 @@ async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
 }
 
 #[tokio::test]
-async fn test_update_issue_title_body_fallback_returns_clear_error() {
+async fn test_update_issue_title_body_fallback_updates_via_web_session() {
     let server = TestServer::start().await;
     let client = server.client_with_web_auth("alice", "secret-pass");
+    let get_issue_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
@@ -624,25 +645,88 @@ async fn test_update_issue_title_body_fallback_returns_clear_error() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number": 1,
-            "title": "Bug",
-            "state": "open"
-        })))
+        .respond_with({
+            let get_issue_call_count = Arc::clone(&get_issue_call_count);
+            move |_request: &wiremock::Request| {
+                let call_index = get_issue_call_count.fetch_add(1, Ordering::SeqCst);
+                if call_index == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 1,
+                        "title": "Bug",
+                        "body": "original body",
+                        "state": "open"
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 1,
+                        "title": "New title",
+                        "body": "updated body",
+                        "state": "closed"
+                    }))
+                }
+            }
+        })
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .and(body_string_contains("userName=alice"))
+        .and(body_string_contains("password=secret-pass"))
+        .respond_with(
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+        )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/edit_title/1"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("title=New+title"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("title updated"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/edit/1"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("title=New+title"))
+        .and(body_string_contains("content=updated+body"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("body updated"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issue_comments/state"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("issueId=1"))
+        .and(body_string_contains("action=close"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
         .mount(&server.mock_server)
         .await;
 
     let body = gitbucket_mcp_server::models::issue::UpdateIssue {
         state: Some("closed".to_string()),
         title: Some("New title".to_string()),
-        body: None,
+        body: Some("updated body".to_string()),
     };
-    let err = client
+    let issue = client
         .update_issue("owner", "repo", 1, &body)
         .await
-        .unwrap_err();
+        .unwrap();
 
-    assert!(err.to_string().contains("title/body updates via REST"));
+    assert_eq!(issue.state, "closed");
+    assert_eq!(issue.title, "New title");
+    assert_eq!(issue.body.as_deref(), Some("updated body"));
 }
 
 #[tokio::test]

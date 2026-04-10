@@ -770,14 +770,16 @@ async fn test_e2e_update_issue() {
                 "repo": repo,
                 "issue_number": issue_number,
                 "state": "closed",
+                "title": updated_title,
+                "body": updated_body,
             }),
         )
         .await;
         let updated = parse_json(&updated);
         assert_eq!(updated["number"].as_u64(), Some(issue_number));
         assert_eq!(updated["state"].as_str(), Some("closed"));
-        assert_eq!(updated["title"].as_str(), issue["title"].as_str());
-        assert_eq!(updated["body"].as_str(), issue["body"].as_str());
+        assert_eq!(updated["title"].as_str(), Some(updated_title.as_str()));
+        assert_eq!(updated["body"].as_str(), Some(updated_body.as_str()));
     } else {
         let updated = call_tool(
             &client,
@@ -817,7 +819,7 @@ async fn test_e2e_update_issue() {
 #[tokio::test]
 #[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
 #[serial]
-async fn test_e2e_update_issue_with_title_body_on_web_fallback_instance_errors() {
+async fn test_e2e_update_issue_with_title_body_on_web_fallback_instance() {
     let config = E2eConfig::from_env();
     if config.web_username.is_none() || config.web_password.is_none() {
         return;
@@ -838,22 +840,22 @@ async fn test_e2e_update_issue_with_title_body_on_web_fallback_instance_errors()
             "repo": repo,
             "issue_number": issue_number,
             "state": "closed",
-            "title": format!("unsupported-title-{}", unique_suffix()),
+            "title": format!("updated-title-{}", unique_suffix()),
+            "body": format!("updated-body-{}", unique_suffix()),
         }),
     )
     .await;
-
-    let updated_error = parse_error(&result);
-    assert!(
-        updated_error
-            .message
-            .contains("title/body updates via REST")
-            || updated_error
-                .message
-                .contains("state-only updates can fall back"),
-        "expected explicit unsupported error, got: {:?}",
-        updated_error
-    );
+    let updated = parse_json(&result);
+    assert_eq!(updated["number"].as_u64(), Some(issue_number));
+    assert_eq!(updated["state"].as_str(), Some("closed"));
+    assert!(updated["title"]
+        .as_str()
+        .unwrap_or_default()
+        .starts_with("updated-title-"));
+    assert!(updated["body"]
+        .as_str()
+        .unwrap_or_default()
+        .starts_with("updated-body-"));
 
     client.cancel().await.unwrap();
 }

@@ -128,7 +128,7 @@ All tools return MCP tool results.
 - `list_issues.state` and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
-- On GitBucket instances without REST issue update support, only state-only updates may fall back through the web UI.
+- On GitBucket instances without REST issue update support, `update_issue` may fall back through the web UI for `state`, `title`, and `body` changes when web credentials are configured.
 - Optional string fields may be trimmed before sending to GitBucket.
 - Validation failures must be returned without issuing an outbound API request.
 
