@@ -383,6 +383,32 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 3. cargo clippy 警告ゼロ
 4. エラーメッセージの改善
 
+### Phase 5: 機能拡張ロードマップ（今後の実装）
+
+既存の repository / issue / pull request / user ツールを壊さないため、以後の機能追加は `git worktree` で専用 branch を作成して進める。各項目は API 層、MCP ツール層、MCP 統合テスト、Docker-backed E2E、README / SPEC / TESTING の更新を同じ単位に含める。
+
+1. **Issue メタデータ系ツールの安定化**
+   - `label` と `milestone` ツールを優先して追加し、Issue 運用で頻出する分類・リリース管理を MCP から扱えるようにする。
+   - REST API が 404 になる GitBucket 互換差異は、対象リソースの存在確認後に限定して web fallback を使う。
+   - E2E では `create -> get/list -> update -> delete` の lifecycle を専用テストデータで検証し、再実行時の衝突を避ける。
+
+2. **Issue 更新機能の拡張**
+   - `update_issue` を `state/title/body` だけでなく、`labels`, `assignees`, `milestone` の更新に広げる。
+   - REST 非対応項目は、fallback 可否を項目ごとに明示し、未対応の場合は structured MCP error で返す。
+   - 既存の issue write-path E2E にメタデータ更新の確認を追加する。
+
+3. **Pull Request 補助機能**
+   - `list_pull_request_comments` を追加し、PR の会話履歴を MCP から取得できるようにする。
+   - 必要に応じて PR の close/reopen 相当を追加する。ただし GitBucket API 互換性を先に確認し、web fallback が必要な場合は Issue と同じ存在確認ルールを適用する。
+
+4. **検索・探索系ツール**
+   - `search_issues`, `search_repositories`, `search_pull_requests` を候補とする。
+   - GitBucket REST API の対応範囲に差が出やすいため、実装前に GitBucket 4.44.0 と利用中インスタンスでエンドポイントを確認する。
+
+5. **高度な repository / multi-user E2E**
+   - `fork_repository` の E2E は、複数ユーザーと fork 元 repo の bootstrap が必要なため後続に回す。
+   - `delete_repository` など破壊的な管理操作は、明確な需要が出るまで実装しない。追加する場合は tool 名、ドキュメント、E2E で危険操作であることを明示する。
+
 ---
 
 ## 5. テスト戦略
