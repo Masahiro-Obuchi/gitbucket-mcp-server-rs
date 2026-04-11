@@ -385,10 +385,10 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 
 ### Phase 5: 機能拡張ロードマップ（今後の実装）
 
-既存の repository / issue / pull request / user ツールを壊さないため、以後の機能追加は `git worktree` で専用 branch を作成して進める。各項目は API 層、MCP ツール層、MCP 統合テスト、Docker-backed E2E、README / SPEC / TESTING の更新を同じ単位に含める。
+既存の repository / issue / pull request / user ツールを壊さないため、以後の機能追加は `git worktree` で専用 branch を作成して進める。各項目は API 層、MCP ツール層、MCP 統合テスト、Docker-backed E2E、README.md / SPEC.md / TESTING.md の更新を同じ単位に含める。
 
 1. **Issue メタデータ系ツールの安定化**
-   - `label` と `milestone` ツールを優先して追加し、Issue 運用で頻出する分類・リリース管理を MCP から扱えるようにする。
+   - 既存の `list_labels` / `get_label` / `create_label` / `delete_label` を前提に、label 系ツールの拡充（例: update / assign 相当）と `milestone` ツールの追加を優先し、Issue 運用で頻出する分類・リリース管理を MCP から扱えるようにする。
    - REST API が 404 になる GitBucket 互換差異は、対象リソースの存在確認後に限定して web fallback を使う。
    - E2E では `create -> get/list -> update -> delete` の lifecycle を専用テストデータで検証し、再実行時の衝突を避ける。
 
