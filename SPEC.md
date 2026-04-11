@@ -98,6 +98,7 @@ All tools return MCP tool results.
 - `list_labels(owner, repo)`
 - `get_label(owner, repo, name)`
 - `create_label(owner, repo, name, color, description?)`
+- `update_label(owner, repo, name, new_name?, color?, description?)`
 - `delete_label(owner, repo, name)`
 
 ### 6.3 Issue Tools
@@ -133,10 +134,11 @@ All tools return MCP tool results.
 ## 7. Input Validation Rules
 
 - Required string fields must not be blank after trimming.
-- `create_label.color` must be a 6-digit hex value and may optionally include a leading `#`.
+- `create_label.color` and `update_label.color` must be a 6-digit hex value and may optionally include a leading `#`.
 - `list_issues.state`, `list_milestones.state`, and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` and `update_milestone.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
+- `update_label` must receive at least one of `new_name`, `color`, or `description`.
 - `update_milestone` must receive at least one of `title`, `description`, `due_on`, or `state`.
 - On GitBucket instances without REST issue update support, `update_issue` may fall back through the web UI for `state`, `title`, and `body` changes when web credentials are configured.
 - Optional string fields may be trimmed before sending to GitBucket.

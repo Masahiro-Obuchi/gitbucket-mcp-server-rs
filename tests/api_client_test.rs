@@ -352,6 +352,39 @@ async fn test_create_label() {
 }
 
 #[tokio::test]
+async fn test_update_label_url_encodes_name() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
+        .and(body_string_contains("\"new_name\":\"needs-review\""))
+        .and(body_string_contains("\"color\":\"a1b2c3\""))
+        .and(body_string_contains(
+            "\"description\":\"Needs extra review\"",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "needs-review",
+            "color": "a1b2c3",
+            "description": "Needs extra review"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::label::UpdateLabel {
+        new_name: Some("needs-review".to_string()),
+        color: Some("a1b2c3".to_string()),
+        description: Some("Needs extra review".to_string()),
+    };
+    let label = client
+        .update_label("testuser", "myrepo", "needs review", &body)
+        .await
+        .unwrap();
+    assert_eq!(label.name, "needs-review");
+    assert_eq!(label.color.as_deref(), Some("a1b2c3"));
+}
+
+#[tokio::test]
 async fn test_delete_label_url_encodes_name() {
     let server = TestServer::start().await;
     let client = server.client();

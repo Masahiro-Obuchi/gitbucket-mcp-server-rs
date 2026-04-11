@@ -10,7 +10,7 @@ This is an unofficial community project and is not affiliated with the GitBucket
 ## Features
 
 - **Repository Management**: List, view, create, fork repositories and list branches
-- **Labels**: List, view, create, and delete repository labels
+- **Labels**: List, view, create, update, and delete repository labels
 - **Milestones**: List, view, create, update, and delete repository milestones
 - **Issue Tracking**: List, view, create, update issues; manage comments
 - **Pull Requests**: List, view, create, merge PRs; add comments
@@ -202,6 +202,7 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 | `list_labels` | List labels for a repository |
 | `get_label` | Get label details |
 | `create_label` | Create a new label |
+| `update_label` | Update label name, color, or description |
 | `delete_label` | Delete a label |
 
 ### Milestones
@@ -268,7 +269,7 @@ GitHub Actions runs the following on every push and pull request:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test`
 
-The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label lifecycle, milestone lifecycle, issue flows, issue web fallback, and pull request write paths.
+The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label create/read/update/delete lifecycle, milestone lifecycle, issue flows, issue web fallback, and pull request write paths.
 
 The `Release` workflow runs on `v*` tags and publishes prebuilt binary archives to GitHub Releases.
 
@@ -307,7 +308,7 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
-- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge flows.
+- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, label lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge flows.
 - MCP tool calls now return structured success payloads and structured error payloads (`is_error=true`) instead of `"Error: ..."` text conventions.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 

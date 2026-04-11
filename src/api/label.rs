@@ -1,7 +1,7 @@
 use url::Url;
 
 use crate::error::{GbMcpError, Result};
-use crate::models::label::{CreateLabel, Label};
+use crate::models::label::{CreateLabel, Label, UpdateLabel};
 
 use super::client::GitBucketClient;
 
@@ -20,6 +20,18 @@ impl GitBucketClient {
     pub async fn create_label(&self, owner: &str, repo: &str, body: &CreateLabel) -> Result<Label> {
         self.post(&format!("/repos/{}/{}/labels", owner, repo), body)
             .await
+    }
+
+    pub async fn update_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        body: &UpdateLabel,
+    ) -> Result<Label> {
+        let path = format!("/repos/{owner}/{repo}/labels/{name}");
+        let url = label_url(self, owner, repo, name)?;
+        self.patch_url(url, &path, body).await
     }
 
     pub async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<()> {

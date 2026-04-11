@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::api::{ApiFuture, GitBucketApi};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
-use crate::models::label::{CreateLabel, Label as RepositoryLabel};
+use crate::models::label::{CreateLabel, Label as RepositoryLabel, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, BranchCommit, CreateRepository, Repository};
@@ -46,6 +46,12 @@ pub enum RecordedCall {
         owner: String,
         repo: String,
         body: CreateLabel,
+    },
+    UpdateLabel {
+        owner: String,
+        repo: String,
+        name: String,
+        body: UpdateLabel,
     },
     DeleteLabel {
         owner: String,
@@ -384,6 +390,23 @@ impl GitBucketApi for MockApi {
         self.record(RecordedCall::CreateLabel {
             owner: owner.to_string(),
             repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let label = self.label.clone();
+        Box::pin(async move { Ok(label) })
+    }
+
+    fn update_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+        body: &'a UpdateLabel,
+    ) -> ApiFuture<'a, RepositoryLabel> {
+        self.record(RecordedCall::UpdateLabel {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            name: name.to_string(),
             body: body.clone(),
         });
         let label = self.label.clone();
