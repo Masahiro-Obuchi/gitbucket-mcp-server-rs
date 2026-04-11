@@ -4,13 +4,14 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [GitBucket](https://gitbucket.github.io/), written in Rust.
 
-This server enables AI assistants (Claude Desktop, GitHub Copilot, etc.) to interact with GitBucket repositories, labels, issues, and pull requests through the MCP protocol.
+This server enables AI assistants (Claude Desktop, GitHub Copilot, etc.) to interact with GitBucket repositories, labels, milestones, issues, and pull requests through the MCP protocol.
 This is an unofficial community project and is not affiliated with the GitBucket project.
 
 ## Features
 
 - **Repository Management**: List, view, create, fork repositories and list branches
 - **Labels**: List, view, create, and delete repository labels
+- **Milestones**: List, view, create, update, and delete repository milestones
 - **Issue Tracking**: List, view, create, update issues; manage comments
 - **Pull Requests**: List, view, create, merge PRs; add comments
 - **User Info**: Get authenticated user and look up other users
@@ -203,6 +204,16 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 | `create_label` | Create a new label |
 | `delete_label` | Delete a label |
 
+### Milestones
+
+| Tool | Description |
+|------|-------------|
+| `list_milestones` | List milestones for a repository |
+| `get_milestone` | Get milestone details |
+| `create_milestone` | Create a new milestone |
+| `update_milestone` | Update milestone fields and state |
+| `delete_milestone` | Delete a milestone |
+
 ### Pull Requests
 
 | Tool | Description |
@@ -257,7 +268,7 @@ GitHub Actions runs the following on every push and pull request:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test`
 
-The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label lifecycle, issue flows, issue web fallback, and pull request write paths.
+The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label lifecycle, milestone lifecycle, issue flows, issue web fallback, and pull request write paths.
 
 The `Release` workflow runs on `v*` tags and publishes prebuilt binary archives to GitHub Releases.
 
@@ -273,17 +284,20 @@ src/
 ├── api/             # GitBucket REST API client
 │   ├── client.rs    # HTTP client with auth
 │   ├── repository.rs
+│   ├── milestone.rs
 │   ├── issue.rs
 │   ├── pull_request.rs
 │   └── user.rs
 ├── models/          # API request/response types
 │   ├── user.rs
 │   ├── repository.rs
+│   ├── milestone.rs
 │   ├── issue.rs
 │   ├── pull_request.rs
 │   └── comment.rs
 └── tools/           # MCP tool definitions
     ├── repository.rs
+    ├── milestone.rs
     ├── issue.rs
     ├── pull_request.rs
     └── user.rs
@@ -293,7 +307,7 @@ src/
 
 - `tests/api_client_test.rs` uses `wiremock` to validate GitBucket API requests and responses.
 - `tests/mcp_server_test.rs` exercises the MCP tool surface over an in-memory transport.
-- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, Issue write paths, issue web fallback coverage, and pull request create/comment/merge flows.
+- `tests/e2e_test.rs` provides ignored smoke tests against a real GitBucket instance, including repository creation with branch discovery, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge flows.
 - MCP tool calls now return structured success payloads and structured error payloads (`is_error=true`) instead of `"Error: ..."` text conventions.
 - `src/tools/*` includes mock-based unit tests for tool validation and success-path behavior.
 
@@ -316,11 +330,12 @@ cargo test --test e2e_test -- --ignored --nocapture
 Optional variables:
 
 - `GITBUCKET_E2E_OWNER`: defaults to the authenticated user for `list_repositories`
-- `GITBUCKET_E2E_REPO`: required for issue and pull request E2E against an existing repository
+- `GITBUCKET_E2E_REPO`: required for milestone, issue, and pull request E2E against an existing repository
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD`: required for pull request write-path E2E because the tests create and push temporary branches over HTTP
 - `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD`: optional explicit credentials for `update_issue` web fallback; if omitted, E2E reuses the git credentials
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
 - Write-path E2E tests leave created repositories, Issues, comments, pull requests, and merged branches in place; they use unique repo names, branch names, titles, and bodies to avoid collisions across reruns
+- Milestone E2E creates, updates, and deletes a unique milestone within the same test so reruns do not accumulate milestone fixtures
 
 ### Docker E2E Bootstrap
 

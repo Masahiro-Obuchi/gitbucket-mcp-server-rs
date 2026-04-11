@@ -25,6 +25,7 @@ GitBucket REST API v3 は GitHub API v3 のサブセット互換です。`gitbuc
 
 - **ユーザー**: `GET /user`, `GET /users/:username`
 - **リポジトリ**: CRUD + fork + branches
+- **マイルストーン**: 一覧 + 参照 + 作成 + 更新 + 削除
 - **Issue**: CRUD + state変更 + コメント
 - **Pull Request**: CRUD + merge + コメント
 
