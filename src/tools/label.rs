@@ -180,7 +180,7 @@ impl GitBucketMcpServer {
             },
             None => None,
         };
-        let description = params.description.map(|value| value.trim().to_string());
+        let description = optional_trimmed(params.description);
 
         if new_name.is_none() && color.is_none() && description.is_none() {
             return validation_error(error(
