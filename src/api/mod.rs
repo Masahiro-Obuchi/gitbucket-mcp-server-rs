@@ -5,6 +5,7 @@ use crate::error::Result;
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label};
+use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
@@ -12,6 +13,7 @@ use crate::models::user::User;
 pub mod client;
 pub mod issue;
 pub mod label;
+pub mod milestone;
 pub mod pull_request;
 pub mod repository;
 pub mod user;
@@ -46,6 +48,37 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
         owner: &'a str,
         repo: &'a str,
         name: &'a str,
+    ) -> ApiFuture<'a, ()>;
+    fn list_milestones<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        state: Option<&'a str>,
+    ) -> ApiFuture<'a, Vec<Milestone>>;
+    fn get_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, Milestone>;
+    fn create_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateMilestone,
+    ) -> ApiFuture<'a, Milestone>;
+    fn update_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdateMilestone,
+    ) -> ApiFuture<'a, Milestone>;
+    fn delete_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
     ) -> ApiFuture<'a, ()>;
 
     fn list_issues<'a>(

@@ -76,6 +76,7 @@ Requirements:
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
 - List endpoints auto-paginate with `page` and `per_page=100` until the final short page.
 - `update_issue(state=...)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target Issue still exists via `GET`, and optional web credentials are configured.
+- milestone create, update, and delete may fall back to the GitBucket web UI when the REST endpoint returns HTTP 404 and the target repository or milestone can still be verified.
 
 ## 6. MCP Tool Contract
 
@@ -108,7 +109,15 @@ All tools return MCP tool results.
 - `list_issue_comments(owner, repo, issue_number)`
 - `add_issue_comment(owner, repo, issue_number, body)`
 
-### 6.4 Pull Request Tools
+### 6.4 Milestone Tools
+
+- `list_milestones(owner, repo, state?)`
+- `get_milestone(owner, repo, milestone_number)`
+- `create_milestone(owner, repo, title, description?, due_on?)`
+- `update_milestone(owner, repo, milestone_number, title?, description?, due_on?, state?)`
+- `delete_milestone(owner, repo, milestone_number)`
+
+### 6.5 Pull Request Tools
 
 - `list_pull_requests(owner, repo, state?)`
 - `get_pull_request(owner, repo, pull_number)`
@@ -116,7 +125,7 @@ All tools return MCP tool results.
 - `merge_pull_request(owner, repo, pull_number, commit_message?)`
 - `add_pull_request_comment(owner, repo, pull_number, body)`
 
-### 6.5 User Tools
+### 6.6 User Tools
 
 - `get_authenticated_user()`
 - `get_user(username)`
@@ -125,9 +134,10 @@ All tools return MCP tool results.
 
 - Required string fields must not be blank after trimming.
 - `create_label.color` must be a 6-digit hex value and may optionally include a leading `#`.
-- `list_issues.state` and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
-- `update_issue.state` must be one of `open` or `closed`.
+- `list_issues.state`, `list_milestones.state`, and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
+- `update_issue.state` and `update_milestone.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
+- `update_milestone` must receive at least one of `title`, `description`, `due_on`, or `state`.
 - On GitBucket instances without REST issue update support, `update_issue` may fall back through the web UI for `state`, `title`, and `body` changes when web credentials are configured.
 - Optional string fields may be trimmed before sending to GitBucket.
 - Validation failures must be returned without issuing an outbound API request.

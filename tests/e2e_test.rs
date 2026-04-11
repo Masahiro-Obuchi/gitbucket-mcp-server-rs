@@ -323,6 +323,33 @@ async fn create_test_label(
     label
 }
 
+async fn create_test_milestone(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    owner: &str,
+    repo: &str,
+) -> Value {
+    let suffix = unique_suffix();
+    let title = format!("e2e-milestone-{suffix}");
+    let description = format!("e2e milestone description {suffix}");
+
+    let milestone = call_tool_json(
+        client,
+        "create_milestone",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "title": title,
+            "description": description,
+        }),
+    )
+    .await;
+
+    assert_eq!(milestone["title"].as_str(), Some(title.as_str()));
+    assert_eq!(milestone["state"].as_str(), Some("open"));
+
+    milestone
+}
+
 async fn create_test_pull_request(
     client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
     config: &E2eConfig,
@@ -669,6 +696,87 @@ async fn test_e2e_label_lifecycle() {
     .await;
     assert_eq!(deleted["deleted"].as_bool(), Some(true));
     assert_eq!(deleted["name"].as_str(), Some(name));
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
+#[serial]
+async fn test_e2e_milestone_lifecycle() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+
+    let created = create_test_milestone(&client, owner, repo).await;
+    let number = created["number"]
+        .as_u64()
+        .expect("create_milestone should return a milestone number");
+    let title = created["title"]
+        .as_str()
+        .expect("create_milestone should return a title");
+
+    let fetched = call_tool_json(
+        &client,
+        "get_milestone",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "milestone_number": number,
+        }),
+    )
+    .await;
+    assert_eq!(fetched["title"].as_str(), Some(title));
+
+    let milestones = call_tool_json(
+        &client,
+        "list_milestones",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "state": "all",
+        }),
+    )
+    .await;
+    assert!(
+        milestones
+            .as_array()
+            .expect("list_milestones should return an array")
+            .iter()
+            .any(|milestone| milestone["number"].as_u64() == Some(number)),
+        "expected created milestone to appear in list_milestones output: {milestones}"
+    );
+
+    let updated_title = format!("updated-{title}");
+    let updated = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "milestone_number": number,
+            "title": updated_title,
+            "description": "",
+            "state": "closed",
+        }),
+    )
+    .await;
+    assert_eq!(updated["number"].as_u64(), Some(number));
+    assert_eq!(updated["title"].as_str(), Some(updated_title.as_str()));
+    assert_eq!(updated["state"].as_str(), Some("closed"));
+
+    let deleted = call_tool_json(
+        &client,
+        "delete_milestone",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "milestone_number": number,
+        }),
+    )
+    .await;
+    assert_eq!(deleted["deleted"].as_bool(), Some(true));
+    assert_eq!(deleted["number"].as_u64(), Some(number));
 
     client.cancel().await.unwrap();
 }

@@ -5,6 +5,7 @@ use gitbucket_mcp_server::api::{ApiFuture, GitBucketApi};
 use gitbucket_mcp_server::models::comment::{Comment, CreateComment};
 use gitbucket_mcp_server::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
 use gitbucket_mcp_server::models::label::{CreateLabel, Label as RepositoryLabel};
+use gitbucket_mcp_server::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use gitbucket_mcp_server::models::pull_request::{
     CreatePullRequest, MergePullRequest, MergeResult, PullRequest,
 };
@@ -61,6 +62,32 @@ enum RecordedCall {
         owner: String,
         repo: String,
         name: String,
+    },
+    ListMilestones {
+        owner: String,
+        repo: String,
+        state: Option<String>,
+    },
+    GetMilestone {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    CreateMilestone {
+        owner: String,
+        repo: String,
+        body: CreateMilestone,
+    },
+    UpdateMilestone {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: UpdateMilestone,
+    },
+    DeleteMilestone {
+        owner: String,
+        repo: String,
+        number: u64,
     },
     ListIssues {
         owner: String,
@@ -129,6 +156,7 @@ struct IntegrationMockApi {
     user: User,
     repository: Repository,
     label: RepositoryLabel,
+    milestone: Milestone,
     issue: Issue,
     comment: Comment,
     pull_request: PullRequest,
@@ -185,6 +213,21 @@ impl Default for IntegrationMockApi {
             description: Some("Broken behavior".to_string()),
             url: None,
         };
+        let milestone = Milestone {
+            number: 7,
+            title: "v1.0".to_string(),
+            state: "open".to_string(),
+            description: Some("First release".to_string()),
+            due_on: Some("2026-04-01T00:00:00Z".to_string()),
+            html_url: None,
+            url: None,
+            creator: Some(user.clone()),
+            open_issues: Some(3),
+            closed_issues: Some(1),
+            created_at: None,
+            updated_at: None,
+            closed_at: None,
+        };
         let comment = Comment {
             id: 1,
             body: Some("Mock comment".to_string()),
@@ -220,6 +263,7 @@ impl Default for IntegrationMockApi {
             user,
             repository,
             label,
+            milestone,
             issue,
             comment,
             pull_request,
@@ -356,6 +400,82 @@ impl GitBucketApi for IntegrationMockApi {
             owner: owner.to_string(),
             repo: repo.to_string(),
             name: name.to_string(),
+        });
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn list_milestones<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        state: Option<&'a str>,
+    ) -> ApiFuture<'a, Vec<Milestone>> {
+        self.record(RecordedCall::ListMilestones {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            state: state.map(str::to_string),
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(vec![milestone]) })
+    }
+
+    fn get_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, Milestone> {
+        self.record(RecordedCall::GetMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(milestone) })
+    }
+
+    fn create_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateMilestone,
+    ) -> ApiFuture<'a, Milestone> {
+        self.record(RecordedCall::CreateMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(milestone) })
+    }
+
+    fn update_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdateMilestone,
+    ) -> ApiFuture<'a, Milestone> {
+        self.record(RecordedCall::UpdateMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(milestone) })
+    }
+
+    fn delete_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, ()> {
+        self.record(RecordedCall::DeleteMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
         });
         Box::pin(async move { Ok(()) })
     }
@@ -599,13 +719,16 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "add_pull_request_comment",
         "create_issue",
         "create_label",
+        "create_milestone",
         "create_pull_request",
         "create_repository",
         "delete_label",
+        "delete_milestone",
         "fork_repository",
         "get_authenticated_user",
         "get_issue",
         "get_label",
+        "get_milestone",
         "get_pull_request",
         "get_repository",
         "get_user",
@@ -613,9 +736,11 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "list_issue_comments",
         "list_issues",
         "list_labels",
+        "list_milestones",
         "list_pull_requests",
         "list_repositories",
         "merge_pull_request",
+        "update_milestone",
         "update_issue",
     ]);
 
@@ -648,6 +773,18 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     assert_eq!(
         required_fields(&tools, "delete_label"),
         json!(["owner", "repo", "name"])
+    );
+    assert_eq!(
+        required_fields(&tools, "get_milestone"),
+        json!(["owner", "repo", "milestone_number"])
+    );
+    assert_eq!(
+        required_fields(&tools, "create_milestone"),
+        json!(["owner", "repo", "title"])
+    );
+    assert_eq!(
+        required_fields(&tools, "delete_milestone"),
+        json!(["owner", "repo", "milestone_number"])
     );
     assert_eq!(
         required_fields(&tools, "create_issue"),
@@ -841,6 +978,148 @@ async fn test_mcp_call_tool_delete_label_trims_fields_and_serializes_json() {
             assert_eq!(owner, "owner");
             assert_eq!(repo, "repo");
             assert_eq!(name, "bug");
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_list_milestones_trims_fields_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("list_milestones").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "state": "all"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)[0]["title"].as_str(), Some("v1.0"));
+    match api.calls().as_slice() {
+        [RecordedCall::ListMilestones { owner, repo, state }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(state.as_deref(), Some("all"));
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_create_milestone_trims_fields_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("create_milestone").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "title": "  v1.0  ",
+                    "description": "  first release  ",
+                    "due_on": " 2026-04-01 "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)["title"].as_str(), Some("v1.0"));
+    match api.calls().as_slice() {
+        [RecordedCall::CreateMilestone { owner, repo, body }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(body.title, "v1.0");
+            assert_eq!(body.description.as_deref(), Some("first release"));
+            assert_eq!(body.due_on.as_deref(), Some("2026-04-01"));
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_update_milestone_rejects_empty_change_set() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("update_milestone").with_arguments(
+                json!({
+                    "owner": "owner",
+                    "repo": "repo",
+                    "milestone_number": 7
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        structured_error(&result),
+        ToolErrorPayload {
+            kind: "validation_error".to_string(),
+            message: "at least one of title, description, due_on, or state must be provided"
+                .to_string(),
+            status: None,
+        }
+    );
+    assert!(api.calls().is_empty());
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_delete_milestone_serializes_confirmation() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("delete_milestone").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "milestone_number": 7
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)["deleted"].as_bool(), Some(true));
+    assert_eq!(structured_json(&result)["number"].as_u64(), Some(7));
+    match api.calls().as_slice() {
+        [RecordedCall::DeleteMilestone {
+            owner,
+            repo,
+            number,
+        }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(*number, 7);
         }
         calls => panic!("unexpected calls: {calls:?}"),
     }

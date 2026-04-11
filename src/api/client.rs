@@ -10,6 +10,7 @@ use crate::error::{GbMcpError, Result};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label};
+use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
@@ -376,6 +377,54 @@ impl GitBucketApi for GitBucketClient {
         name: &'a str,
     ) -> ApiFuture<'a, ()> {
         Box::pin(async move { GitBucketClient::delete_label(self, owner, repo, name).await })
+    }
+
+    fn list_milestones<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        state: Option<&'a str>,
+    ) -> ApiFuture<'a, Vec<Milestone>> {
+        Box::pin(async move { GitBucketClient::list_milestones(self, owner, repo, state).await })
+    }
+
+    fn get_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, Milestone> {
+        Box::pin(async move { GitBucketClient::get_milestone(self, owner, repo, number).await })
+    }
+
+    fn create_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateMilestone,
+    ) -> ApiFuture<'a, Milestone> {
+        Box::pin(async move { GitBucketClient::create_milestone(self, owner, repo, body).await })
+    }
+
+    fn update_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdateMilestone,
+    ) -> ApiFuture<'a, Milestone> {
+        Box::pin(
+            async move { GitBucketClient::update_milestone(self, owner, repo, number, body).await },
+        )
+    }
+
+    fn delete_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move { GitBucketClient::delete_milestone(self, owner, repo, number).await })
     }
 
     fn list_issues<'a>(
