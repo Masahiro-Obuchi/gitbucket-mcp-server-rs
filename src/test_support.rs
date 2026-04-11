@@ -4,6 +4,7 @@ use crate::api::{ApiFuture, GitBucketApi};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
 use crate::models::label::{CreateLabel, Label as RepositoryLabel};
+use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, BranchCommit, CreateRepository, Repository};
 use crate::models::user::User;
@@ -50,6 +51,32 @@ pub enum RecordedCall {
         owner: String,
         repo: String,
         name: String,
+    },
+    ListMilestones {
+        owner: String,
+        repo: String,
+        state: Option<String>,
+    },
+    GetMilestone {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    CreateMilestone {
+        owner: String,
+        repo: String,
+        body: CreateMilestone,
+    },
+    UpdateMilestone {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: UpdateMilestone,
+    },
+    DeleteMilestone {
+        owner: String,
+        repo: String,
+        number: u64,
     },
     ListIssues {
         owner: String,
@@ -121,6 +148,8 @@ pub struct MockApi {
     branches: Vec<Branch>,
     labels: Vec<RepositoryLabel>,
     label: RepositoryLabel,
+    milestones: Vec<Milestone>,
+    milestone: Milestone,
     issues: Vec<Issue>,
     issue: Issue,
     comments: Vec<Comment>,
@@ -186,6 +215,21 @@ impl Default for MockApi {
             closed_at: None,
             comments: Some(1),
         };
+        let milestone = Milestone {
+            number: 7,
+            title: "v1.0".to_string(),
+            state: "open".to_string(),
+            description: Some("First release".to_string()),
+            due_on: Some("2026-04-01T00:00:00Z".to_string()),
+            html_url: None,
+            url: None,
+            creator: Some(user.clone()),
+            open_issues: Some(3),
+            closed_issues: Some(1),
+            created_at: None,
+            updated_at: None,
+            closed_at: None,
+        };
         let comment = Comment {
             id: 1,
             body: Some("Mock comment".to_string()),
@@ -224,6 +268,8 @@ impl Default for MockApi {
             branches: vec![branch],
             labels: vec![label.clone()],
             label,
+            milestones: vec![milestone.clone()],
+            milestone,
             issues: vec![issue.clone()],
             issue,
             comments: vec![comment.clone()],
@@ -354,6 +400,82 @@ impl GitBucketApi for MockApi {
             owner: owner.to_string(),
             repo: repo.to_string(),
             name: name.to_string(),
+        });
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn list_milestones<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        state: Option<&'a str>,
+    ) -> ApiFuture<'a, Vec<Milestone>> {
+        self.record(RecordedCall::ListMilestones {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            state: state.map(str::to_string),
+        });
+        let milestones = self.milestones.clone();
+        Box::pin(async move { Ok(milestones) })
+    }
+
+    fn get_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, Milestone> {
+        self.record(RecordedCall::GetMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(milestone) })
+    }
+
+    fn create_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        body: &'a CreateMilestone,
+    ) -> ApiFuture<'a, Milestone> {
+        self.record(RecordedCall::CreateMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(milestone) })
+    }
+
+    fn update_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdateMilestone,
+    ) -> ApiFuture<'a, Milestone> {
+        self.record(RecordedCall::UpdateMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let milestone = self.milestone.clone();
+        Box::pin(async move { Ok(milestone) })
+    }
+
+    fn delete_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, ()> {
+        self.record(RecordedCall::DeleteMilestone {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
         });
         Box::pin(async move { Ok(()) })
     }

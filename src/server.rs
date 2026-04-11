@@ -21,6 +21,7 @@ impl GitBucketMcpServer {
         let tool_router = Self::tool_router_user()
             + Self::tool_router_repository()
             + Self::tool_router_label()
+            + Self::tool_router_milestone()
             + Self::tool_router_issue()
             + Self::tool_router_pull_request();
         Self {

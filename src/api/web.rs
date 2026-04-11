@@ -106,6 +106,90 @@ impl GitBucketWebSession {
         .await
     }
 
+    pub async fn create_milestone(
+        &self,
+        owner: &str,
+        repo: &str,
+        title: &str,
+        description: Option<&str>,
+        due_date: Option<&str>,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/milestones/new"),
+            vec![
+                ("title", title.to_string()),
+                ("description", description.unwrap_or_default().to_string()),
+                ("dueDate", due_date.unwrap_or_default().to_string()),
+            ],
+            "create the milestone",
+        )
+        .await
+    }
+
+    pub async fn edit_milestone(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        title: &str,
+        description: Option<&str>,
+        due_date: Option<&str>,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/milestones/{number}/edit"),
+            vec![
+                ("title", title.to_string()),
+                ("description", description.unwrap_or_default().to_string()),
+                ("dueDate", due_date.unwrap_or_default().to_string()),
+            ],
+            "edit the milestone",
+        )
+        .await
+    }
+
+    pub async fn update_milestone_state(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        state: &str,
+    ) -> Result<()> {
+        let action = match state {
+            "open" | "close" => state,
+            other => {
+                return Err(GbMcpError::Other(format!(
+                    "Invalid milestone state action '{}'. Expected open or close.",
+                    other
+                )));
+            }
+        };
+
+        let response = self
+            .client
+            .get(format!(
+                "{}/{owner}/{repo}/issues/milestones/{number}/{action}",
+                self.base_url
+            ))
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+        self.ensure_success(response, "change the milestone state")
+            .await
+    }
+
+    pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
+        let response = self
+            .client
+            .get(format!(
+                "{}/{owner}/{repo}/issues/milestones/{number}/delete",
+                self.base_url
+            ))
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+        self.ensure_success(response, "delete the milestone").await
+    }
+
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
             .client

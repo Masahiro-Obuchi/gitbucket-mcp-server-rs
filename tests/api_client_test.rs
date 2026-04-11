@@ -369,6 +369,356 @@ async fn test_delete_label_url_encodes_name() {
 }
 
 #[tokio::test]
+async fn test_list_milestones() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/myrepo/milestones"))
+        .and(query_param("state", "all"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "number": 7,
+                "title": "v1.0",
+                "state": "open",
+                "description": "First release"
+            }
+        ])))
+        .mount(&server.mock_server)
+        .await;
+
+    let milestones = client
+        .list_milestones("testuser", "myrepo", Some("all"))
+        .await
+        .unwrap();
+    assert_eq!(milestones.len(), 1);
+    assert_eq!(milestones[0].title, "v1.0");
+}
+
+#[tokio::test]
+async fn test_get_milestone() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/myrepo/milestones/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "v1.0",
+            "state": "open",
+            "description": "First release"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let milestone = client.get_milestone("testuser", "myrepo", 7).await.unwrap();
+    assert_eq!(milestone.number, 7);
+    assert_eq!(milestone.title, "v1.0");
+}
+
+#[tokio::test]
+async fn test_create_milestone() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("POST"))
+        .and(path("/api/v3/repos/testuser/myrepo/milestones"))
+        .and(body_string_contains("\"title\":\"v1.0\""))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "v1.0",
+            "state": "open"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::milestone::CreateMilestone {
+        title: "v1.0".to_string(),
+        description: Some("First release".to_string()),
+        due_on: Some("2026-04-01".to_string()),
+    };
+    let milestone = client
+        .create_milestone("testuser", "myrepo", &body)
+        .await
+        .unwrap();
+    assert_eq!(milestone.number, 7);
+    assert_eq!(milestone.title, "v1.0");
+}
+
+#[tokio::test]
+async fn test_update_milestone() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/testuser/myrepo/milestones/7"))
+        .and(body_string_contains("\"state\":\"closed\""))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "v1.1",
+            "state": "closed"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::milestone::UpdateMilestone {
+        title: Some("v1.1".to_string()),
+        description: None,
+        due_on: None,
+        state: Some("closed".to_string()),
+    };
+    let milestone = client
+        .update_milestone("testuser", "myrepo", 7, &body)
+        .await
+        .unwrap();
+    assert_eq!(milestone.title, "v1.1");
+    assert_eq!(milestone.state, "closed");
+}
+
+#[tokio::test]
+async fn test_delete_milestone() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("DELETE"))
+        .and(path("/api/v3/repos/testuser/myrepo/milestones/7"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server.mock_server)
+        .await;
+
+    client
+        .delete_milestone("testuser", "myrepo", 7)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_create_milestone_falls_back_to_web_session_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+
+    Mock::given(method("POST"))
+        .and(path("/api/v3/repos/owner/repo/milestones"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "repo",
+            "full_name": "owner/repo",
+            "private": false,
+            "fork": false
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .and(body_string_contains("userName=alice"))
+        .and(body_string_contains("password=secret-pass"))
+        .respond_with(
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+        )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/milestones/new"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("title=v1.0"))
+        .and(body_string_contains("description=first+release"))
+        .and(body_string_contains("dueDate=2026-04-01"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("created"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/milestones"))
+        .and(query_param("state", "all"))
+        .and(query_param("per_page", "100"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "number": 7,
+                "title": "v1.0",
+                "state": "open"
+            }
+        ])))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::milestone::CreateMilestone {
+        title: "v1.0".to_string(),
+        description: Some("first release".to_string()),
+        due_on: Some("2026-04-01".to_string()),
+    };
+    let milestone = client
+        .create_milestone("owner", "repo", &body)
+        .await
+        .unwrap();
+    assert_eq!(milestone.number, 7);
+}
+
+#[tokio::test]
+async fn test_update_milestone_falls_back_to_web_session_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+    let get_call_count = Arc::new(AtomicUsize::new(0));
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/milestones/7"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/milestones/7"))
+        .respond_with({
+            let get_call_count = Arc::clone(&get_call_count);
+            move |_request: &wiremock::Request| {
+                let index = get_call_count.fetch_add(1, Ordering::SeqCst);
+                if index == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 7,
+                        "title": "v1.0",
+                        "state": "open",
+                        "description": "First release",
+                        "due_on": "2026-04-01T00:00:00Z"
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 7,
+                        "title": "v1.1",
+                        "state": "closed",
+                        "description": "",
+                        "due_on": null
+                    }))
+                }
+            }
+        })
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .and(body_string_contains("userName=alice"))
+        .and(body_string_contains("password=secret-pass"))
+        .respond_with(
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+        )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/milestones/7/edit"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("title=v1.1"))
+        .and(body_string_contains("description="))
+        .and(body_string_contains("dueDate="))
+        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/milestones/7/close"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("closed"))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::milestone::UpdateMilestone {
+        title: Some("v1.1".to_string()),
+        description: Some(String::new()),
+        due_on: Some(String::new()),
+        state: Some("closed".to_string()),
+    };
+    let milestone = client
+        .update_milestone("owner", "repo", 7, &body)
+        .await
+        .unwrap();
+    assert_eq!(milestone.title, "v1.1");
+    assert_eq!(milestone.state, "closed");
+    assert_eq!(milestone.description.as_deref(), Some(""));
+    assert!(milestone.due_on.is_none());
+}
+
+#[tokio::test]
+async fn test_delete_milestone_falls_back_to_web_session_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+
+    Mock::given(method("DELETE"))
+        .and(path("/api/v3/repos/owner/repo/milestones/7"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/milestones/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "v1.0",
+            "state": "open"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .and(body_string_contains("userName=alice"))
+        .and(body_string_contains("password=secret-pass"))
+        .respond_with(
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+        )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/milestones/7/delete"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("deleted"))
+        .mount(&server.mock_server)
+        .await;
+
+    client.delete_milestone("owner", "repo", 7).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_list_issues() {
     let server = TestServer::start().await;
     let client = server.client();
