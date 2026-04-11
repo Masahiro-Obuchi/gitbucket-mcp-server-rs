@@ -152,10 +152,10 @@ impl GitBucketWebSession {
         owner: &str,
         repo: &str,
         number: u64,
-        state: &str,
+        action: &str,
     ) -> Result<()> {
-        let action = match state {
-            "open" | "close" => state,
+        let action = match action {
+            "open" | "close" => action,
             other => {
                 return Err(GbMcpError::Other(format!(
                     "Invalid milestone state action '{}'. Expected open or close.",

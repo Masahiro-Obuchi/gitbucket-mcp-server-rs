@@ -141,17 +141,18 @@ impl GitBucketClient {
         body: &CreateMilestone,
     ) -> Result<Milestone> {
         let session = self.web_session().await?;
+        let due_date_form = body
+            .due_on
+            .as_deref()
+            .map(to_milestone_form_due_date)
+            .transpose()?;
         session
             .create_milestone(
                 owner,
                 repo,
                 &body.title,
                 body.description.as_deref(),
-                body.due_on
-                    .as_deref()
-                    .map(to_milestone_form_due_date)
-                    .transpose()?
-                    .as_deref(),
+                due_date_form.as_deref(),
             )
             .await?;
 
