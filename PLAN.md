@@ -388,6 +388,20 @@ TDDサイクル: テスト先行で各コンポーネントを構築
 
 既存の repository / issue / pull request / user ツールを壊さないため、以後の機能追加は `git worktree` で専用 branch を作成して進める。各項目は API 層、MCP ツール層、MCP 統合テスト、Docker-backed E2E、README.md / SPEC.md / TESTING.md の更新を同じ単位に含める。
 
+#### 現在進行中の実装計画: `update_label`
+
+Issue メタデータ系ツールの安定化の次ステップとして、既存の `list_labels` / `get_label` / `create_label` / `delete_label` に `update_label` を追加する。
+
+実装範囲:
+
+- `models::label` に `UpdateLabel` を追加し、`new_name`, `color`, `description` を optional field として扱う。
+- API 層に `GitBucketClient::update_label(owner, repo, name, body)` を追加し、`PATCH /api/v3/repos/{owner}/{repo}/labels/{name}` を呼び出す。既存の `get_label` / `delete_label` と同じく label 名は URL パスセグメントとして安全にエンコードする。
+- `GitBucketApi` trait とテスト用 mock に `update_label` を追加し、MCP ツール層から API 層を直接呼べるようにする。
+- MCP ツール `update_label(owner, repo, name, new_name?, color?, description?)` を追加する。`owner`, `repo`, `name` は必須、更新項目は少なくとも1つ必須とする。`color` は `create_label` と同じく `#` 付き入力を受け取り、6桁 lowercase hex に正規化する。`description` は空文字を許可し、説明のクリアに使えるようにする。
+- テストはモデル serialize、API client の URL エンコードと request body、MCP tool list/schema、MCP tool 呼び出し、validation error を追加する。
+- README.md / SPEC.md / TESTING.md を更新し、公開ツール一覧、入力仕様、検証範囲に `update_label` を反映する。
+- E2E の label lifecycle は `create -> get/list -> update -> delete` に広げ、再実行時に衝突しない一意な label 名を使う。
+
 1. **Issue メタデータ系ツールの安定化**
    - 既存の `list_labels` / `get_label` / `create_label` / `delete_label` を前提に、label 系ツールの拡充（例: update / assign 相当）と `milestone` ツールの追加を優先し、Issue 運用で頻出する分類・リリース管理を MCP から扱えるようにする。
    - REST API が 404 になる GitBucket 互換差異は、対象リソースの存在確認後に限定して web fallback を使う。

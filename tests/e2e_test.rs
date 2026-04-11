@@ -652,7 +652,8 @@ async fn test_e2e_label_lifecycle() {
     let created = create_test_label(&client, owner, repo).await;
     let name = created["name"]
         .as_str()
-        .expect("create_label should return a label name");
+        .expect("create_label should return a label name")
+        .to_string();
 
     let fetched = call_tool_json(
         &client,
@@ -664,7 +665,7 @@ async fn test_e2e_label_lifecycle() {
         }),
     )
     .await;
-    assert_eq!(fetched["name"].as_str(), Some(name));
+    assert_eq!(fetched["name"].as_str(), Some(name.as_str()));
 
     let labels = call_tool_json(
         &client,
@@ -684,18 +685,35 @@ async fn test_e2e_label_lifecycle() {
         "expected created label to appear in list_labels output: {labels}"
     );
 
+    let updated_name = format!("{name}-updated");
+    let updated = call_tool_json(
+        &client,
+        "update_label",
+        json!({
+            "owner": owner,
+            "repo": repo,
+            "name": name,
+            "new_name": updated_name,
+            "color": "#D4C5B6",
+            "description": "",
+        }),
+    )
+    .await;
+    assert_eq!(updated["name"].as_str(), Some(updated_name.as_str()));
+    assert_eq!(updated["color"].as_str(), Some("d4c5b6"));
+
     let deleted = call_tool_json(
         &client,
         "delete_label",
         json!({
             "owner": owner,
             "repo": repo,
-            "name": name,
+            "name": updated_name,
         }),
     )
     .await;
     assert_eq!(deleted["deleted"].as_bool(), Some(true));
-    assert_eq!(deleted["name"].as_str(), Some(name));
+    assert_eq!(deleted["name"].as_str(), Some(updated_name.as_str()));
 
     client.cancel().await.unwrap();
 }

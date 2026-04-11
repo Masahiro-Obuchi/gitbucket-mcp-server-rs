@@ -4,7 +4,7 @@ use std::pin::Pin;
 use crate::error::Result;
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
-use crate::models::label::{CreateLabel, Label};
+use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
@@ -42,6 +42,13 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
         owner: &'a str,
         repo: &'a str,
         body: &'a CreateLabel,
+    ) -> ApiFuture<'a, Label>;
+    fn update_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+        body: &'a UpdateLabel,
     ) -> ApiFuture<'a, Label>;
     fn delete_label<'a>(
         &'a self,

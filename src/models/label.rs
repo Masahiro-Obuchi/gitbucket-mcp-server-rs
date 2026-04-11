@@ -19,6 +19,16 @@ pub struct CreateLabel {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateLabel {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,5 +70,19 @@ mod tests {
         assert_eq!(json["name"], "bug");
         assert_eq!(json["color"], "fc2929");
         assert_eq!(json["description"], "Broken behavior");
+    }
+
+    #[test]
+    fn test_serialize_update_label_skips_missing_fields() {
+        let update = UpdateLabel {
+            new_name: Some("defect".to_string()),
+            color: None,
+            description: Some("Defect reports".to_string()),
+        };
+
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["new_name"], "defect");
+        assert_eq!(json["description"], "Defect reports");
+        assert!(json.get("color").is_none());
     }
 }

@@ -9,7 +9,7 @@ use super::{ApiFuture, GitBucketApi};
 use crate::error::{GbMcpError, Result};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
-use crate::models::label::{CreateLabel, Label};
+use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 use crate::models::repository::{Branch, CreateRepository, Repository};
@@ -131,6 +131,22 @@ impl GitBucketClient {
         let resp = self
             .client
             .patch(&url)
+            .json(body)
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+        self.handle_response(resp, "PATCH", path).await
+    }
+
+    pub(crate) async fn patch_url<T: DeserializeOwned, B: Serialize>(
+        &self,
+        url: Url,
+        path: &str,
+        body: &B,
+    ) -> Result<T> {
+        let resp = self
+            .client
+            .patch(url)
             .json(body)
             .send()
             .await
@@ -368,6 +384,16 @@ impl GitBucketApi for GitBucketClient {
         body: &'a CreateLabel,
     ) -> ApiFuture<'a, Label> {
         Box::pin(async move { GitBucketClient::create_label(self, owner, repo, body).await })
+    }
+
+    fn update_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        name: &'a str,
+        body: &'a UpdateLabel,
+    ) -> ApiFuture<'a, Label> {
+        Box::pin(async move { GitBucketClient::update_label(self, owner, repo, name, body).await })
     }
 
     fn delete_label<'a>(
