@@ -75,6 +75,7 @@ Requirements:
 - Requests accept JSON responses.
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
 - List endpoints auto-paginate with `page` and `per_page=100` until the final short page.
+- `update_label(new_name/color)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404 and the target label still exists via `GET`. The web fallback does not support label description updates.
 - `update_issue(state=...)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target Issue still exists via `GET`, and optional web credentials are configured.
 - milestone create, update, and delete may fall back to the GitBucket web UI when the REST endpoint returns HTTP 404 and the target repository or milestone can still be verified.
 

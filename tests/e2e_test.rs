@@ -721,7 +721,6 @@ async fn test_e2e_label_lifecycle() {
             "name": name,
             "new_name": updated_name,
             "color": "#D4C5B6",
-            "description": "",
         }),
     )
     .await;
