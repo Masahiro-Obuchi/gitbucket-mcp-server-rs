@@ -47,7 +47,7 @@ cargo test --test e2e_test -- --ignored --nocapture
 The write-path tests intentionally keep created repositories, Issues, comments, pull requests, and merged branches. Each run uses unique repo names, branch names, titles, file names, and comment bodies so reruns do not depend on cleanup.
 Label E2E creates, reads, updates, and deletes a unique label within the test itself so it does not leave label fixtures behind.
 Milestone E2E creates, updates, and deletes a unique milestone within the test itself so it does not leave milestone fixtures behind.
-Current GitBucket Docker coverage verifies that `update_issue(state/title/body)` falls back through the web UI on the official `4.44.0` image when web credentials are available.
+Current GitBucket Docker coverage verifies that `update_issue(state/title/body)` and `update_label(new_name/color)` fall back through the web UI on the official `4.44.0` image when web credentials are available.
 The API client also auto-paginates list endpoints with `per_page=100` until the last short page, so multi-page fixtures should be used when adding regression tests for list behavior.
 
 ## Docker E2E Flow

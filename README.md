@@ -98,8 +98,8 @@ The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` envir
 |----------|----------|-------------|---------|
 | `GITBUCKET_URL` | ✅* | GitBucket instance URL | `https://gitbucket.example.com` |
 | `GITBUCKET_TOKEN` | ✅* | Personal Access Token | `abc123...` |
-| `GITBUCKET_USERNAME` | ❌ | GitBucket username for issue update web fallback | `alice` |
-| `GITBUCKET_PASSWORD` | ❌ | GitBucket password for issue update web fallback | `secret-pass` |
+| `GITBUCKET_USERNAME` | ❌ | GitBucket username for web fallback operations | `alice` |
+| `GITBUCKET_PASSWORD` | ❌ | GitBucket password for web fallback operations | `secret-pass` |
 | `GITBUCKET_MCP_CONFIG_DIR` | ❌ | Override config directory | `/custom/path` |
 
 \* Required if not set in config file. Environment variables override config file values. `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be set together when used.
@@ -127,7 +127,7 @@ gitbucket-mcp-server
 # Option 2: Using environment variables
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-token"
-export GITBUCKET_USERNAME="alice"         # optional, for issue update web fallback only
+export GITBUCKET_USERNAME="alice"         # optional, for web fallback operations
 export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only
 gitbucket-mcp-server
 ```
@@ -202,7 +202,7 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 | `list_labels` | List labels for a repository |
 | `get_label` | Get label details |
 | `create_label` | Create a new label |
-| `update_label` | Update label name, color, or description |
+| `update_label` | Update label name, color, or description; REST-incompatible GitBucket instances can fall back for name/color only |
 | `delete_label` | Delete a label |
 
 ### Milestones
@@ -333,7 +333,7 @@ Optional variables:
 - `GITBUCKET_E2E_OWNER`: defaults to the authenticated user for `list_repositories`
 - `GITBUCKET_E2E_REPO`: required for milestone, issue, and pull request E2E against an existing repository
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD`: required for pull request write-path E2E because the tests create and push temporary branches over HTTP
-- `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD`: optional explicit credentials for `update_issue` web fallback; if omitted, E2E reuses the git credentials
+- `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD`: optional explicit credentials for web fallback tests; if omitted, E2E reuses the git credentials
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
 - Write-path E2E tests leave created repositories, Issues, comments, pull requests, and merged branches in place; they use unique repo names, branch names, titles, and bodies to avoid collisions across reruns
 - Milestone E2E creates, updates, and deletes a unique milestone within the same test so reruns do not accumulate milestone fixtures

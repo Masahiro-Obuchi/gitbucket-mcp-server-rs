@@ -385,6 +385,143 @@ async fn test_update_label_url_encodes_name() {
 }
 
 #[tokio::test]
+async fn test_update_label_falls_back_to_web_session_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+    let get_call_count = Arc::new(AtomicUsize::new(0));
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/labels/bug"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/labels/bug"))
+        .respond_with({
+            let get_call_count = Arc::clone(&get_call_count);
+            move |_request: &wiremock::Request| {
+                let index = get_call_count.fetch_add(1, Ordering::SeqCst);
+                if index == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "name": "bug",
+                        "color": "fc2929"
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "name": "defect",
+                        "color": "a1b2c3"
+                    }))
+                }
+            }
+        })
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .and(body_string_contains("userName=alice"))
+        .and(body_string_contains("password=secret-pass"))
+        .respond_with(
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
+        )
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/labels"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"<tr id="label-row-82">
+                 <a href="http://example.test/owner/repo/issues?labels=bug">bug</a>
+               </tr>"#,
+        ))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/labels/82/edit"))
+        .and(header("cookie", "JSESSIONID=session123"))
+        .and(body_string_contains("labelName=defect"))
+        .and(body_string_contains("labelColor=%23a1b2c3"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/labels/defect"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "defect",
+            "color": "a1b2c3"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::label::UpdateLabel {
+        new_name: Some("defect".to_string()),
+        color: Some("a1b2c3".to_string()),
+        description: None,
+    };
+    let label = client
+        .update_label("owner", "repo", "bug", &body)
+        .await
+        .unwrap();
+    assert_eq!(label.name, "defect");
+    assert_eq!(label.color.as_deref(), Some("a1b2c3"));
+}
+
+#[tokio::test]
+async fn test_update_label_fallback_rejects_description_change() {
+    let server = TestServer::start().await;
+    let client = server.client_with_web_auth("alice", "secret-pass");
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/labels/bug"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/labels/bug"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "bug",
+            "color": "fc2929",
+            "description": "Broken behavior"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::label::UpdateLabel {
+        new_name: Some("defect".to_string()),
+        color: None,
+        description: Some("Defect reports".to_string()),
+    };
+    let err = client
+        .update_label("owner", "repo", "bug", &body)
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("web fallback does not support label description updates"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
 async fn test_delete_label_url_encodes_name() {
     let server = TestServer::start().await;
     let client = server.client();

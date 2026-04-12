@@ -190,6 +190,43 @@ impl GitBucketWebSession {
         self.ensure_success(response, "delete the milestone").await
     }
 
+    pub async fn find_label_id(&self, owner: &str, repo: &str, name: &str) -> Result<u64> {
+        let response = self
+            .client
+            .get(format!("{}/{owner}/{repo}/issues/labels", self.base_url))
+            .send()
+            .await
+            .map_err(GbMcpError::Http)?;
+        let body = self
+            .success_text(response, "load repository labels")
+            .await?;
+        label_id_from_page(&body, name).ok_or_else(|| {
+            GbMcpError::Other(format!(
+                "Label '{}' exists in the API but could not be found in the GitBucket web UI.",
+                name
+            ))
+        })
+    }
+
+    pub async fn edit_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        label_id: u64,
+        name: &str,
+        color: &str,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/labels/{label_id}/edit"),
+            vec![
+                ("labelName", name.to_string()),
+                ("labelColor", format!("#{color}")),
+            ],
+            "edit the label",
+        )
+        .await
+    }
+
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
             .client
@@ -202,6 +239,10 @@ impl GitBucketWebSession {
     }
 
     async fn ensure_success(&self, response: Response, action: &str) -> Result<()> {
+        self.success_text(response, action).await.map(|_| ())
+    }
+
+    async fn success_text(&self, response: Response, action: &str) -> Result<String> {
         let status = response.status();
         let final_path = response.url().path().to_string();
         let body = response.text().await.unwrap_or_default();
@@ -216,7 +257,7 @@ impl GitBucketWebSession {
         }
 
         if status.is_success() || status.is_redirection() {
-            return Ok(());
+            return Ok(body);
         }
 
         let suffix = if body.trim().is_empty() {
@@ -237,6 +278,44 @@ fn normalize_web_base_url(api_base_url: &str) -> String {
     api_base_url.trim_end_matches("/api/v3").to_string()
 }
 
+fn label_id_from_page(body: &str, name: &str) -> Option<u64> {
+    let encoded_name: String = url::form_urlencoded::byte_serialize(name.as_bytes()).collect();
+    for marker in [
+        format!("issues?labels={encoded_name}"),
+        format!("issues?labels={name}"),
+    ] {
+        let Some(label_link_index) = find_label_marker(body, &marker) else {
+            continue;
+        };
+        let prefix = &body[..label_link_index];
+        let row_marker_index = prefix.rfind("label-row-")?;
+        let id_start = row_marker_index + "label-row-".len();
+        let id: String = prefix[id_start..]
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .collect();
+        if let Ok(id) = id.parse() {
+            return Some(id);
+        }
+    }
+
+    None
+}
+
+fn find_label_marker(body: &str, marker: &str) -> Option<usize> {
+    let mut offset = 0;
+    while let Some(relative_index) = body[offset..].find(marker) {
+        let index = offset + relative_index;
+        let after_marker = index + marker.len();
+        match body.as_bytes().get(after_marker) {
+            Some(b'"' | b'\'' | b'&' | b'#') | None => return Some(index),
+            _ => offset = after_marker,
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +326,44 @@ mod tests {
             normalize_web_base_url("https://example.com/gitbucket/api/v3"),
             "https://example.com/gitbucket"
         );
+    }
+
+    #[test]
+    fn test_label_id_from_page_finds_plain_label_name() {
+        let body = r#"
+          <tr id="label-row-82">
+            <a href="https://example.com/root/repo/issues?labels=needs-review">
+              <span>needs-review</span>
+            </a>
+          </tr>
+        "#;
+
+        assert_eq!(label_id_from_page(body, "needs-review"), Some(82));
+    }
+
+    #[test]
+    fn test_label_id_from_page_finds_encoded_label_name() {
+        let body = r#"
+          <tr id="label-row-83">
+            <a href="https://example.com/root/repo/issues?labels=needs+review">
+              <span>needs review</span>
+            </a>
+          </tr>
+        "#;
+
+        assert_eq!(label_id_from_page(body, "needs review"), Some(83));
+    }
+
+    #[test]
+    fn test_label_id_from_page_does_not_match_label_prefix() {
+        let body = r#"
+          <tr id="label-row-83">
+            <a href="https://example.com/root/repo/issues?labels=bugfix">
+              <span>bugfix</span>
+            </a>
+          </tr>
+        "#;
+
+        assert_eq!(label_id_from_page(body, "bug"), None);
     }
 }
