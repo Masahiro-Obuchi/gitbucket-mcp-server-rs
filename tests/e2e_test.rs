@@ -159,12 +159,9 @@ fn unique_suffix() -> String {
     format!("{}-{}", std::process::id(), now)
 }
 
-fn git_repo_url(config: &E2eConfig, owner: &str, repo: &str) -> String {
+fn authenticated_git_url(config: &E2eConfig, clone_url: &str) -> String {
     let (username, password) = config.git_credentials();
-    let mut url = Url::parse(&config.url).expect("GITBUCKET_E2E_URL must be a valid URL");
-    let mut path = url.path().trim_end_matches('/').to_string();
-    path.push_str(&format!("/{owner}/{repo}.git"));
-    url.set_path(&path);
+    let mut url = Url::parse(clone_url).expect("repository clone_url must be a valid URL");
     url.set_username(username)
         .expect("git username should be URL-safe");
     url.set_password(Some(password))
@@ -210,6 +207,35 @@ async fn repository_default_branch(
         .to_string()
 }
 
+async fn repository_git_metadata(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    owner: &str,
+    repo: &str,
+) -> (String, String) {
+    let repository = call_tool_json(
+        client,
+        "get_repository",
+        json!({
+            "owner": owner,
+            "repo": repo,
+        }),
+    )
+    .await;
+
+    let default_branch = repository["default_branch"]
+        .as_str()
+        .filter(|branch| !branch.is_empty())
+        .expect("repository should expose a default branch for PR E2E")
+        .to_string();
+    let clone_url = repository["clone_url"]
+        .as_str()
+        .filter(|url| !url.is_empty())
+        .expect("repository should expose a clone_url for PR E2E")
+        .to_string();
+
+    (default_branch, clone_url)
+}
+
 #[derive(Debug)]
 struct PrBranchSeed {
     base_branch: String,
@@ -222,8 +248,8 @@ async fn push_test_pr_branch(
     owner: &str,
     repo: &str,
 ) -> PrBranchSeed {
-    let base_branch = repository_default_branch(client, owner, repo).await;
-    let remote_url = git_repo_url(config, owner, repo);
+    let (base_branch, clone_url) = repository_git_metadata(client, owner, repo).await;
+    let remote_url = authenticated_git_url(config, &clone_url);
     let temp_dir = TempDir::new().expect("temporary directory should be created");
     let worktree = temp_dir.path().join("repo");
     let worktree_str = worktree.to_string_lossy().into_owned();
