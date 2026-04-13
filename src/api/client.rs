@@ -290,15 +290,33 @@ impl GitBucketClient {
 }
 
 fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
+    if body.trim().is_empty() {
+        return Err(GbMcpError::Other(
+            "GitBucket API returned an empty response body".to_string(),
+        ));
+    }
+
     let value: Value = serde_json::from_str(body).map_err(GbMcpError::Json)?;
 
+    if let Some((status, message)) = wrapped_error(&value) {
+        return Err(GbMcpError::Api { status, message });
+    }
+
     if let Some(inner) = value.as_str() {
+        if inner.trim().is_empty() {
+            return Err(GbMcpError::Other(
+                "GitBucket API returned an empty response body".to_string(),
+            ));
+        }
         return serde_json::from_str(inner).map_err(GbMcpError::Json);
     }
 
     if value.get("status").is_some() {
         if let Some(inner) = value.get("body") {
             return match inner {
+                Value::String(text) if text.trim().is_empty() => Err(GbMcpError::Other(
+                    "GitBucket API returned an empty response body".to_string(),
+                )),
                 Value::String(text) => serde_json::from_str(text).map_err(GbMcpError::Json),
                 other => serde_json::from_value(other.clone()).map_err(GbMcpError::Json),
             };
@@ -306,6 +324,59 @@ fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
     }
 
     serde_json::from_value(value).map_err(GbMcpError::Json)
+}
+
+fn wrapped_error(value: &Value) -> Option<(u16, String)> {
+    let status = value.get("status").and_then(status_code_from_value)?;
+    if (200..300).contains(&status) {
+        return None;
+    }
+
+    Some((status, wrapped_error_message(value, status)))
+}
+
+fn status_code_from_value(value: &Value) -> Option<u16> {
+    match value {
+        Value::Number(number) => number
+            .as_u64()
+            .and_then(|status| u16::try_from(status).ok()),
+        Value::String(text) => text.parse::<u16>().ok(),
+        _ => None,
+    }
+}
+
+fn wrapped_error_message(value: &Value, status: u16) -> String {
+    value
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("body")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|message| !message.is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            value
+                .get("body")
+                .filter(|body| {
+                    !body.is_null()
+                        && !body
+                            .as_str()
+                            .is_some_and(|message| message.trim().is_empty())
+                })
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| {
+            reqwest::StatusCode::from_u16(status)
+                .ok()
+                .and_then(|status| status.canonical_reason().map(str::to_string))
+                .unwrap_or_else(|| "GitBucket API request failed".to_string())
+        })
 }
 
 fn resolve_web_credentials(
@@ -735,5 +806,34 @@ mod tests {
                 name: "wrapped".to_string()
             }
         );
+    }
+
+    #[test]
+    fn test_parse_success_body_maps_wrapped_404_to_api_error() {
+        let err = parse_success_body::<WrappedValue>(r#"{"status":404,"body":""}"#).unwrap_err();
+
+        match err {
+            GbMcpError::Api { status, message } => {
+                assert_eq!(status, 404);
+                assert_eq!(message, "Not Found");
+            }
+            err => panic!("expected wrapped API error, got {err:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_success_body_maps_wrapped_error_message_to_api_error() {
+        let err = parse_success_body::<WrappedValue>(
+            r#"{"status":"422","message":"Validation Failed","body":""}"#,
+        )
+        .unwrap_err();
+
+        match err {
+            GbMcpError::Api { status, message } => {
+                assert_eq!(status, 422);
+                assert_eq!(message, "Validation Failed");
+            }
+            err => panic!("expected wrapped API error, got {err:?}"),
+        }
     }
 }
