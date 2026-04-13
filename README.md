@@ -104,6 +104,12 @@ The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` envir
 
 \* Required if not set in config file. Environment variables override config file values. `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be set together when used.
 
+`GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are used only when this MCP server
+falls back to GitBucket's web UI for operations that are unavailable through the
+REST API. They are **not** used for Git over HTTP operations such as `git clone`,
+`git fetch`, or `git push`. Configure your Git credential helper separately if
+Git commands prompt for a username or password.
+
 ### Priority
 
 1. **Environment variables** (highest priority)
@@ -128,7 +134,7 @@ gitbucket-mcp-server
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-token"
 export GITBUCKET_USERNAME="alice"         # optional, for web fallback operations
-export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only
+export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only, not used by git push
 gitbucket-mcp-server
 ```
 
