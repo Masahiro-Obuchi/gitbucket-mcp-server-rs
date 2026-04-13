@@ -134,7 +134,7 @@ gitbucket-mcp-server
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-token"
 export GITBUCKET_USERNAME="alice"         # optional, for web fallback operations
-export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only, not used by git push
+export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only, not used by Git-over-HTTP commands
 gitbucket-mcp-server
 ```
 
