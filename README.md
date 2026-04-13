@@ -13,7 +13,7 @@ This is an unofficial community project and is not affiliated with the GitBucket
 - **Labels**: List, view, create, update, and delete repository labels
 - **Milestones**: List, view, create, update, and delete repository milestones
 - **Issue Tracking**: List, view, create, update issues; manage comments
-- **Pull Requests**: List, view, create, merge PRs; add comments
+- **Pull Requests**: List, view, create, update, merge PRs; add comments
 - **User Info**: Get authenticated user and look up other users
 
 ## Requirements
@@ -222,6 +222,7 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 | `list_pull_requests` | List pull requests (filterable by state) |
 | `get_pull_request` | Get PR details |
 | `create_pull_request` | Create a new pull request |
+| `update_pull_request` | Update PR state, title, body, or base branch |
 | `merge_pull_request` | Merge a pull request |
 | `add_pull_request_comment` | Add a comment to a pull request |
 

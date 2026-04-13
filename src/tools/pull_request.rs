@@ -5,10 +5,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::models::comment::CreateComment;
-use crate::models::pull_request::{CreatePullRequest, MergePullRequest};
+use crate::models::pull_request::{CreatePullRequest, MergePullRequest, UpdatePullRequest};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
-use crate::tools::validation::{list_state, optional_trimmed, required_trimmed};
+use crate::tools::validation::{
+    error, issue_state, list_state, optional_trimmed, required_trimmed,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListPullRequestsParams {
@@ -44,6 +46,24 @@ pub struct CreatePullRequestParams {
     pub base: String,
     #[schemars(description = "Pull request body/description")]
     pub body: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdatePullRequestParams {
+    #[schemars(description = "Repository owner")]
+    pub owner: String,
+    #[schemars(description = "Repository name")]
+    pub repo: String,
+    #[schemars(description = "Pull request number")]
+    pub pull_number: u64,
+    #[schemars(description = "New state: open or closed")]
+    pub state: Option<String>,
+    #[schemars(description = "New title")]
+    pub title: Option<String>,
+    #[schemars(description = "New body")]
+    pub body: Option<String>,
+    #[schemars(description = "New base branch")]
+    pub base: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -157,6 +177,63 @@ impl GitBucketMcpServer {
             body: optional_trimmed(params.body),
         };
         match self.client.create_pull_request(&owner, &repo, &body).await {
+            Ok(pr) => success(&pr),
+            Err(e) => from_gb_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Update a pull request in a GitBucket repository (change state, title, body, or base branch)"
+    )]
+    pub async fn update_pull_request(
+        &self,
+        Parameters(params): Parameters<UpdatePullRequestParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let owner = match required_trimmed(&params.owner, "owner") {
+            Ok(owner) => owner,
+            Err(err) => return validation_error(err),
+        };
+        let repo = match required_trimmed(&params.repo, "repo") {
+            Ok(repo) => repo,
+            Err(err) => return validation_error(err),
+        };
+        let state = match issue_state(params.state) {
+            Ok(state) => state,
+            Err(err) => return validation_error(err),
+        };
+        let title = match params.title {
+            Some(title) => match required_trimmed(&title, "title") {
+                Ok(title) => Some(title),
+                Err(err) => return validation_error(err),
+            },
+            None => None,
+        };
+        let body = optional_trimmed(params.body);
+        let base = match params.base {
+            Some(base) => match required_trimmed(&base, "base") {
+                Ok(base) => Some(base),
+                Err(err) => return validation_error(err),
+            },
+            None => None,
+        };
+
+        if state.is_none() && title.is_none() && body.is_none() && base.is_none() {
+            return validation_error(error(
+                "at least one of state, title, body, or base must be provided",
+            ));
+        }
+
+        let body = UpdatePullRequest {
+            state,
+            title,
+            body,
+            base,
+        };
+        match self
+            .client
+            .update_pull_request(&owner, &repo, params.pull_number, &body)
+            .await
+        {
             Ok(pr) => success(&pr),
             Err(e) => from_gb_error(e),
         }
@@ -327,6 +404,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_update_pull_request_rejects_empty_change_set() {
+        let client = GitBucketClient::new("https://gitbucket.example.com", "test-token").unwrap();
+        let server = GitBucketMcpServer::new(client);
+
+        let result = server
+            .update_pull_request(Parameters(UpdatePullRequestParams {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                pull_number: 7,
+                state: None,
+                title: None,
+                body: None,
+                base: None,
+            }))
+            .await;
+
+        assert_eq!(
+            error_payload(result),
+            ToolErrorPayload {
+                kind: "validation_error".to_string(),
+                message: "at least one of state, title, body, or base must be provided".to_string(),
+                status: None,
+            }
+        );
+    }
+
+    #[tokio::test]
     async fn test_create_pull_request_passes_trimmed_fields_to_api_and_serializes_response() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
@@ -352,6 +456,44 @@ mod tests {
                 assert_eq!(body.head, "feature-branch");
                 assert_eq!(body.base, "main");
                 assert_eq!(body.body.as_deref(), Some("PR body"));
+            }
+            calls => panic!("unexpected calls: {calls:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_pull_request_passes_trimmed_fields_to_api_and_serializes_response() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+
+        let result = server
+            .update_pull_request(Parameters(UpdatePullRequestParams {
+                owner: " owner ".to_string(),
+                repo: " repo ".to_string(),
+                pull_number: 7,
+                state: Some("closed".to_string()),
+                title: Some("  Updated PR  ".to_string()),
+                body: Some("  Updated body  ".to_string()),
+                base: Some("  develop  ".to_string()),
+            }))
+            .await;
+
+        let result = success_json(result);
+        assert_eq!(result["title"].as_str(), Some("Mock PR"));
+        match mock.calls().as_slice() {
+            [RecordedCall::UpdatePullRequest {
+                owner,
+                repo,
+                number,
+                body,
+            }] => {
+                assert_eq!(owner, "owner");
+                assert_eq!(repo, "repo");
+                assert_eq!(*number, 7);
+                assert_eq!(body.state.as_deref(), Some("closed"));
+                assert_eq!(body.title.as_deref(), Some("Updated PR"));
+                assert_eq!(body.body.as_deref(), Some("Updated body"));
+                assert_eq!(body.base.as_deref(), Some("develop"));
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }

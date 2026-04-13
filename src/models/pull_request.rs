@@ -40,6 +40,18 @@ pub struct CreatePullRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdatePullRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergePullRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
@@ -106,6 +118,22 @@ mod tests {
         assert_eq!(json["title"], "New feature");
         assert_eq!(json["head"], "feature-branch");
         assert_eq!(json["base"], "main");
+    }
+
+    #[test]
+    fn test_serialize_update_pull_request_skips_missing_fields() {
+        let update = UpdatePullRequest {
+            state: Some("closed".to_string()),
+            title: None,
+            body: Some(String::new()),
+            base: None,
+        };
+
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["state"], "closed");
+        assert_eq!(json["body"], "");
+        assert!(json.get("title").is_none());
+        assert!(json.get("base").is_none());
     }
 
     #[test]

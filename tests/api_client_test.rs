@@ -1421,6 +1421,186 @@ async fn test_create_pull_request() {
 }
 
 #[tokio::test]
+async fn test_update_pull_request() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/pulls/7"))
+        .and(body_string_contains("\"title\":\"Updated PR\""))
+        .and(body_string_contains("\"body\":\"Updated body\""))
+        .and(body_string_contains("\"state\":\"closed\""))
+        .and(body_string_contains("\"base\":\"develop\""))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "Updated PR",
+            "body": "Updated body",
+            "state": "closed",
+            "base": {"ref": "develop", "sha": "abc"}
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
+        state: Some("closed".to_string()),
+        title: Some("Updated PR".to_string()),
+        body: Some("Updated body".to_string()),
+        base: Some("develop".to_string()),
+    };
+    let pr = client
+        .update_pull_request("owner", "repo", 7, &body)
+        .await
+        .unwrap();
+    assert_eq!(pr.title, "Updated PR");
+    assert_eq!(pr.state, "closed");
+    assert_eq!(pr.base.as_ref().unwrap().ref_name, "develop");
+}
+
+#[tokio::test]
+async fn test_update_pull_request_falls_back_to_issue_update_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client();
+    let get_pr_call_count = Arc::new(AtomicUsize::new(0));
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/pulls/7"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "message": "Not Found"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls/7"))
+        .respond_with({
+            let get_pr_call_count = Arc::clone(&get_pr_call_count);
+            move |_request: &wiremock::Request| {
+                let call_index = get_pr_call_count.fetch_add(1, Ordering::SeqCst);
+                if call_index == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 7,
+                        "title": "Original PR",
+                        "body": "original body",
+                        "state": "open"
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number": 7,
+                        "title": "Updated PR",
+                        "body": "updated body",
+                        "state": "closed"
+                    }))
+                }
+            }
+        })
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/issues/7"))
+        .and(body_string_contains("\"title\":\"Updated PR\""))
+        .and(body_string_contains("\"body\":\"updated body\""))
+        .and(body_string_contains("\"state\":\"closed\""))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "Updated PR",
+            "body": "updated body",
+            "state": "closed"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
+        state: Some("closed".to_string()),
+        title: Some("Updated PR".to_string()),
+        body: Some("updated body".to_string()),
+        base: None,
+    };
+    let pr = client
+        .update_pull_request("owner", "repo", 7, &body)
+        .await
+        .unwrap();
+    assert_eq!(pr.title, "Updated PR");
+    assert_eq!(pr.state, "closed");
+}
+
+#[tokio::test]
+async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/pulls/404"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Pull API not found"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls/404"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Pull not found"))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
+        state: Some("closed".to_string()),
+        title: None,
+        body: None,
+        base: None,
+    };
+    let err = client
+        .update_pull_request("owner", "repo", 404, &body)
+        .await
+        .unwrap_err();
+
+    match err {
+        gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
+            assert_eq!(status, 404);
+            assert_eq!(message, "Pull API not found");
+        }
+        err => panic!("expected original API 404, got {err:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_update_pull_request_fallback_rejects_base_branch_change() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/pulls/7"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 7,
+            "title": "Original PR",
+            "state": "open"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
+        state: None,
+        title: None,
+        body: None,
+        base: Some("develop".to_string()),
+    };
+    let err = client
+        .update_pull_request("owner", "repo", 7, &body)
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("fallback cannot update the base branch"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
 async fn test_merge_pull_request() {
     let server = TestServer::start().await;
     let client = server.client();
