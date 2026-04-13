@@ -1421,6 +1421,34 @@ async fn test_create_pull_request() {
 }
 
 #[tokio::test]
+async fn test_get_pull_request_maps_wrapped_404_to_api_error() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls/9999"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": 404,
+            "body": ""
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let err = client
+        .get_pull_request("owner", "repo", 9999)
+        .await
+        .unwrap_err();
+
+    match err {
+        gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
+            assert_eq!(status, 404);
+            assert_eq!(message, "Not Found");
+        }
+        err => panic!("expected API 404, got {err:?}"),
+    }
+}
+
+#[tokio::test]
 async fn test_update_pull_request() {
     let server = TestServer::start().await;
     let client = server.client();
@@ -1454,6 +1482,49 @@ async fn test_update_pull_request() {
     assert_eq!(pr.title, "Updated PR");
     assert_eq!(pr.state, "closed");
     assert_eq!(pr.base.as_ref().unwrap().ref_name, "develop");
+}
+
+#[tokio::test]
+async fn test_update_pull_request_maps_wrapped_404_to_api_error() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/pulls/9999"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": 404,
+            "body": ""
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls/9999"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": 404,
+            "body": ""
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
+        state: Some("closed".to_string()),
+        title: None,
+        body: None,
+        base: None,
+    };
+    let err = client
+        .update_pull_request("owner", "repo", 9999, &body)
+        .await
+        .unwrap_err();
+
+    match err {
+        gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
+            assert_eq!(status, 404);
+            assert_eq!(message, "Not Found");
+        }
+        err => panic!("expected API 404, got {err:?}"),
+    }
 }
 
 #[tokio::test]
@@ -1625,6 +1696,39 @@ async fn test_merge_pull_request() {
         .await
         .unwrap();
     assert_eq!(result.merged, Some(true));
+}
+
+#[tokio::test]
+async fn test_merge_pull_request_maps_wrapped_404_to_api_error() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("PUT"))
+        .and(path("/api/v3/repos/owner/repo/pulls/9999/merge"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status": 404,
+            "body": ""
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let body = gitbucket_mcp_server::models::pull_request::MergePullRequest {
+        commit_message: Some("Merge PR".to_string()),
+        sha: None,
+        merge_method: None,
+    };
+    let err = client
+        .merge_pull_request("owner", "repo", 9999, &body)
+        .await
+        .unwrap_err();
+
+    match err {
+        gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
+            assert_eq!(status, 404);
+            assert_eq!(message, "Not Found");
+        }
+        err => panic!("expected API 404, got {err:?}"),
+    }
 }
 
 #[tokio::test]
