@@ -7,7 +7,7 @@ use gitbucket_mcp_server::models::issue::{CreateIssue, Issue, Label, UpdateIssue
 use gitbucket_mcp_server::models::label::{CreateLabel, Label as RepositoryLabel, UpdateLabel};
 use gitbucket_mcp_server::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use gitbucket_mcp_server::models::pull_request::{
-    CreatePullRequest, MergePullRequest, MergeResult, PullRequest,
+    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
 };
 use gitbucket_mcp_server::models::repository::{
     Branch, BranchCommit, CreateRepository, Repository,
@@ -141,6 +141,12 @@ enum RecordedCall {
         owner: String,
         repo: String,
         body: CreatePullRequest,
+    },
+    UpdatePullRequest {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: UpdatePullRequest,
     },
     MergePullRequest {
         owner: String,
@@ -637,6 +643,23 @@ impl GitBucketApi for IntegrationMockApi {
         Box::pin(async move { Ok(pull_request) })
     }
 
+    fn update_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdatePullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        self.record(RecordedCall::UpdatePullRequest {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+            body: body.clone(),
+        });
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(pull_request) })
+    }
+
     fn merge_pull_request<'a>(
         &'a self,
         owner: &'a str,
@@ -766,6 +789,7 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "update_label",
         "update_milestone",
         "update_issue",
+        "update_pull_request",
     ]);
 
     assert_eq!(tool_names, expected);
@@ -820,6 +844,10 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     );
     assert_eq!(
         required_fields(&tools, "merge_pull_request"),
+        json!(["owner", "repo", "pull_number"])
+    );
+    assert_eq!(
+        required_fields(&tools, "update_pull_request"),
         json!(["owner", "repo", "pull_number"])
     );
 
@@ -1320,6 +1348,52 @@ async fn test_mcp_call_tool_merge_pull_request_trims_commit_message_and_serializ
 }
 
 #[tokio::test]
+async fn test_mcp_call_tool_update_pull_request_trims_fields_and_serializes_json() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("update_pull_request").with_arguments(
+                json!({
+                    "owner": " owner ",
+                    "repo": " repo ",
+                    "pull_number": 7,
+                    "state": "closed",
+                    "title": "  Updated PR  ",
+                    "body": "  updated body  ",
+                    "base": "  develop  "
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(structured_json(&result)["title"].as_str(), Some("Mock PR"));
+    match api.calls().as_slice() {
+        [RecordedCall::UpdatePullRequest {
+            owner,
+            repo,
+            number,
+            body,
+        }] => {
+            assert_eq!(owner, "owner");
+            assert_eq!(repo, "repo");
+            assert_eq!(*number, 7);
+            assert_eq!(body.state.as_deref(), Some("closed"));
+            assert_eq!(body.title.as_deref(), Some("Updated PR"));
+            assert_eq!(body.body.as_deref(), Some("updated body"));
+            assert_eq!(body.base.as_deref(), Some("develop"));
+        }
+        calls => panic!("unexpected calls: {calls:?}"),
+    }
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn test_mcp_call_tool_returns_validation_error_for_blank_username() {
     let (client, api) = spawn_client_and_server().await;
 
@@ -1409,6 +1483,39 @@ async fn test_mcp_call_tool_returns_validation_error_for_empty_issue_update() {
         ToolErrorPayload {
             kind: "validation_error".to_string(),
             message: "at least one of state, title, or body must be provided".to_string(),
+            status: None,
+        }
+    );
+    assert!(api.calls().is_empty());
+
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_call_tool_returns_validation_error_for_empty_pull_request_update() {
+    let (client, api) = spawn_client_and_server().await;
+
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("update_pull_request").with_arguments(
+                json!({
+                    "owner": "owner",
+                    "repo": "repo",
+                    "pull_number": 7
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        structured_error(&result),
+        ToolErrorPayload {
+            kind: "validation_error".to_string(),
+            message: "at least one of state, title, body, or base must be provided".to_string(),
             status: None,
         }
     );

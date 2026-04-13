@@ -5,7 +5,9 @@ use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
 use crate::models::label::{CreateLabel, Label as RepositoryLabel, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
-use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
+use crate::models::pull_request::{
+    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
+};
 use crate::models::repository::{Branch, BranchCommit, CreateRepository, Repository};
 use crate::models::user::User;
 
@@ -130,6 +132,12 @@ pub enum RecordedCall {
         owner: String,
         repo: String,
         body: CreatePullRequest,
+    },
+    UpdatePullRequest {
+        owner: String,
+        repo: String,
+        number: u64,
+        body: UpdatePullRequest,
     },
     MergePullRequest {
         owner: String,
@@ -631,6 +639,23 @@ impl GitBucketApi for MockApi {
         self.record(RecordedCall::CreatePullRequest {
             owner: owner.to_string(),
             repo: repo.to_string(),
+            body: body.clone(),
+        });
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(pull_request) })
+    }
+
+    fn update_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdatePullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        self.record(RecordedCall::UpdatePullRequest {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
             body: body.clone(),
         });
         let pull_request = self.pull_request.clone();

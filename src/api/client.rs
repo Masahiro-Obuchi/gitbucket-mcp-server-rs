@@ -11,7 +11,9 @@ use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
-use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
+use crate::models::pull_request::{
+    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
+};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
@@ -535,6 +537,18 @@ impl GitBucketApi for GitBucketClient {
         body: &'a CreatePullRequest,
     ) -> ApiFuture<'a, PullRequest> {
         Box::pin(async move { GitBucketClient::create_pull_request(self, owner, repo, body).await })
+    }
+
+    fn update_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdatePullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        Box::pin(async move {
+            GitBucketClient::update_pull_request(self, owner, repo, number, body).await
+        })
     }
 
     fn merge_pull_request<'a>(

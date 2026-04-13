@@ -6,7 +6,9 @@ use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
-use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
+use crate::models::pull_request::{
+    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
+};
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
@@ -139,6 +141,13 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
         owner: &'a str,
         repo: &'a str,
         body: &'a CreatePullRequest,
+    ) -> ApiFuture<'a, PullRequest>;
+    fn update_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a UpdatePullRequest,
     ) -> ApiFuture<'a, PullRequest>;
     fn merge_pull_request<'a>(
         &'a self,
