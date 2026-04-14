@@ -39,21 +39,33 @@ impl GitBucketClient {
         name: &str,
         body: &UpdateLabel,
     ) -> Result<Label> {
-        let current = self.get_label(owner, repo, name).await?;
-        let next_name = body.new_name.as_deref().unwrap_or(current.name.as_str());
+        // Only fetch the current label when we need it to fill in missing fields.
+        let current_opt: Option<Label> = if body.new_name.is_none() || body.color.is_none() {
+            Some(self.get_label(owner, repo, name).await?)
+        } else {
+            None
+        };
+
+        let next_name = body
+            .new_name
+            .as_deref()
+            .or_else(|| current_opt.as_ref().map(|c| c.name.as_str()))
+            .unwrap_or(name)
+            .to_string();
         let next_color = body
             .color
             .as_deref()
-            .or(current.color.as_deref())
+            .or_else(|| current_opt.as_ref().and_then(|c| c.color.as_deref()))
             .ok_or_else(|| {
                 GbMcpError::Other(
                     "The current label color could not be fetched for label update.".to_string(),
                 )
             })?
-            .trim_start_matches('#');
+            .trim_start_matches('#')
+            .to_string();
         let request = GitBucketUpdateLabel {
-            name: next_name,
-            color: next_color,
+            name: &next_name,
+            color: &next_color,
             description: body.description.as_deref(),
         };
         let path = format!("/repos/{owner}/{repo}/labels/{name}");
@@ -61,6 +73,11 @@ impl GitBucketClient {
         match self.patch_url(url, &path, &request).await {
             Ok(label) => Ok(label),
             Err(err @ GbMcpError::Api { status: 404, .. }) => {
+                // Lazily fetch current label for the web fallback if we skipped it above.
+                let current = match current_opt {
+                    Some(c) => c,
+                    None => self.get_label(owner, repo, name).await?,
+                };
                 self.update_label_with_404_handling(owner, repo, body, &current, err)
                     .await
             }
