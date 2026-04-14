@@ -9,9 +9,63 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  release-checks:
+    name: Release checks
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          if [[ -z "${version}" ]]; then
+            echo "Could not read package version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="v${{ steps.version.outputs.value }}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected}" ]]; then
+            echo "Release tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${expected}" >&2
+            exit 1
+          fi
+
   build-release-assets:
-    name: Release ${{ matrix.target }}
+    name: Package ${{ matrix.target }}
+    needs: release-checks
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -50,39 +104,40 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Read package version
-        id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          echo "value=${version}" >> "$GITHUB_OUTPUT"
-
       - name: Package archive (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ steps.version.outputs.value }}"
+          version="${{ needs.release-checks.outputs.version }}"
           archive_base="gitbucket-mcp-server-${version}-${{ matrix.target }}"
           archive_dir="dist/${archive_base}"
           mkdir -p "${archive_dir}"
           cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "${archive_dir}/gitbucket-mcp-server"
-          cp README.md LICENSE "${archive_dir}/"
+          cp README.md LICENSE VERIFICATION.md "${archive_dir}/"
           tar -C dist -czf "dist/${archive_base}.${{ matrix.archive_ext }}" "${archive_base}"
-          shasum -a 256 "dist/${archive_base}.${{ matrix.archive_ext }}" > "dist/${archive_base}.${{ matrix.archive_ext }}.sha256"
+          (
+            cd dist
+            shasum -a 256 "${archive_base}.${{ matrix.archive_ext }}" > "${archive_base}.${{ matrix.archive_ext }}.sha256"
+          )
 
       - name: Package archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = "${{ steps.version.outputs.value }}"
+          $version = "${{ needs.release-checks.outputs.version }}"
           $archiveBase = "gitbucket-mcp-server-$version-${{ matrix.target }}"
           $archiveDir = Join-Path "dist" $archiveBase
           New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" (Join-Path $archiveDir "gitbucket-mcp-server.exe")
-          Copy-Item README.md, LICENSE $archiveDir
-          Compress-Archive -Path (Join-Path $archiveDir '*') -DestinationPath "dist/$archiveBase.${{ matrix.archive_ext }}" -Force
+          Copy-Item README.md, LICENSE, VERIFICATION.md $archiveDir
+          Push-Location "dist"
+          try {
+            Compress-Archive -Path $archiveBase -DestinationPath "$archiveBase.${{ matrix.archive_ext }}" -Force
+          }
+          finally {
+            Pop-Location
+          }
           $hash = (Get-FileHash "dist/$archiveBase.${{ matrix.archive_ext }}" -Algorithm SHA256).Hash.ToLower()
           "$hash  $archiveBase.${{ matrix.archive_ext }}" | Set-Content "dist/$archiveBase.${{ matrix.archive_ext }}.sha256"
 
@@ -92,10 +147,29 @@ jobs:
           name: release-${{ matrix.target }}
           path: dist/*
 
-      - name: Upload GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/')
+  publish-github-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - release-checks
+      - build-release-assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
+          prerelease: ${{ contains(needs.release-checks.outputs.version, '-') }}
           files: |
-            dist/*.${{ matrix.archive_ext }}
-            dist/*.${{ matrix.archive_ext }}.sha256
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+            dist/*.zip
+            dist/*.zip.sha256

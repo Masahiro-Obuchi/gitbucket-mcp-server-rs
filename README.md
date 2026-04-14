@@ -1,6 +1,7 @@
 # GitBucket MCP Server
 [![CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/ci.yml)
 [![E2E](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/e2e.yml/badge.svg)](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/e2e.yml)
+[![Release](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/release.yml/badge.svg)](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/workflows/release.yml)
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [GitBucket](https://gitbucket.github.io/), written in Rust.
 
@@ -47,6 +48,8 @@ gitbucket-mcp-server-<version>-<target>.zip
 ```
 
 Each release also includes a `.sha256` checksum file.
+
+For maintainer release steps, see [RELEASE.md](./RELEASE.md).
 
 ### cargo install
 
