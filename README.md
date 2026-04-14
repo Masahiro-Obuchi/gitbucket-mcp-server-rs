@@ -178,6 +178,10 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 }
 ```
 
+### Codex Skill Sample
+
+This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./skills/gitbucket-mcp/). It gives agents GitBucket-specific guidance for choosing MCP tools, interpreting structured list results, handling compatibility fallbacks, and confirming destructive operations.
+
 ## Available Tools
 
 ### Repository

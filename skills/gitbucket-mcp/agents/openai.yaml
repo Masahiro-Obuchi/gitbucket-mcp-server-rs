@@ -1,0 +1,7 @@
+interface:
+  display_name: "GitBucket MCP"
+  short_description: "Operate GitBucket through MCP tools"
+  default_prompt: "Use $gitbucket-mcp to inspect and update GitBucket repositories, issues, pull requests, labels, and milestones safely."
+
+policy:
+  allow_implicit_invocation: true
