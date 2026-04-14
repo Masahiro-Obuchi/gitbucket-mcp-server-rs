@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::label::{CreateLabel, UpdateLabel};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
+use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{error, label_color, optional_trimmed, required_trimmed};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -89,7 +89,7 @@ impl GitBucketMcpServer {
         };
 
         match self.client.list_labels(&owner, &repo).await {
-            Ok(labels) => success(&labels),
+            Ok(labels) => success_list("labels", &labels),
             Err(err) => from_gb_error(err),
         }
     }
@@ -325,7 +325,7 @@ mod tests {
             .await;
 
         let result = success_json(result);
-        assert_eq!(result[0]["name"].as_str(), Some("bug"));
+        assert_eq!(result["labels"][0]["name"].as_str(), Some("bug"));
         match mock.calls().as_slice() {
             [RecordedCall::ListLabels { owner, repo }] => {
                 assert_eq!(owner, "alice");

@@ -356,9 +356,18 @@ async fn test_update_label_url_encodes_name() {
     let server = TestServer::start().await;
     let client = server.client();
 
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "needs review",
+            "color": "fc2929"
+        })))
+        .mount(&server.mock_server)
+        .await;
+
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
-        .and(body_string_contains("\"new_name\":\"needs-review\""))
+        .and(body_string_contains("\"name\":\"needs-review\""))
         .and(body_string_contains("\"color\":\"a1b2c3\""))
         .and(body_string_contains(
             "\"description\":\"Needs extra review\"",
@@ -471,7 +480,7 @@ async fn test_update_label_falls_back_to_web_session_on_404() {
     let body = gitbucket_mcp_server::models::label::UpdateLabel {
         new_name: Some("defect".to_string()),
         color: Some("a1b2c3".to_string()),
-        description: None,
+        description: Some("Defect reports".to_string()),
     };
     let label = client
         .update_label("owner", "repo", "bug", &body)
@@ -505,7 +514,7 @@ async fn test_update_label_fallback_rejects_description_change() {
         .await;
 
     let body = gitbucket_mcp_server::models::label::UpdateLabel {
-        new_name: Some("defect".to_string()),
+        new_name: None,
         color: None,
         description: Some("Defect reports".to_string()),
     };
@@ -516,7 +525,7 @@ async fn test_update_label_fallback_rejects_description_change() {
 
     assert!(
         err.to_string()
-            .contains("web fallback does not support label description updates"),
+            .contains("does not support label description-only updates"),
         "unexpected error: {err}"
     );
 }
@@ -982,6 +991,28 @@ async fn test_get_issue() {
 }
 
 #[tokio::test]
+async fn test_get_closed_issue_fills_closed_at_from_updated_at_when_missing() {
+    let server = TestServer::start().await;
+    let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/42"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number": 42,
+            "title": "Closed issue",
+            "state": "closed",
+            "updated_at": "2024-01-02T03:04:05Z",
+            "closed_at": null
+        })))
+        .mount(&server.mock_server)
+        .await;
+
+    let issue = client.get_issue("owner", "repo", 42).await.unwrap();
+    assert_eq!(issue.state, "closed");
+    assert_eq!(issue.closed_at.as_deref(), Some("2024-01-02T03:04:05Z"));
+}
+
+#[tokio::test]
 async fn test_create_issue() {
     let server = TestServer::start().await;
     let client = server.client();
@@ -1017,7 +1048,8 @@ async fn test_update_issue_close() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "number": 1,
             "title": "Bug",
-            "state": "closed"
+            "state": "closed",
+            "updated_at": "2024-01-02T03:04:05Z"
         })))
         .mount(&server.mock_server)
         .await;
@@ -1032,6 +1064,7 @@ async fn test_update_issue_close() {
         .await
         .unwrap();
     assert_eq!(issue.state, "closed");
+    assert_eq!(issue.closed_at.as_deref(), Some("2024-01-02T03:04:05Z"));
 }
 
 #[tokio::test]

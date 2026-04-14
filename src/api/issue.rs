@@ -15,17 +15,24 @@ impl GitBucketClient {
         state: Option<&str>,
     ) -> Result<Vec<Issue>> {
         let state_param = state.unwrap_or("open");
-        self.get_paginated(
-            &format!("/repos/{}/{}/issues", owner, repo),
-            &[("state", state_param)],
-        )
-        .await
+        let issues = self
+            .get_paginated(
+                &format!("/repos/{}/{}/issues", owner, repo),
+                &[("state", state_param)],
+            )
+            .await?;
+        Ok(issues
+            .into_iter()
+            .map(issue_with_closed_at_fallback)
+            .collect())
     }
 
     /// Get a single issue.
     pub async fn get_issue(&self, owner: &str, repo: &str, number: u64) -> Result<Issue> {
-        self.get(&format!("/repos/{}/{}/issues/{}", owner, repo, number))
-            .await
+        let issue = self
+            .get(&format!("/repos/{}/{}/issues/{}", owner, repo, number))
+            .await?;
+        Ok(issue_with_closed_at_fallback(issue))
     }
 
     /// Create a new issue.
@@ -49,7 +56,7 @@ impl GitBucketClient {
             )
             .await
         {
-            Ok(issue) => Ok(issue),
+            Ok(issue) => Ok(issue_with_closed_at_fallback(issue)),
             Err(err @ GbMcpError::Api { status: 404, .. }) => {
                 self.update_issue_with_404_handling(owner, repo, number, body, err)
                     .await
@@ -180,4 +187,11 @@ impl GitBucketClient {
 
         self.get_issue(owner, repo, number).await
     }
+}
+
+fn issue_with_closed_at_fallback(mut issue: Issue) -> Issue {
+    if issue.state == "closed" && issue.closed_at.is_none() {
+        issue.closed_at = issue.updated_at.clone();
+    }
+    issue
 }

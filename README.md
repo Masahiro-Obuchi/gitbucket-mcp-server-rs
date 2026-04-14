@@ -208,7 +208,7 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 | `list_labels` | List labels for a repository |
 | `get_label` | Get label details |
 | `create_label` | Create a new label |
-| `update_label` | Update label name, color, or description; REST-incompatible GitBucket instances can fall back for name/color only |
+| `update_label` | Update label name, color, or description; REST-incompatible GitBucket instances fall back for name/color |
 | `delete_label` | Delete a label |
 
 ### Milestones
@@ -238,6 +238,24 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 |------|-------------|
 | `get_authenticated_user` | Get the authenticated user's info |
 | `get_user` | Get a user by username |
+
+### Structured Output Shape
+
+MCP structured results are always JSON objects. List tools return their arrays under a stable field name:
+
+| Tool | Result field |
+|------|--------------|
+| `list_repositories` | `repositories` |
+| `list_branches` | `branches` |
+| `list_issues` | `issues` |
+| `list_issue_comments` | `comments` |
+| `list_labels` | `labels` |
+| `list_milestones` | `milestones` |
+| `list_pull_requests` | `pull_requests` |
+
+For GitBucket versions that do not expose the REST label update endpoint, `update_label` uses the web fallback for name/color changes. Standard GitBucket does not support label description updates through that fallback; description-only updates return an unsupported error, while name/color updates can proceed even if a description is included in the request.
+
+GitBucket's issue API does not expose `closed_at` on some versions. When a closed issue has no `closed_at` but does have `updated_at`, this server fills `closed_at` with `updated_at` as a best-effort GitHub-compatible value.
 
 ## Development
 

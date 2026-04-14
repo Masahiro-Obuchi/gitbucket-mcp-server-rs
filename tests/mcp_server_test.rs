@@ -897,7 +897,7 @@ async fn test_mcp_call_tool_list_repositories_trims_owner_and_serializes_json() 
         .unwrap();
 
     assert_eq!(
-        structured_json(&result)[0]["full_name"].as_str(),
+        structured_json(&result)["repositories"][0]["full_name"].as_str(),
         Some("mock-user/mock-repo")
     );
     match api.calls().as_slice() {
@@ -958,7 +958,10 @@ async fn test_mcp_call_tool_list_labels_trims_fields_and_serializes_json() {
         .await
         .unwrap();
 
-    assert_eq!(structured_json(&result)[0]["name"].as_str(), Some("bug"));
+    assert_eq!(
+        structured_json(&result)["labels"][0]["name"].as_str(),
+        Some("bug")
+    );
     match api.calls().as_slice() {
         [RecordedCall::ListLabels { owner, repo }] => {
             assert_eq!(owner, "owner");
@@ -1105,7 +1108,10 @@ async fn test_mcp_call_tool_list_milestones_trims_fields_and_serializes_json() {
         .await
         .unwrap();
 
-    assert_eq!(structured_json(&result)[0]["title"].as_str(), Some("v1.0"));
+    assert_eq!(
+        structured_json(&result)["milestones"][0]["title"].as_str(),
+        Some("v1.0")
+    );
     match api.calls().as_slice() {
         [RecordedCall::ListMilestones { owner, repo, state }] => {
             assert_eq!(owner, "owner");
@@ -1290,7 +1296,7 @@ async fn test_mcp_call_tool_list_pull_requests_passes_state_and_serializes_json(
         .unwrap();
 
     assert_eq!(
-        structured_json(&result)[0]["title"].as_str(),
+        structured_json(&result)["pull_requests"][0]["title"].as_str(),
         Some("Mock PR")
     );
     match api.calls().as_slice() {

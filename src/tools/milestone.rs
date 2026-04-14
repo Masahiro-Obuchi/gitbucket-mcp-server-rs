@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::milestone::{CreateMilestone, UpdateMilestone};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
+use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{error, issue_state, list_state, required_trimmed};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -101,7 +101,7 @@ impl GitBucketMcpServer {
             .list_milestones(&owner, &repo, state.as_deref())
             .await
         {
-            Ok(milestones) => success(&milestones),
+            Ok(milestones) => success_list("milestones", &milestones),
             Err(err) => from_gb_error(err),
         }
     }
@@ -339,7 +339,10 @@ mod tests {
             }))
             .await;
 
-        assert_eq!(success_json(result)[0]["title"].as_str(), Some("v1.0"));
+        assert_eq!(
+            success_json(result)["milestones"][0]["title"].as_str(),
+            Some("v1.0")
+        );
         match mock.calls().as_slice() {
             [RecordedCall::ListMilestones { owner, repo, state }] => {
                 assert_eq!(owner, "alice");

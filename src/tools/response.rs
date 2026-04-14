@@ -1,6 +1,6 @@
 use rmcp::model::CallToolResult;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Map, Value};
 
 use crate::error::GbMcpError;
 
@@ -22,6 +22,18 @@ pub fn success<T: Serialize>(value: &T) -> ToolResult {
         )
     })?;
     Ok(CallToolResult::structured(value))
+}
+
+pub fn success_list<T: Serialize>(field: &'static str, value: &T) -> ToolResult {
+    let value = serde_json::to_value(value).map_err(|e| {
+        rmcp::ErrorData::internal_error(
+            format!("Failed to serialize structured content: {}", e),
+            None,
+        )
+    })?;
+    let mut object = Map::new();
+    object.insert(field.to_string(), value);
+    Ok(CallToolResult::structured(Value::Object(object)))
 }
 
 pub fn validation_error(message: impl Into<String>) -> ToolResult {

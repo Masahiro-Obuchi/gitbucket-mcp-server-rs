@@ -553,7 +553,7 @@ async fn test_e2e_list_repositories_for_owner() {
         .await
         .unwrap();
 
-    assert!(parse_json(&result).is_array());
+    assert!(parse_json(&result)["repositories"].is_array());
 
     client.cancel().await.unwrap();
 }
@@ -654,9 +654,9 @@ async fn test_e2e_list_branches_for_created_repository() {
     )
     .await;
 
-    let branches = branches
+    let branches = branches["branches"]
         .as_array()
-        .expect("list_branches should return an array");
+        .expect("list_branches should return a branches array");
     assert!(
         branches
             .iter()
@@ -704,8 +704,9 @@ async fn test_e2e_label_lifecycle() {
     .await;
     assert!(
         labels
-            .as_array()
-            .expect("list_labels should return an array")
+            .get("labels")
+            .and_then(|labels| labels.as_array())
+            .expect("list_labels should return a labels array")
             .iter()
             .any(|label| label["name"] == name),
         "expected created label to appear in list_labels output: {labels}"
@@ -783,8 +784,9 @@ async fn test_e2e_milestone_lifecycle() {
     .await;
     assert!(
         milestones
-            .as_array()
-            .expect("list_milestones should return an array")
+            .get("milestones")
+            .and_then(|milestones| milestones.as_array())
+            .expect("list_milestones should return a milestones array")
             .iter()
             .any(|milestone| milestone["number"].as_u64() == Some(number)),
         "expected created milestone to appear in list_milestones output: {milestones}"
@@ -848,7 +850,7 @@ async fn test_e2e_list_issues() {
         .await
         .unwrap();
 
-    assert!(parse_json(&result).is_array());
+    assert!(parse_json(&result)["issues"].is_array());
 
     client.cancel().await.unwrap();
 }
@@ -877,7 +879,7 @@ async fn test_e2e_list_pull_requests() {
         .await
         .unwrap();
 
-    assert!(parse_json(&result).is_array());
+    assert!(parse_json(&result)["pull_requests"].is_array());
 
     client.cancel().await.unwrap();
 }
@@ -1051,9 +1053,9 @@ async fn test_e2e_add_issue_comment() {
     )
     .await;
 
-    let comments = comments
+    let comments = comments["comments"]
         .as_array()
-        .expect("issue comments should be returned as an array");
+        .expect("issue comments should be returned as a comments array");
     assert!(comments.iter().any(|entry| {
         entry["id"].as_u64() == Some(comment_id)
             && entry["body"].as_str() == Some(comment_body.as_str())
@@ -1118,9 +1120,9 @@ async fn test_e2e_add_pull_request_comment() {
     )
     .await;
 
-    let comments = comments
+    let comments = comments["comments"]
         .as_array()
-        .expect("pull request comments should be returned as an array");
+        .expect("pull request comments should be returned as a comments array");
     assert!(comments.iter().any(|entry| {
         entry["id"].as_u64() == Some(comment_id)
             && entry["body"].as_str() == Some(comment_body.as_str())
