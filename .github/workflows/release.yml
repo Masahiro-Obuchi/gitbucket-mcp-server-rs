@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish GitHub Release (requires running on a tag ref)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -20,6 +26,7 @@ jobs:
 
     outputs:
       version: ${{ steps.version.outputs.value }}
+      should_publish: ${{ steps.publish.outputs.value }}
 
     steps:
       - name: Checkout
@@ -63,9 +70,64 @@ jobs:
             exit 1
           fi
 
+      - name: Decide publish mode
+        id: publish
+        shell: bash
+        env:
+          REQUESTED_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || 'false' }}
+        run: |
+          set -euo pipefail
+          should_publish="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/* ]]; then
+            should_publish="true"
+          elif [[ "${REQUESTED_PUBLISH}" == "true" ]]; then
+            if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+              echo "workflow_dispatch with publish=true must run on a tag ref." >&2
+              exit 1
+            fi
+            should_publish="true"
+          fi
+
+          echo "value=${should_publish}" >> "$GITHUB_OUTPUT"
+
+  release-e2e:
+    name: Release E2E
+    needs: release-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate E2E scripts
+        run: bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
+
+      - name: Start Docker GitBucket and bootstrap E2E data
+        run: ./scripts/e2e/bootstrap.sh
+
+      - name: Load E2E runtime environment
+        run: sed 's/^export //' ./.tmp/e2e/runtime.env >> "$GITHUB_ENV"
+
+      - name: Run E2E tests
+        run: cargo test --test e2e_test -- --ignored --nocapture
+
+      - name: Tear down Docker GitBucket
+        if: always()
+        run: ./scripts/e2e/down.sh
+
   build-release-assets:
     name: Package ${{ matrix.target }}
-    needs: release-checks
+    needs:
+      - release-checks
+      - release-e2e
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -149,9 +211,10 @@ jobs:
 
   publish-github-release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: needs.release-checks.outputs.should_publish == 'true'
     needs:
       - release-checks
+      - release-e2e
       - build-release-assets
     runs-on: ubuntu-latest
 
@@ -166,6 +229,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           prerelease: ${{ contains(needs.release-checks.outputs.version, '-') }}
           files: |
