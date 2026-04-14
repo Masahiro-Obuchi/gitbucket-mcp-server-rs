@@ -32,10 +32,7 @@ cargo test
 Create and push an annotated tag from the release commit on `main`:
 
 ```bash
-git switch main
-git pull --ff-only origin main
-git tag -a v0.2.0 -m "Release v0.2.0"
-git push origin v0.2.0
+./scripts/release/create_tag.sh v0.2.0
 ```
 
 Pushing the tag starts `.github/workflows/release.yml`.
@@ -43,13 +40,16 @@ Pushing the tag starts `.github/workflows/release.yml`.
 The workflow:
 
 1. runs formatting, clippy, and tests;
-2. verifies that the tag matches `Cargo.toml`;
-3. builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows;
-4. packages archives with `README.md`, `LICENSE`, and `VERIFICATION.md`;
-5. generates `.sha256` checksum files;
-6. publishes a GitHub Release with generated release notes.
+2. validates E2E scripts, boots Docker GitBucket, and runs E2E tests;
+3. verifies that the tag matches `Cargo.toml`;
+4. builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows;
+5. packages archives with `README.md`, `LICENSE`, and `VERIFICATION.md`;
+6. generates `.sha256` checksum files;
+7. publishes a GitHub Release with generated release notes.
 
-Manual `workflow_dispatch` builds the same archives as workflow artifacts, but it does not publish a GitHub Release.
+Manual `workflow_dispatch` defaults to dry-run mode (`publish=false`), which runs checks and packaging and uploads workflow artifacts without publishing a GitHub Release.
+
+If you run `workflow_dispatch` on a tag ref and set `publish=true`, the workflow also publishes the GitHub Release.
 
 ## Verify a Published Release
 
@@ -73,8 +73,7 @@ If the release workflow fails before publishing, fix the problem on `main`, dele
 ```bash
 git tag -d v0.2.0
 git push origin :refs/tags/v0.2.0
-git tag -a v0.2.0 -m "Release v0.2.0"
-git push origin v0.2.0
+./scripts/release/create_tag.sh v0.2.0
 ```
 
 If a GitHub Release was already published, prefer creating a new patch version instead of replacing released artifacts.
