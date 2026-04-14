@@ -165,16 +165,34 @@ Add to your Claude Desktop configuration (`~/.config/claude/claude_desktop_confi
 
 ### VS Code / GitHub Copilot
 
+`gitbucket-mcp-server` must already be installed and available on your `PATH`.
+Use the button below to add the server configuration to VS Code:
+
+[![Add to VS Code](https://img.shields.io/badge/VS_Code-Add_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=gitbucket&inputs=%5B%7B%22id%22%3A%22gitbucket_url%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22GitBucket%20URL%22%7D%2C%7B%22id%22%3A%22gitbucket_token%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22GitBucket%20Personal%20Access%20Token%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22command%22%3A%22gitbucket-mcp-server%22%2C%22env%22%3A%7B%22GITBUCKET_URL%22%3A%22%24%7Binput%3Agitbucket_url%7D%22%2C%22GITBUCKET_TOKEN%22%3A%22%24%7Binput%3Agitbucket_token%7D%22%7D%7D)
+
 Add to your VS Code settings (`.vscode/mcp.json`):
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "gitbucket_url",
+      "description": "GitBucket URL"
+    },
+    {
+      "type": "promptString",
+      "id": "gitbucket_token",
+      "description": "GitBucket Personal Access Token",
+      "password": true
+    }
+  ],
   "servers": {
     "gitbucket": {
-      "command": "/path/to/gitbucket-mcp-server",
+      "command": "gitbucket-mcp-server",
       "env": {
-        "GITBUCKET_URL": "https://gitbucket.example.com",
-        "GITBUCKET_TOKEN": "your-token"
+        "GITBUCKET_URL": "${input:gitbucket_url}",
+        "GITBUCKET_TOKEN": "${input:gitbucket_token}"
       }
     }
   }
