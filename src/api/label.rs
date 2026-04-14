@@ -2,9 +2,18 @@ use url::Url;
 
 use crate::error::{GbMcpError, Result};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
+use serde::Serialize;
 
 use super::client::GitBucketClient;
 use super::web::GitBucketWebSession;
+
+#[derive(Debug, Serialize)]
+struct GitBucketUpdateLabel<'a> {
+    name: &'a str,
+    color: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<&'a str>,
+}
 
 impl GitBucketClient {
     pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<Label>> {
@@ -30,12 +39,46 @@ impl GitBucketClient {
         name: &str,
         body: &UpdateLabel,
     ) -> Result<Label> {
+        // Only fetch the current label when we need it to fill in missing fields.
+        let current_opt: Option<Label> = if body.new_name.is_none() || body.color.is_none() {
+            Some(self.get_label(owner, repo, name).await?)
+        } else {
+            None
+        };
+
+        let next_name = body
+            .new_name
+            .as_deref()
+            .or_else(|| current_opt.as_ref().map(|c| c.name.as_str()))
+            .unwrap_or(name)
+            .to_string();
+        let next_color = body
+            .color
+            .as_deref()
+            .or_else(|| current_opt.as_ref().and_then(|c| c.color.as_deref()))
+            .ok_or_else(|| {
+                GbMcpError::Other(
+                    "The current label color could not be fetched for label update.".to_string(),
+                )
+            })?
+            .trim_start_matches('#')
+            .to_string();
+        let request = GitBucketUpdateLabel {
+            name: &next_name,
+            color: &next_color,
+            description: body.description.as_deref(),
+        };
         let path = format!("/repos/{owner}/{repo}/labels/{name}");
         let url = label_url(self, owner, repo, name)?;
-        match self.patch_url(url, &path, body).await {
+        match self.patch_url(url, &path, &request).await {
             Ok(label) => Ok(label),
             Err(err @ GbMcpError::Api { status: 404, .. }) => {
-                self.update_label_with_404_handling(owner, repo, name, body, err)
+                // Lazily fetch current label for the web fallback if we skipped it above.
+                let current = match current_opt {
+                    Some(c) => c,
+                    None => self.get_label(owner, repo, name).await?,
+                };
+                self.update_label_with_404_handling(owner, repo, body, &current, err)
                     .await
             }
             Err(err) => Err(err),
@@ -52,18 +95,12 @@ impl GitBucketClient {
         &self,
         owner: &str,
         repo: &str,
-        name: &str,
         body: &UpdateLabel,
-        original_error: GbMcpError,
+        current: &Label,
+        _original_error: GbMcpError,
     ) -> Result<Label> {
-        match self.get_label(owner, repo, name).await {
-            Ok(current) => {
-                self.update_label_via_web_fallback(owner, repo, body, &current)
-                    .await
-            }
-            Err(GbMcpError::Api { status: 404, .. }) => Err(original_error),
-            Err(err) => Err(err),
-        }
+        self.update_label_via_web_fallback(owner, repo, body, current)
+            .await
     }
 
     async fn update_label_via_web_fallback(
@@ -73,13 +110,6 @@ impl GitBucketClient {
         body: &UpdateLabel,
         current: &Label,
     ) -> Result<Label> {
-        if body.description.is_some() {
-            return Err(GbMcpError::Other(
-                "This GitBucket instance does not support the REST label update endpoint, and the web fallback does not support label description updates."
-                    .to_string(),
-            ));
-        }
-
         let next_name = body
             .new_name
             .as_deref()
@@ -107,6 +137,12 @@ impl GitBucketClient {
             });
 
         if !needs_update {
+            if body.description.is_some() {
+                return Err(GbMcpError::Other(
+                    "This GitBucket instance does not support label description-only updates."
+                        .to_string(),
+                ));
+            }
             return Ok(current.clone());
         }
 

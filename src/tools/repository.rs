@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::models::repository::CreateRepository;
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
+use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::required_trimmed;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -64,7 +64,7 @@ impl GitBucketMcpServer {
         };
 
         match self.client.list_repositories(&owner).await {
-            Ok(repos) => success(&repos),
+            Ok(repos) => success_list("repositories", &repos),
             Err(e) => from_gb_error(e),
         }
     }
@@ -146,7 +146,7 @@ impl GitBucketMcpServer {
         };
 
         match self.client.list_branches(&owner, &repo).await {
-            Ok(branches) => success(&branches),
+            Ok(branches) => success_list("branches", &branches),
             Err(e) => from_gb_error(e),
         }
     }
@@ -268,7 +268,10 @@ mod tests {
             .await;
 
         let result = success_json(result);
-        assert_eq!(result[0]["full_name"].as_str(), Some("mock-user/mock-repo"));
+        assert_eq!(
+            result["repositories"][0]["full_name"].as_str(),
+            Some("mock-user/mock-repo")
+        );
         match mock.calls().as_slice() {
             [RecordedCall::ListRepositories { owner }] => assert_eq!(owner, "mock-user"),
             calls => panic!("unexpected calls: {calls:?}"),
@@ -334,7 +337,7 @@ mod tests {
             .await;
 
         let result = success_json(result);
-        assert_eq!(result[0]["name"].as_str(), Some("main"));
+        assert_eq!(result["branches"][0]["name"].as_str(), Some("main"));
         match mock.calls().as_slice() {
             [RecordedCall::ListBranches { owner, repo }] => {
                 assert_eq!(owner, "mock-user");

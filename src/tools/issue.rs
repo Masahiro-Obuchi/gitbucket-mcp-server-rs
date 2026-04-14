@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::issue::{CreateIssue, UpdateIssue};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
+use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{
     error, issue_state, list_state, optional_trimmed, required_trimmed,
 };
@@ -111,7 +111,7 @@ impl GitBucketMcpServer {
             .list_issues(&owner, &repo, state.as_deref())
             .await
         {
-            Ok(issues) => success(&issues),
+            Ok(issues) => success_list("issues", &issues),
             Err(e) => from_gb_error(e),
         }
     }
@@ -231,7 +231,7 @@ impl GitBucketMcpServer {
             .list_issue_comments(&owner, &repo, params.issue_number)
             .await
         {
-            Ok(comments) => success(&comments),
+            Ok(comments) => success_list("comments", &comments),
             Err(e) => from_gb_error(e),
         }
     }
@@ -421,7 +421,7 @@ mod tests {
             .await;
 
         let result = success_json(result);
-        assert_eq!(result[0]["title"].as_str(), Some("Mock issue"));
+        assert_eq!(result["issues"][0]["title"].as_str(), Some("Mock issue"));
         match mock.calls().as_slice() {
             [RecordedCall::ListIssues { owner, repo, state }] => {
                 assert_eq!(owner, "owner");
@@ -506,7 +506,7 @@ mod tests {
             .await;
 
         let result = success_json(result);
-        assert_eq!(result[0]["body"].as_str(), Some("Mock comment"));
+        assert_eq!(result["comments"][0]["body"].as_str(), Some("Mock comment"));
         match mock.calls().as_slice() {
             [RecordedCall::ListIssueComments {
                 owner,

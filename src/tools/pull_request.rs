@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, UpdatePullRequest};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, validation_error, ToolResult};
+use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{
     error, issue_state, list_state, optional_trimmed, required_trimmed,
 };
@@ -115,7 +115,7 @@ impl GitBucketMcpServer {
             .list_pull_requests(&owner, &repo, state.as_deref())
             .await
         {
-            Ok(prs) => success(&prs),
+            Ok(prs) => success_list("pull_requests", &prs),
             Err(e) => from_gb_error(e),
         }
     }
@@ -513,7 +513,10 @@ mod tests {
             .await;
 
         let result = success_json(result);
-        assert_eq!(result[0]["title"].as_str(), Some("Mock PR"));
+        assert_eq!(
+            result["pull_requests"][0]["title"].as_str(),
+            Some("Mock PR")
+        );
         match mock.calls().as_slice() {
             [RecordedCall::ListPullRequests { owner, repo, state }] => {
                 assert_eq!(owner, "owner");
