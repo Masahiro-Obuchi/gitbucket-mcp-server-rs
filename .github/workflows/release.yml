@@ -131,7 +131,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" (Join-Path $archiveDir "gitbucket-mcp-server.exe")
           Copy-Item README.md, LICENSE, VERIFICATION.md $archiveDir
-          Compress-Archive -Path $archiveDir -DestinationPath "dist/$archiveBase.${{ matrix.archive_ext }}" -Force
+          Push-Location "dist"
+          try {
+            Compress-Archive -Path $archiveBase -DestinationPath "$archiveBase.${{ matrix.archive_ext }}" -Force
+          }
+          finally {
+            Pop-Location
+          }
           $hash = (Get-FileHash "dist/$archiveBase.${{ matrix.archive_ext }}" -Algorithm SHA256).Hash.ToLower()
           "$hash  $archiveBase.${{ matrix.archive_ext }}" | Set-Content "dist/$archiveBase.${{ matrix.archive_ext }}.sha256"
 
