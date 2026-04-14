@@ -29,6 +29,9 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
+git pull --ff-only origin main
+git fetch --tags origin
+
 pkgid="$(cargo pkgid)"
 version="${pkgid##*@}"
 expected_tag="v${version}"
@@ -44,8 +47,6 @@ if [[ "${tag}" != "${expected_tag}" ]]; then
   exit 1
 fi
 
-git fetch --tags origin
-
 if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
   echo "Tag '${tag}' already exists locally." >&2
   exit 1
@@ -56,7 +57,6 @@ if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
   exit 1
 fi
 
-git pull --ff-only origin main
 git tag -a "${tag}" -m "Release ${tag}"
 git push origin "${tag}"
 
