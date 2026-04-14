@@ -1,6 +1,6 @@
 [package]
 name = "gitbucket-mcp-server"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A Model Context Protocol (MCP) server for GitBucket"
 license = "MIT"
@@ -11,7 +11,11 @@ readme = "README.md"
 [dependencies]
 rmcp = { version = "1", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["cookies", "json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.12", features = [
+  "cookies",
+  "json",
+  "rustls-tls-native-roots",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"
