@@ -170,7 +170,9 @@ Use the button below to add the server configuration to VS Code:
 
 [![Add to VS Code](https://img.shields.io/badge/VS_Code-Add_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=gitbucket&inputs=%5B%7B%22id%22%3A%22gitbucket_url%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22GitBucket%20URL%22%7D%2C%7B%22id%22%3A%22gitbucket_token%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22GitBucket%20Personal%20Access%20Token%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22command%22%3A%22gitbucket-mcp-server%22%2C%22env%22%3A%7B%22GITBUCKET_URL%22%3A%22%24%7Binput%3Agitbucket_url%7D%22%2C%22GITBUCKET_TOKEN%22%3A%22%24%7Binput%3Agitbucket_token%7D%22%7D%7D)
 
-Add to your VS Code settings (`.vscode/mcp.json`):
+For manual setup, add this to your user-level VS Code MCP configuration. In VS Code,
+use **MCP: Open User Configuration** and avoid committing credentials or credential
+input bindings to workspace `.vscode/mcp.json`:
 
 ```json
 {
@@ -198,6 +200,55 @@ Add to your VS Code settings (`.vscode/mcp.json`):
   }
 }
 ```
+
+If your GitBucket version requires web fallback for operations that are not
+available through the REST API, replace the previous example with the
+following full user-level MCP configuration, which adds the required VS Code
+input variables and environment entries for web fallback credentials:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "gitbucket_url",
+      "description": "GitBucket URL"
+    },
+    {
+      "type": "promptString",
+      "id": "gitbucket_token",
+      "description": "GitBucket Personal Access Token",
+      "password": true
+    },
+    {
+      "type": "promptString",
+      "id": "gitbucket_username",
+      "description": "GitBucket username for web fallback"
+    },
+    {
+      "type": "promptString",
+      "id": "gitbucket_password",
+      "description": "GitBucket password for web fallback",
+      "password": true
+    }
+  ],
+  "servers": {
+    "gitbucket": {
+      "command": "gitbucket-mcp-server",
+      "env": {
+        "GITBUCKET_URL": "${input:gitbucket_url}",
+        "GITBUCKET_TOKEN": "${input:gitbucket_token}",
+        "GITBUCKET_USERNAME": "${input:gitbucket_username}",
+        "GITBUCKET_PASSWORD": "${input:gitbucket_password}"
+      }
+    }
+  }
+}
+```
+
+Only add `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` when you want web
+fallback enabled. They must be set together; leaving one blank or setting only
+one of them causes startup/configuration errors.
 
 ### Codex Skill Sample
 
