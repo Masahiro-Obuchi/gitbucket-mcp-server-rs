@@ -202,8 +202,9 @@ input bindings to workspace `.vscode/mcp.json`:
 ```
 
 If your GitBucket version requires web fallback for operations that are not
-available through the REST API, add web fallback credentials to the same
-user-level MCP configuration via VS Code input variables:
+available through the REST API, replace the previous example with the
+following full user-level MCP configuration, which adds the required VS Code
+input variables and environment entries for web fallback credentials:
 
 ```json
 {
