@@ -1,5 +1,4 @@
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -7,7 +6,7 @@ use serde::Deserialize;
 use crate::models::repository::CreateRepository;
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
-use crate::tools::validation::required_trimmed;
+use crate::tools::validation::{repository_fields, required_trimmed};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListRepositoriesParams {
@@ -74,12 +73,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<GetRepositoryParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -93,7 +88,7 @@ impl GitBucketMcpServer {
     pub async fn create_repository(
         &self,
         Parameters(params): Parameters<CreateRepositoryParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
+    ) -> ToolResult {
         let name = match required_trimmed(&params.name, "name") {
             Ok(name) => name,
             Err(err) => return validation_error(err),
@@ -116,12 +111,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ForkRepositoryParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -136,12 +127,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListBranchesParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -158,31 +145,11 @@ mod tests {
 
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
-    use serde_json::Value;
 
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
-    use crate::test_support::{MockApi, RecordedCall};
+    use crate::test_support::{error_payload, success_json, MockApi, RecordedCall};
     use crate::tools::response::ToolErrorPayload;
-
-    fn success_json(result: ToolResult) -> Value {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(false));
-        result
-            .structured_content
-            .expect("expected structured content for success")
-    }
-
-    fn error_payload(result: ToolResult) -> ToolErrorPayload {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(true));
-        serde_json::from_value(
-            result
-                .structured_content
-                .expect("expected structured content for error"),
-        )
-        .expect("error payload should deserialize")
-    }
 
     #[tokio::test]
     async fn test_list_repositories_rejects_blank_owner() {

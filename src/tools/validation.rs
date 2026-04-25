@@ -10,6 +10,22 @@ pub fn required_trimmed(value: &str, field: &str) -> std::result::Result<String,
     Ok(trimmed.to_string())
 }
 
+pub fn repository_fields(owner: &str, repo: &str) -> std::result::Result<(String, String), String> {
+    Ok((
+        required_trimmed(owner, "owner")?,
+        required_trimmed(repo, "repo")?,
+    ))
+}
+
+pub fn required_optional_trimmed(
+    value: Option<String>,
+    field: &str,
+) -> std::result::Result<Option<String>, String> {
+    value
+        .map(|value| required_trimmed(&value, field))
+        .transpose()
+}
+
 pub fn optional_trimmed(value: Option<String>) -> Option<String> {
     value.map(|v| v.trim().to_string())
 }
@@ -63,6 +79,19 @@ mod tests {
     fn test_required_trimmed_trims_value() {
         let value = required_trimmed("  repo  ", "repo").unwrap();
         assert_eq!(value, "repo");
+    }
+
+    #[test]
+    fn test_repository_fields_trims_values() {
+        let (owner, repo) = repository_fields(" owner ", " repo ").unwrap();
+        assert_eq!(owner, "owner");
+        assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn test_required_optional_trimmed_rejects_blank() {
+        let err = required_optional_trimmed(Some(" ".to_string()), "title").unwrap_err();
+        assert_eq!(err, "title must not be empty");
     }
 
     #[test]

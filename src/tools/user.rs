@@ -1,5 +1,4 @@
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::Deserialize;
@@ -48,10 +47,7 @@ impl GitBucketMcpServer {
     }
 
     #[tool(description = "Get a GitBucket user by username")]
-    pub async fn get_user(
-        &self,
-        Parameters(params): Parameters<GetUserParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
+    pub async fn get_user(&self, Parameters(params): Parameters<GetUserParams>) -> ToolResult {
         let username = match required_trimmed(&params.username, "username") {
             Ok(username) => username,
             Err(err) => return validation_error(err),
@@ -70,31 +66,11 @@ mod tests {
 
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
-    use serde_json::Value;
 
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
-    use crate::test_support::{MockApi, RecordedCall};
+    use crate::test_support::{error_payload, success_json, MockApi, RecordedCall};
     use crate::tools::response::ToolErrorPayload;
-
-    fn success_json(result: ToolResult) -> Value {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(false));
-        result
-            .structured_content
-            .expect("expected structured content for success")
-    }
-
-    fn error_payload(result: ToolResult) -> ToolErrorPayload {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(true));
-        serde_json::from_value(
-            result
-                .structured_content
-                .expect("expected structured content for error"),
-        )
-        .expect("error payload should deserialize")
-    }
 
     #[tokio::test]
     async fn test_get_user_rejects_blank_username() {

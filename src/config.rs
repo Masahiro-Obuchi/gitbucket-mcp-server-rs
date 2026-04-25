@@ -186,37 +186,16 @@ impl Config {
 
     /// Resolve config from file values + env overrides.
     fn resolve(file_config: ConfigFile) -> Result<Self> {
-        let gitbucket_url = std::env::var("GITBUCKET_URL")
-            .ok()
-            .or(file_config.url)
-            .ok_or_else(|| {
-                GbMcpError::Config(
-                    "GITBUCKET_URL is required (set via environment variable or config.toml)"
-                        .to_string(),
-                )
-            })?;
-
-        if gitbucket_url.trim().is_empty() {
-            return Err(GbMcpError::Config(
-                "GITBUCKET_URL must not be empty".to_string(),
-            ));
-        }
-
-        let gitbucket_token = std::env::var("GITBUCKET_TOKEN")
-            .ok()
-            .or(file_config.token)
-            .ok_or_else(|| {
-                GbMcpError::Config(
-                    "GITBUCKET_TOKEN is required (set via environment variable or config.toml)"
-                        .to_string(),
-                )
-            })?;
-
-        if gitbucket_token.trim().is_empty() {
-            return Err(GbMcpError::Config(
-                "GITBUCKET_TOKEN must not be empty".to_string(),
-            ));
-        }
+        let gitbucket_url = required_config_value(
+            "GITBUCKET_URL",
+            file_config.url,
+            "GITBUCKET_URL is required (set via environment variable or config.toml)",
+        )?;
+        let gitbucket_token = required_config_value(
+            "GITBUCKET_TOKEN",
+            file_config.token,
+            "GITBUCKET_TOKEN is required (set via environment variable or config.toml)",
+        )?;
 
         let gitbucket_username = std::env::var("GITBUCKET_USERNAME").ok();
         let gitbucket_password = std::env::var("GITBUCKET_PASSWORD").ok();
@@ -234,25 +213,14 @@ impl Config {
 
     /// Load from environment variables only (legacy, for backward compatibility).
     pub fn from_env() -> Result<Self> {
-        let gitbucket_url = std::env::var("GITBUCKET_URL").map_err(|_| {
-            GbMcpError::Config("GITBUCKET_URL environment variable is required".to_string())
-        })?;
-
-        if gitbucket_url.trim().is_empty() {
-            return Err(GbMcpError::Config(
-                "GITBUCKET_URL must not be empty".to_string(),
-            ));
-        }
-
-        let gitbucket_token = std::env::var("GITBUCKET_TOKEN").map_err(|_| {
-            GbMcpError::Config("GITBUCKET_TOKEN environment variable is required".to_string())
-        })?;
-
-        if gitbucket_token.trim().is_empty() {
-            return Err(GbMcpError::Config(
-                "GITBUCKET_TOKEN must not be empty".to_string(),
-            ));
-        }
+        let gitbucket_url = required_env_value(
+            "GITBUCKET_URL",
+            "GITBUCKET_URL environment variable is required",
+        )?;
+        let gitbucket_token = required_env_value(
+            "GITBUCKET_TOKEN",
+            "GITBUCKET_TOKEN environment variable is required",
+        )?;
 
         let gitbucket_username = std::env::var("GITBUCKET_USERNAME").ok();
         let gitbucket_password = std::env::var("GITBUCKET_PASSWORD").ok();
@@ -266,6 +234,31 @@ impl Config {
             gitbucket_password,
         })
     }
+}
+
+fn required_config_value(
+    env_name: &str,
+    file_value: Option<String>,
+    missing_message: &'static str,
+) -> Result<String> {
+    let value = std::env::var(env_name)
+        .ok()
+        .or(file_value)
+        .ok_or_else(|| GbMcpError::Config(missing_message.to_string()))?;
+    validate_required_value(env_name, value)
+}
+
+fn required_env_value(env_name: &str, missing_message: &'static str) -> Result<String> {
+    let value =
+        std::env::var(env_name).map_err(|_| GbMcpError::Config(missing_message.to_string()))?;
+    validate_required_value(env_name, value)
+}
+
+fn validate_required_value(name: &str, value: String) -> Result<String> {
+    if value.trim().is_empty() {
+        return Err(GbMcpError::Config(format!("{name} must not be empty")));
+    }
+    Ok(value)
 }
 
 fn resolve_optional_web_credentials(

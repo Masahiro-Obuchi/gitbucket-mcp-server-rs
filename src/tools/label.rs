@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::models::label::{CreateLabel, UpdateLabel};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
-use crate::tools::validation::{error, label_color, optional_trimmed, required_trimmed};
+use crate::tools::validation::{
+    error, label_color, optional_trimmed, repository_fields, required_optional_trimmed,
+    required_trimmed,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListLabelsParams {
@@ -79,12 +82,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListLabelsParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -96,12 +95,8 @@ impl GitBucketMcpServer {
 
     #[tool(description = "Get details of a label in a GitBucket repository")]
     pub async fn get_label(&self, Parameters(params): Parameters<GetLabelParams>) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let name = match required_trimmed(&params.name, "name") {
@@ -120,12 +115,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<CreateLabelParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let name = match required_trimmed(&params.name, "name") {
@@ -154,24 +145,17 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<UpdateLabelParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let name = match required_trimmed(&params.name, "name") {
             Ok(name) => name,
             Err(err) => return validation_error(err),
         };
-        let new_name = match params.new_name {
-            Some(new_name) => match required_trimmed(&new_name, "new_name") {
-                Ok(new_name) => Some(new_name),
-                Err(err) => return validation_error(err),
-            },
-            None => None,
+        let new_name = match required_optional_trimmed(params.new_name, "new_name") {
+            Ok(new_name) => new_name,
+            Err(err) => return validation_error(err),
         };
         let color = match params.color {
             Some(color) => match label_color(&color) {
@@ -205,12 +189,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<DeleteLabelParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let name = match required_trimmed(&params.name, "name") {
@@ -232,32 +212,11 @@ impl GitBucketMcpServer {
 mod tests {
     use std::sync::Arc;
 
-    use serde_json::Value;
-
     use super::*;
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
-    use crate::test_support::{MockApi, RecordedCall};
+    use crate::test_support::{error_payload, success_json, MockApi, RecordedCall};
     use crate::tools::response::ToolErrorPayload;
-
-    fn success_json(result: ToolResult) -> Value {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(false));
-        result
-            .structured_content
-            .expect("expected structured content for success")
-    }
-
-    fn error_payload(result: ToolResult) -> ToolErrorPayload {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(true));
-        serde_json::from_value(
-            result
-                .structured_content
-                .expect("expected structured content for error"),
-        )
-        .expect("error payload should deserialize")
-    }
 
     #[tokio::test]
     async fn test_create_label_rejects_invalid_color() {

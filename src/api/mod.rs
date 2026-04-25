@@ -12,6 +12,7 @@ use crate::models::pull_request::{
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
+mod adapter;
 pub mod client;
 pub mod issue;
 pub mod label;
