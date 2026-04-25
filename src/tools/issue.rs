@@ -1,5 +1,4 @@
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -9,7 +8,8 @@ use crate::models::issue::{CreateIssue, UpdateIssue};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{
-    error, issue_state, list_state, optional_trimmed, required_trimmed,
+    error, issue_state, list_state, optional_trimmed, repository_fields, required_optional_trimmed,
+    required_trimmed,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -93,12 +93,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListIssuesParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let state = match list_state(params.state) {
@@ -118,12 +114,8 @@ impl GitBucketMcpServer {
 
     #[tool(description = "Get details of a specific issue in a GitBucket repository")]
     pub async fn get_issue(&self, Parameters(params): Parameters<GetIssueParams>) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -141,13 +133,9 @@ impl GitBucketMcpServer {
     pub async fn create_issue(
         &self,
         Parameters(params): Parameters<CreateIssueParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+    ) -> ToolResult {
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let title = match required_trimmed(&params.title, "title") {
@@ -173,25 +161,18 @@ impl GitBucketMcpServer {
     pub async fn update_issue(
         &self,
         Parameters(params): Parameters<UpdateIssueParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+    ) -> ToolResult {
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let state = match issue_state(params.state) {
             Ok(state) => state,
             Err(err) => return validation_error(err),
         };
-        let title = match params.title {
-            Some(title) => match required_trimmed(&title, "title") {
-                Ok(title) => Some(title),
-                Err(err) => return validation_error(err),
-            },
-            None => None,
+        let title = match required_optional_trimmed(params.title, "title") {
+            Ok(title) => title,
+            Err(err) => return validation_error(err),
         };
         let body = optional_trimmed(params.body);
 
@@ -217,12 +198,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListIssueCommentsParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -240,13 +217,9 @@ impl GitBucketMcpServer {
     pub async fn add_issue_comment(
         &self,
         Parameters(params): Parameters<AddIssueCommentParams>,
-    ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+    ) -> ToolResult {
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let comment = match required_trimmed(&params.body, "body") {
@@ -272,31 +245,11 @@ mod tests {
 
     use super::*;
     use rmcp::handler::server::wrapper::Parameters;
-    use serde_json::Value;
 
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
-    use crate::test_support::{MockApi, RecordedCall};
+    use crate::test_support::{error_payload, success_json, MockApi, RecordedCall};
     use crate::tools::response::ToolErrorPayload;
-
-    fn success_json(result: ToolResult) -> Value {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(false));
-        result
-            .structured_content
-            .expect("expected structured content for success")
-    }
-
-    fn error_payload(result: ToolResult) -> ToolErrorPayload {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(true));
-        serde_json::from_value(
-            result
-                .structured_content
-                .expect("expected structured content for error"),
-        )
-        .expect("error payload should deserialize")
-    }
 
     #[tokio::test]
     async fn test_list_issues_rejects_invalid_state() {

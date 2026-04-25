@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::models::milestone::{CreateMilestone, UpdateMilestone};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
-use crate::tools::validation::{error, issue_state, list_state, required_trimmed};
+use crate::tools::validation::{
+    error, issue_state, list_state, repository_fields, required_optional_trimmed, required_trimmed,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListMilestonesParams {
@@ -83,12 +85,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<ListMilestonesParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let state = match list_state(params.state) {
@@ -111,12 +109,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<GetMilestoneParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -135,12 +129,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<CreateMilestoneParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
         let title = match required_trimmed(&params.title, "title") {
@@ -171,20 +161,13 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<UpdateMilestoneParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let title = match required_optional_trimmed(params.title, "title") {
+            Ok(title) => title,
             Err(err) => return validation_error(err),
-        };
-        let title = match params.title {
-            Some(title) => match required_trimmed(&title, "title") {
-                Ok(title) => Some(title),
-                Err(err) => return validation_error(err),
-            },
-            None => None,
         };
         let state = match issue_state(params.state) {
             Ok(state) => state,
@@ -221,12 +204,8 @@ impl GitBucketMcpServer {
         &self,
         Parameters(params): Parameters<DeleteMilestoneParams>,
     ) -> ToolResult {
-        let owner = match required_trimmed(&params.owner, "owner") {
-            Ok(owner) => owner,
-            Err(err) => return validation_error(err),
-        };
-        let repo = match required_trimmed(&params.repo, "repo") {
-            Ok(repo) => repo,
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
@@ -248,32 +227,11 @@ impl GitBucketMcpServer {
 mod tests {
     use std::sync::Arc;
 
-    use serde_json::Value;
-
     use super::*;
     use crate::api::client::GitBucketClient;
     use crate::server::GitBucketMcpServer;
-    use crate::test_support::{MockApi, RecordedCall};
+    use crate::test_support::{error_payload, success_json, MockApi, RecordedCall};
     use crate::tools::response::ToolErrorPayload;
-
-    fn success_json(result: ToolResult) -> Value {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(false));
-        result
-            .structured_content
-            .expect("expected structured content for success")
-    }
-
-    fn error_payload(result: ToolResult) -> ToolErrorPayload {
-        let result = result.unwrap();
-        assert_eq!(result.is_error, Some(true));
-        serde_json::from_value(
-            result
-                .structured_content
-                .expect("expected structured content for error"),
-        )
-        .expect("error payload should deserialize")
-    }
 
     #[tokio::test]
     async fn test_list_milestones_rejects_blank_owner() {

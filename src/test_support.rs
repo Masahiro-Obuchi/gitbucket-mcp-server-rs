@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use serde_json::Value;
+
 use crate::api::{ApiFuture, GitBucketApi};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
@@ -10,6 +12,26 @@ use crate::models::pull_request::{
 };
 use crate::models::repository::{Branch, BranchCommit, CreateRepository, Repository};
 use crate::models::user::User;
+use crate::tools::response::{ToolErrorPayload, ToolResult};
+
+pub fn success_json(result: ToolResult) -> Value {
+    let result = result.unwrap();
+    assert_eq!(result.is_error, Some(false));
+    result
+        .structured_content
+        .expect("expected structured content for success")
+}
+
+pub fn error_payload(result: ToolResult) -> ToolErrorPayload {
+    let result = result.unwrap();
+    assert_eq!(result.is_error, Some(true));
+    serde_json::from_value(
+        result
+            .structured_content
+            .expect("expected structured content for error"),
+    )
+    .expect("error payload should deserialize")
+}
 
 #[derive(Debug, Clone)]
 pub enum RecordedCall {
