@@ -53,7 +53,13 @@ For maintainer release steps, see [RELEASE.md](./RELEASE.md).
 
 ### cargo install
 
-This project is not published to crates.io yet, so install from Git:
+Install the latest published version from crates.io:
+
+```bash
+cargo install gitbucket-mcp-server --locked
+```
+
+To install directly from Git:
 
 ```bash
 cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --locked

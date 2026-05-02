@@ -7,6 +7,19 @@ license = "MIT"
 repository = "https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs"
 homepage = "https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs"
 readme = "README.md"
+keywords = ["gitbucket", "mcp", "git", "server", "ai"]
+categories = ["api-bindings", "command-line-utilities", "development-tools"]
+include = [
+  "/Cargo.lock",
+  "/Cargo.toml",
+  "/LICENSE",
+  "/README.md",
+  "/RELEASE.md",
+  "/VERIFICATION.md",
+  "/skills/gitbucket-mcp/**",
+  "/src/**",
+  "/tests/**",
+]
 
 [dependencies]
 rmcp = { version = "1", features = ["server", "transport-io"] }
