@@ -51,6 +51,24 @@ pub struct UpdatePullRequest {
     pub base: Option<String>,
 }
 
+/// GitBucket updates title and body together; this is not the caller's patch.
+#[derive(Debug, Serialize)]
+pub(crate) struct GitBucketPullRequestUpdate<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<&'a str>,
+    #[serde(flatten)]
+    pub content: Option<GitBucketPullRequestContent<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct GitBucketPullRequestContent<'a> {
+    pub title: &'a str,
+    // Explicit null preserves an absent body when a title must be sent.
+    pub body: Option<&'a str>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergePullRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

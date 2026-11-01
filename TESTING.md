@@ -28,6 +28,22 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## Live E2E Tests
 
+PR update regressions are covered with a stateful mock of GitBucket's coupled
+title/body update behavior. The tests cover independent content updates, empty
+and absent bodies, state-only updates, invalid/ignored base changes, unverified
+HTTP 200 responses, and unknown write outcomes without retries.
+
+Against a disposable instance with the E2E variables below configured, run:
+
+```bash
+cargo test --test e2e_test test_e2e_update_pull_request_preserves_unspecified_fields -- --ignored --nocapture
+```
+
+This test seeds a branch using Git credentials, then explicitly disables web
+credentials for MCP calls. It verifies title-only/body-only updates, Markdown
+whitespace, body clearing, close/reopen, base validation, and a final independent
+read. It leaves its uniquely named branch and PR in the disposable repository.
+
 `tests/e2e_test.rs` expects these environment variables:
 
 - `GITBUCKET_E2E_URL`

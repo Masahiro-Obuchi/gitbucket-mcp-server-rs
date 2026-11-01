@@ -189,7 +189,7 @@ impl GitBucketMcpServer {
             Ok(title) => title,
             Err(err) => return validation_error(err),
         };
-        let body = optional_trimmed(params.body);
+        let body = params.body;
         let base = match required_optional_trimmed(params.base, "base") {
             Ok(base) => base,
             Err(err) => return validation_error(err),
@@ -442,7 +442,7 @@ mod tests {
                 assert_eq!(*number, 7);
                 assert_eq!(body.state.as_deref(), Some("closed"));
                 assert_eq!(body.title.as_deref(), Some("Updated PR"));
-                assert_eq!(body.body.as_deref(), Some("Updated body"));
+                assert_eq!(body.body.as_deref(), Some("  Updated body  "));
                 assert_eq!(body.base.as_deref(), Some("develop"));
             }
             calls => panic!("unexpected calls: {calls:?}"),

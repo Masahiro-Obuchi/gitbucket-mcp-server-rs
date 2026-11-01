@@ -124,8 +124,22 @@ All tools return MCP tool results.
 - `list_pull_requests(owner, repo, state?)`
 - `get_pull_request(owner, repo, pull_number)`
 - `create_pull_request(owner, repo, title, head, base, body?)`
+- `update_pull_request(owner, repo, pull_number, state?, title?, body?, base?)`
 - `merge_pull_request(owner, repo, pull_number, commit_message?)`
 - `add_pull_request_comment(owner, repo, pull_number, body)`
+
+`update_pull_request` requires at least one change. Omitted title/body values are
+preserved by fetching missing content before constructing GitBucket's coupled
+title/body update. A body of `""` explicitly clears content; body whitespace is
+preserved. State/base-only changes do not resend content. Base branches are
+validated before the PATCH. Successful responses must match requested fields
+and any content sent to preserve an omitted field.
+
+`update_not_verified` and `outcome_unknown` are structured tool errors with
+`is_error=true`. They do not imply that no change was applied, and must not cause
+an automatic retry. This workflow does not provide atomic concurrent-edit
+protection. The existing 404 compatibility fallback is retained for legacy
+instances and its returned PR is verified as well.
 
 ### 6.6 User Tools
 
@@ -142,7 +156,8 @@ All tools return MCP tool results.
 - `update_label` must receive at least one of `new_name`, `color`, or `description`.
 - `update_milestone` must receive at least one of `title`, `description`, `due_on`, or `state`.
 - On GitBucket instances without REST issue update support, `update_issue` may fall back through the web UI for `state`, `title`, and `body` changes when web credentials are configured.
-- Optional string fields may be trimmed before sending to GitBucket.
+- Optional string fields may be trimmed before sending to GitBucket, except that
+  `update_pull_request.body` preserves the supplied text exactly.
 - Validation failures must be returned without issuing an outbound API request.
 
 ## 8. Error Handling

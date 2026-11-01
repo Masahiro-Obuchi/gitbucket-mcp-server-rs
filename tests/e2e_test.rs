@@ -1081,6 +1081,92 @@ async fn test_e2e_create_pull_request() {
 }
 
 #[tokio::test]
+#[ignore = "requires a disposable GitBucket and PR write-path E2E credentials"]
+#[serial]
+async fn test_e2e_update_pull_request_preserves_unspecified_fields() {
+    let mut config = E2eConfig::from_env();
+    // Git credentials seed branches; PR updates themselves must use only PAT.
+    config.web_username = None;
+    config.web_password = None;
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+    let original = create_test_pull_request(&client, &config, owner, repo).await;
+    let number = original["number"].as_u64().unwrap();
+    let title = format!("updated-title-{}", unique_suffix());
+    let mut expected_body = original["body"].as_str().unwrap().to_string();
+
+    let updated = call_tool_json(
+        &client,
+        "update_pull_request",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":number,"title":title
+        }),
+    )
+    .await;
+    assert_eq!(updated["title"], title);
+    assert_eq!(updated["body"], expected_body);
+
+    for body in ["    code block\n\nA hard break  \n", "", "restored body"] {
+        let updated = call_tool_json(
+            &client,
+            "update_pull_request",
+            json!({
+                "owner":owner,"repo":repo,"pull_number":number,"body":body
+            }),
+        )
+        .await;
+        assert_eq!(updated["title"], title);
+        assert_eq!(updated["body"], body);
+        expected_body = body.to_string();
+    }
+    for state in ["closed", "open"] {
+        let updated = call_tool_json(
+            &client,
+            "update_pull_request",
+            json!({
+                "owner":owner,"repo":repo,"pull_number":number,"state":state
+            }),
+        )
+        .await;
+        assert_eq!(updated["state"], state);
+        assert_eq!(updated["title"], title);
+        assert_eq!(updated["body"], expected_body);
+    }
+    let unchanged_base = call_tool_json(
+        &client,
+        "update_pull_request",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":number,"base":original["base"]["ref"]
+        }),
+    )
+    .await;
+    assert_eq!(unchanged_base["base"]["ref"], original["base"]["ref"]);
+
+    let failed = call_tool(
+        &client,
+        "update_pull_request",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":number,
+            "base":format!("nonexistent-{}",unique_suffix()),
+            "title":"must-not-apply","body":"must-not-apply"
+        }),
+    )
+    .await;
+    assert_eq!(failed.is_error, Some(true));
+    let fetched = call_tool_json(
+        &client,
+        "get_pull_request",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":number
+        }),
+    )
+    .await;
+    assert_eq!(fetched["title"], title);
+    assert_eq!(fetched["body"], expected_body);
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, GITBUCKET_E2E_REPO, GITBUCKET_E2E_GIT_USERNAME, and GITBUCKET_E2E_GIT_PASSWORD"]
 #[serial]
 async fn test_e2e_add_pull_request_comment() {

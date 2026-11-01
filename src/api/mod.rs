@@ -18,6 +18,7 @@ pub mod issue;
 pub mod label;
 pub mod milestone;
 pub mod pull_request;
+mod pull_request_update;
 pub mod repository;
 pub mod user;
 pub mod web;
