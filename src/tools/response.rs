@@ -46,6 +46,12 @@ pub fn internal_error(message: impl Into<String>) -> ToolResult {
 
 pub fn from_gb_error(error: GbMcpError) -> ToolResult {
     match error {
+        err @ GbMcpError::UpdateNotVerified { .. } => {
+            error_payload("update_not_verified", err.to_string(), None)
+        }
+        err @ GbMcpError::WriteOutcomeUnknown { .. } => {
+            error_payload("outcome_unknown", err.to_string(), None)
+        }
         GbMcpError::Config(message) => error_payload("config_error", message, None),
         GbMcpError::Api { status, message } => error_payload(
             "api_error",
@@ -77,4 +83,42 @@ fn error_payload(kind: &'static str, message: String, status: Option<u16>) -> To
         message,
         status,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unverified_update_is_a_tool_error() {
+        let result = from_gb_error(GbMcpError::UpdateNotVerified {
+            fields: vec!["body"],
+        })
+        .unwrap();
+        assert_eq!(result.is_error, Some(true));
+        let payload = result.structured_content.unwrap();
+        assert_eq!(payload["kind"], "update_not_verified");
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("before retrying"));
+    }
+
+    #[test]
+    fn test_unknown_write_outcome_is_a_tool_error() {
+        let result = from_gb_error(GbMcpError::WriteOutcomeUnknown {
+            cause: Box::new(GbMcpError::Api {
+                status: 500,
+                message: "response unavailable".into(),
+            }),
+        })
+        .unwrap();
+        assert_eq!(result.is_error, Some(true));
+        let payload = result.structured_content.unwrap();
+        assert_eq!(payload["kind"], "outcome_unknown");
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("already have been applied"));
+    }
 }

@@ -1390,7 +1390,7 @@ async fn test_mcp_call_tool_update_pull_request_trims_fields_and_serializes_json
             assert_eq!(*number, 7);
             assert_eq!(body.state.as_deref(), Some("closed"));
             assert_eq!(body.title.as_deref(), Some("Updated PR"));
-            assert_eq!(body.body.as_deref(), Some("updated body"));
+            assert_eq!(body.body.as_deref(), Some("  updated body  "));
             assert_eq!(body.base.as_deref(), Some("develop"));
         }
         calls => panic!("unexpected calls: {calls:?}"),

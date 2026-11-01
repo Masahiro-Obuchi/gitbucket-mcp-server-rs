@@ -314,6 +314,24 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 | `merge_pull_request` | Merge a pull request |
 | `add_pull_request_comment` | Add a comment to a pull request |
 
+`update_pull_request` preserves fields you omit. GitBucket requires title and body
+to be updated together, so changing only one first fetches the PR and preserves
+the other. Body text, including Markdown indentation and trailing whitespace, is
+sent unchanged; use `body: ""` to clear it. State-only and base-only updates do
+not resend title/body. A supplied base branch is checked before updating.
+
+The response is checked against the requested fields and any preserved content.
+An unverified update returns a structured `update_not_verified` error. A failed
+response after a write may return `outcome_unknown`: inspect the PR before
+retrying, because changes may already have been applied. Writes are not
+automatically retried. Fetching and updating are separate requests, so this does
+not guarantee protection against concurrent edits by other users.
+
+For legacy fallback, failures while reading the issue after a web update also
+return `outcome_unknown`, including HTTP 403/404 responses. Failures before a
+fallback write, such as missing web credentials or sign-in failure, retain their
+original error.
+
 ### User
 
 | Tool | Description |
