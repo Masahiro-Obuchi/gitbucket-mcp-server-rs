@@ -2,6 +2,7 @@
 use url::Url;
 
 use super::client::GitBucketClient;
+use super::issue::IssueUpdateError;
 use crate::error::{GbMcpError, Result};
 use crate::models::issue::UpdateIssue;
 use crate::models::pull_request::{
@@ -129,7 +130,7 @@ async fn legacy_update(
         ));
     }
     client
-        .update_issue(
+        .update_issue_with_outcome(
             owner,
             repo,
             number,
@@ -146,7 +147,13 @@ async fn legacy_update(
             },
         )
         .await
-        .map_err(after_write_error)?;
+        .map_err(|error| match error {
+            IssueUpdateError::BeforeWrite(cause) => cause,
+            IssueUpdateError::Write(cause) => after_write_error(cause),
+            IssueUpdateError::AfterWrite(cause) => GbMcpError::WriteOutcomeUnknown {
+                cause: Box::new(cause),
+            },
+        })?;
     client
         .get_pull_request(owner, repo, number)
         .await

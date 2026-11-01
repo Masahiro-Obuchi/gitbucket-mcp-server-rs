@@ -140,6 +140,10 @@ and any content sent to preserve an omitted field.
 an automatic retry. This workflow does not provide atomic concurrent-edit
 protection. The existing 404 compatibility fallback is retained for legacy
 instances and its returned PR is verified as well.
+Fallback errors retain the operation stage: preparation and authentication
+failures retain their original error; failed reads after a web write return
+`outcome_unknown` regardless of HTTP status. A later failure in a sequence of
+web writes also returns `outcome_unknown` because earlier changes may persist.
 
 ### 6.6 User Tools
 

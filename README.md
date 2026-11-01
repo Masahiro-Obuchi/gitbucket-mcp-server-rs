@@ -327,6 +327,11 @@ retrying, because changes may already have been applied. Writes are not
 automatically retried. Fetching and updating are separate requests, so this does
 not guarantee protection against concurrent edits by other users.
 
+For legacy fallback, failures while reading the issue after a web update also
+return `outcome_unknown`, including HTTP 403/404 responses. Failures before a
+fallback write, such as missing web credentials or sign-in failure, retain their
+original error.
+
 ### User
 
 | Tool | Description |

@@ -32,6 +32,10 @@ PR update regressions are covered with a stateful mock of GitBucket's coupled
 title/body update behavior. The tests cover independent content updates, empty
 and absent bodies, state-only updates, invalid/ignored base changes, unverified
 HTTP 200 responses, and unknown write outcomes without retries.
+Legacy fallback regressions distinguish issue read failures before and after a
+web write (including 403/404), missing credentials, sign-in failure, and partial
+web updates. Direct and fallback REST writes also cover rejected requests versus
+timeout/server failures and assert that writes are not retried.
 
 Against a disposable instance with the E2E variables below configured, run:
 

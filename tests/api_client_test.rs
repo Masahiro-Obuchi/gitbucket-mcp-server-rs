@@ -1889,6 +1889,293 @@ async fn test_update_pull_request_legacy_fallback_preserves_unspecified_body() {
     assert_eq!(pr.body.as_deref(), Some("preserve me"));
 }
 
+async fn mount_pull_request_legacy_routes(server: &TestServer) {
+    for resource in ["pulls", "issues"] {
+        Mock::given(method("PATCH"))
+            .and(path(format!("/api/v3/repos/owner/repo/{resource}/7")))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server.mock_server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number":7,"title":"PR","body":"Original body","state":"open"
+        })))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+}
+
+async fn mount_pull_request_web_sign_in(server: &TestServer) {
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .respond_with(
+            ResponseTemplate::new(303)
+                .insert_header("location", "/dashboard")
+                .insert_header("set-cookie", "JSESSIONID=pr-update; Path=/"),
+        )
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/dashboard"))
+        .and(header("cookie", "JSESSIONID=pr-update"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+}
+
+#[tokio::test]
+async fn test_update_pull_request_web_write_then_issue_read_failure_is_unknown() {
+    use gitbucket_mcp_server::error::GbMcpError;
+
+    for status in [403, 404, 500, 200] {
+        let server = TestServer::start().await;
+        mount_pull_request_legacy_routes(&server).await;
+        mount_pull_request_web_sign_in(&server).await;
+        let reads = AtomicUsize::new(0);
+        Mock::given(method("GET"))
+            .and(path("/api/v3/repos/owner/repo/issues/7"))
+            .respond_with(move |_: &wiremock::Request| {
+                if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number":7,"title":"PR","body":"Original body","state":"open"
+                    }))
+                } else {
+                    ResponseTemplate::new(status).set_body_string("unreadable issue response")
+                }
+            })
+            .expect(2)
+            .mount(&server.mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/owner/repo/issue_comments/state"))
+            .and(header("cookie", "JSESSIONID=pr-update"))
+            .and(body_string_contains("issueId=7"))
+            .and(body_string_contains("action=close"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server.mock_server)
+            .await;
+
+        let mut update = pull_request_update();
+        update.state = Some("closed".into());
+        let err = server
+            .client_with_web_auth("alice", "secret-pass")
+            .update_pull_request("owner", "repo", 7, &update)
+            .await
+            .unwrap_err();
+        match err {
+            GbMcpError::WriteOutcomeUnknown { cause } if status == 200 => {
+                assert!(matches!(*cause, GbMcpError::Json(_)));
+            }
+            GbMcpError::WriteOutcomeUnknown { cause } => {
+                assert!(
+                    matches!(*cause, GbMcpError::Api { status: actual, .. } if actual == status)
+                );
+            }
+            other => {
+                panic!("expected unknown outcome after issue read HTTP {status}, got {other:?}")
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_update_pull_request_fallback_pre_write_read_failure_keeps_original_error() {
+    use gitbucket_mcp_server::error::GbMcpError;
+
+    for status in [403, 404, 500] {
+        let server = TestServer::start().await;
+        mount_pull_request_legacy_routes(&server).await;
+        Mock::given(method("GET"))
+            .and(path("/api/v3/repos/owner/repo/issues/7"))
+            .respond_with(ResponseTemplate::new(status))
+            .expect(1)
+            .mount(&server.mock_server)
+            .await;
+        let mut update = pull_request_update();
+        update.state = Some("closed".into());
+        let err = server
+            .client_with_web_auth("alice", "secret-pass")
+            .update_pull_request("owner", "repo", 7, &update)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, GbMcpError::Api { status: actual, .. } if actual == status),
+            "expected pre-write API {status}, got {err:?}"
+        );
+        let requests = server.mock_server.received_requests().await.unwrap();
+        assert!(requests.iter().all(|r| r.method != "POST"));
+    }
+}
+
+#[tokio::test]
+async fn test_update_pull_request_fallback_without_credentials_is_not_unknown() {
+    use gitbucket_mcp_server::error::GbMcpError;
+
+    let server = TestServer::start().await;
+    mount_pull_request_legacy_routes(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number":7,"title":"PR","state":"open"
+        })))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    let mut update = pull_request_update();
+    update.state = Some("closed".into());
+    let err = server
+        .client()
+        .update_pull_request("owner", "repo", 7, &update)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, GbMcpError::Other(ref message) if message.contains("Set GITBUCKET_USERNAME")),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_update_pull_request_fallback_sign_in_failure_is_not_unknown() {
+    use gitbucket_mcp_server::error::GbMcpError;
+
+    let server = TestServer::start().await;
+    mount_pull_request_legacy_routes(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number":7,"title":"PR","state":"open"
+        })))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/signin"))
+        .respond_with(ResponseTemplate::new(403))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    let mut update = pull_request_update();
+    update.state = Some("closed".into());
+    let err = server
+        .client_with_web_auth("alice", "secret-pass")
+        .update_pull_request("owner", "repo", 7, &update)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, GbMcpError::Other(ref message) if message.contains("sign-in failed")),
+        "{err:?}"
+    );
+    let requests = server.mock_server.received_requests().await.unwrap();
+    assert!(requests
+        .iter()
+        .all(|r| r.url.path() != "/owner/repo/issue_comments/state"));
+}
+
+#[tokio::test]
+async fn test_update_pull_request_partial_web_write_failure_is_unknown() {
+    use gitbucket_mcp_server::error::GbMcpError;
+
+    let server = TestServer::start().await;
+    mount_pull_request_legacy_routes(&server).await;
+    mount_pull_request_web_sign_in(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number":7,"title":"PR","body":"Original body","state":"open"
+        })))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/edit_title/7"))
+        .and(body_string_contains("title=Updated+PR"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/edit/7"))
+        .and(body_string_contains("content=Updated+body"))
+        .respond_with(ResponseTemplate::new(403))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    let mut update = pull_request_update();
+    update.title = Some("Updated PR".into());
+    update.body = Some("Updated body".into());
+    update.state = Some("closed".into());
+    let err = server
+        .client_with_web_auth("alice", "secret-pass")
+        .update_pull_request("owner", "repo", 7, &update)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, GbMcpError::WriteOutcomeUnknown { .. }),
+        "{err:?}"
+    );
+    let requests = server.mock_server.received_requests().await.unwrap();
+    assert!(requests
+        .iter()
+        .all(|r| r.url.path() != "/owner/repo/issue_comments/state"));
+}
+
+#[tokio::test]
+async fn test_update_pull_request_write_error_classification_without_retry() {
+    use gitbucket_mcp_server::error::GbMcpError;
+
+    for legacy in [false, true] {
+        for status in [403, 408, 422, 500] {
+            let server = TestServer::start().await;
+            Mock::given(method("PATCH"))
+                .and(path("/api/v3/repos/owner/repo/pulls/7"))
+                .respond_with(ResponseTemplate::new(if legacy { 404 } else { status }))
+                .expect(1)
+                .mount(&server.mock_server)
+                .await;
+            if legacy {
+                Mock::given(method("GET"))
+                    .and(path("/api/v3/repos/owner/repo/pulls/7"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "number":7,"title":"PR","state":"open"
+                    })))
+                    .expect(1)
+                    .mount(&server.mock_server)
+                    .await;
+                Mock::given(method("PATCH"))
+                    .and(path("/api/v3/repos/owner/repo/issues/7"))
+                    .respond_with(ResponseTemplate::new(status))
+                    .expect(1)
+                    .mount(&server.mock_server)
+                    .await;
+            }
+            let mut update = pull_request_update();
+            update.state = Some("closed".into());
+            let err = server
+                .client()
+                .update_pull_request("owner", "repo", 7, &update)
+                .await
+                .unwrap_err();
+            match status {
+                408 | 500 => assert!(matches!(err, GbMcpError::WriteOutcomeUnknown { cause }
+                        if matches!(*cause, GbMcpError::Api { status: actual, .. } if actual == status))),
+                _ => assert!(
+                    matches!(err, GbMcpError::Api { status: actual, .. } if actual == status)
+                ),
+            }
+            assert_eq!(
+                server.mock_server.received_requests().await.unwrap().len(),
+                if legacy { 3 } else { 1 }
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_update_pull_request_maps_wrapped_404_to_api_error() {
     let server = TestServer::start().await;

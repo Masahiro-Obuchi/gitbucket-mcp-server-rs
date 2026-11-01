@@ -6,6 +6,24 @@ use super::client::GitBucketClient;
 use super::web::GitBucketWebSession;
 use crate::error::GbMcpError;
 
+/// Preserve the stage for callers that must distinguish an unreadable result
+/// from a rejected write, even when both errors have the same HTTP status.
+pub(super) enum IssueUpdateError {
+    BeforeWrite(GbMcpError),
+    Write(GbMcpError),
+    AfterWrite(GbMcpError),
+}
+
+impl IssueUpdateError {
+    fn into_cause(self) -> GbMcpError {
+        match self {
+            Self::BeforeWrite(cause) | Self::Write(cause) | Self::AfterWrite(cause) => cause,
+        }
+    }
+}
+
+type IssueUpdateResult = std::result::Result<Issue, IssueUpdateError>;
+
 impl GitBucketClient {
     /// List issues for a repository.
     pub async fn list_issues(
@@ -49,6 +67,18 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateIssue,
     ) -> Result<Issue> {
+        self.update_issue_with_outcome(owner, repo, number, body)
+            .await
+            .map_err(IssueUpdateError::into_cause)
+    }
+
+    pub(super) async fn update_issue_with_outcome(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &UpdateIssue,
+    ) -> IssueUpdateResult {
         match self
             .patch(
                 &format!("/repos/{}/{}/issues/{}", owner, repo, number),
@@ -61,7 +91,7 @@ impl GitBucketClient {
                 self.update_issue_with_404_handling(owner, repo, number, body, err)
                     .await
             }
-            Err(err) => Err(err),
+            Err(err) => Err(IssueUpdateError::Write(err)),
         }
     }
 
@@ -101,14 +131,16 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateIssue,
         original_error: GbMcpError,
-    ) -> Result<Issue> {
+    ) -> IssueUpdateResult {
         match self.get_issue(owner, repo, number).await {
             Ok(current_issue) => {
                 self.update_issue_via_web_fallback(owner, repo, number, body, &current_issue)
                     .await
             }
-            Err(GbMcpError::Api { status: 404, .. }) => Err(original_error),
-            Err(err) => Err(err),
+            Err(GbMcpError::Api { status: 404, .. }) => {
+                Err(IssueUpdateError::BeforeWrite(original_error))
+            }
+            Err(err) => Err(IssueUpdateError::BeforeWrite(err)),
         }
     }
 
@@ -119,7 +151,7 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateIssue,
         current_issue: &Issue,
-    ) -> Result<Issue> {
+    ) -> IssueUpdateResult {
         let current_body = current_issue.body.as_deref().unwrap_or_default();
         let next_title = body
             .title
@@ -140,10 +172,10 @@ impl GitBucketClient {
                 "closed" => "close",
                 "open" => "reopen",
                 other => {
-                    return Err(GbMcpError::Other(format!(
+                    return Err(IssueUpdateError::BeforeWrite(GbMcpError::Other(format!(
                         "Web fallback does not support issue state '{}'",
                         other
-                    )));
+                    ))));
                 }
             }),
             _ => None,
@@ -154,9 +186,9 @@ impl GitBucketClient {
         }
 
         let credentials = self.web_credentials().ok_or_else(|| {
-            GbMcpError::Other(
+            IssueUpdateError::BeforeWrite(GbMcpError::Other(
                 "This GitBucket instance does not support REST issue updates. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD to enable web fallback.".to_string(),
-            )
+            ))
         })?;
 
         let session = GitBucketWebSession::sign_in(
@@ -165,27 +197,35 @@ impl GitBucketClient {
             &credentials.password,
             self.allow_invalid_certs(),
         )
-        .await?;
+        .await
+        .map_err(IssueUpdateError::BeforeWrite)?;
 
+        // Once a web mutation is attempted, a failure can leave a partial
+        // update. Keep that context through later writes and the final read.
         if needs_title_update {
             session
                 .edit_issue_title(owner, repo, number, next_title)
-                .await?;
+                .await
+                .map_err(IssueUpdateError::AfterWrite)?;
         }
 
         if needs_body_update {
             session
                 .edit_issue_content(owner, repo, number, next_title, next_body)
-                .await?;
+                .await
+                .map_err(IssueUpdateError::AfterWrite)?;
         }
 
         if let Some(action) = state_action {
             session
                 .update_issue_state(owner, repo, number, action)
-                .await?;
+                .await
+                .map_err(IssueUpdateError::AfterWrite)?;
         }
 
-        self.get_issue(owner, repo, number).await
+        self.get_issue(owner, repo, number)
+            .await
+            .map_err(IssueUpdateError::AfterWrite)
     }
 }
 
