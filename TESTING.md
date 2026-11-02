@@ -39,6 +39,8 @@ cargo test --test routing_test
 
 Default clients (with web credentials present) retain unknown 404 errors without signing in or sending secondary writes. Profile tests distinguish REST rename/PR updates from known web Issue/same-name color/restricted-title operations. They cover 401/403/409/422 rejection, 408/5xx unknown outcomes, removed profile rejection, strict label-write schema/argument rejection before all HTTP, no-op color normalization, incorrect snapshots, and ignored REST/web responses.
 
+Whitespace-padded label regressions model the web form trimming a name during a color change. Standard web updates reject these names before sign-in or mutation; REST create/rename operations and unchanged labels still preserve them.
+
 Regression tests for deleted legacy write paths have been removed. The remaining standard web tests select the supported contract directly, without rejected REST-write fixtures. Label fixtures no longer claim standard description persistence. The label lifecycle E2E verifies a same-name color update and confirms that a rejected combined description/name/color request leaves the stored label unchanged.
 
 ## HTTP Budget Regression Tests

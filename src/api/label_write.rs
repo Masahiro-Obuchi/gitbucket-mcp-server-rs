@@ -146,6 +146,9 @@ async fn web_update(
     if next_name.contains(',') {
         return Err(GbMcpError::Unsupported("The GitBucket web label form cannot preserve a comma in a label name; no web write was sent".into()));
     }
+    if next_name != next_name.trim() {
+        return Err(GbMcpError::Unsupported("The GitBucket web label form cannot preserve leading or trailing whitespace in a label name; no web write was sent".into()));
+    }
     let session = client.label_web_session().await?;
     let label_id = session.find_label_id(owner, repo, old_name).await?;
     session

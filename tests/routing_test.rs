@@ -310,6 +310,138 @@ async fn same_name_color_uses_web_only_for_selected_contract_and_verifies_result
 }
 
 #[tokio::test]
+async fn standard_color_updates_reject_names_trimmed_by_web_before_signin() {
+    for name in [" bug", "bug ", " bug "] {
+        let server = MockServer::start().await;
+        let changed = Arc::new(AtomicBool::new(false));
+        let read = changed.clone();
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/api/v3/repos/owner/repo/labels/{}",
+                name.replace(' ', "%20")
+            )))
+            .respond_with(move |_: &wiremock::Request| {
+                if read.load(Ordering::SeqCst) {
+                    // The web form saved the trimmed name, so the original
+                    // REST URL no longer identifies the label.
+                    ResponseTemplate::new(404)
+                } else {
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"name": name, "color": "123456"}))
+                }
+            })
+            .mount(&server)
+            .await;
+        sign_in(&server).await;
+        let encoded_name: String = url::form_urlencoded::byte_serialize(name.as_bytes()).collect();
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/labels"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"<tr id="label-row-12"><a href="/owner/repo/issues?labels={encoded_name}">label</a></tr>"#
+            )))
+            .mount(&server)
+            .await;
+        let write = changed.clone();
+        Mock::given(method("POST"))
+            .and(path("/owner/repo/issues/labels/12/edit"))
+            .respond_with(move |_: &wiremock::Request| {
+                write.store(true, Ordering::SeqCst);
+                ResponseTemplate::new(200)
+            })
+            .mount(&server)
+            .await;
+
+        let result = client(&server, ApiProfile::Standard)
+            .update_label("owner", "repo", name, &recolor())
+            .await;
+        assert!(
+            matches!(result, Err(GbMcpError::Unsupported(_))),
+            "{name:?}: {result:?}, submitted_write={}",
+            changed.load(Ordering::SeqCst)
+        );
+        assert!(!changed.load(Ordering::SeqCst));
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn rest_label_writes_preserve_whitespace_padded_names() {
+    for mode in [ApiProfile::RestOnly, ApiProfile::Standard] {
+        let server = MockServer::start().await;
+        let label = json!({"name": " bug ", "color": "abcdef"});
+        Mock::given(method("POST"))
+            .and(path("/api/v3/repos/owner/repo/labels"))
+            .and(body_json(label.clone()))
+            .respond_with(ResponseTemplate::new(201).set_body_json(label.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path("/api/v3/repos/owner/repo/labels/old-name"))
+            .and(body_json(label.clone()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(label))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let c = client(&server, mode);
+        assert_eq!(
+            c.create_label(
+                "owner",
+                "repo",
+                &CreateLabel {
+                    name: " bug ".into(),
+                    color: "ABCDEF".into(),
+                },
+            )
+            .await
+            .unwrap()
+            .name,
+            " bug "
+        );
+        assert_eq!(
+            c.update_label(
+                "owner",
+                "repo",
+                "old-name",
+                &UpdateLabel {
+                    new_name: Some(" bug ".into()),
+                    color: Some("#ABCDEF".into()),
+                },
+            )
+            .await
+            .unwrap()
+            .name,
+            " bug "
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    }
+}
+
+#[tokio::test]
+async fn padded_label_noops_do_not_require_web_credentials_or_write() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/labels/%20bug%20"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"name": " bug ", "color": "abcdef"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let c = GitBucketClient::new(&server.uri(), "fake-token")
+        .unwrap()
+        .with_api_profile(ApiProfile::Standard);
+    assert_eq!(
+        c.update_label("owner", "repo", " bug ", &recolor())
+            .await
+            .unwrap()
+            .name,
+        " bug "
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn unverified_color_422_is_not_a_reason_to_try_web() {
     for mode in [ApiProfile::RestOnly] {
         let server = MockServer::start().await;

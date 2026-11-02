@@ -477,6 +477,8 @@ client-controlled continuation are separate follow-up work.
 
 Label creation and updates verify the returned name and color. Web updates read the label again; an ignored change returns `update_not_verified`, and a failed verification read returns `outcome_unknown`. Same-value updates return the current label without writing. Label description is not an accepted create/update argument. Any supplied value is rejected by strict input deserialization before HTTP, including an empty or null value or a request that also changes name/color. No requested field is silently dropped. These operations do not provide atomic protection against concurrent edits.
 
+Standard-profile web color changes reject label names containing a comma or leading/trailing whitespace with `unsupported_error` before sign-in. The web form cannot safely preserve those names. REST create/rename operations preserve whitespace-padded names, and unchanged labels need no web write.
+
 GitBucket's issue API does not expose `closed_at` on some versions. When a closed issue has no `closed_at` but does have `updated_at`, this server fills `closed_at` with `updated_at` as a best-effort GitHub-compatible value.
 
 ## Development
