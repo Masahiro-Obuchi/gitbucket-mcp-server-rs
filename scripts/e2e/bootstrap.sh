@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 validate_saved_token() {
   local token=$1
-  local response_file status
+  local response_file status valid=1
 
   response_file=$(mktemp "${runtime_scratch}/file.XXXXXXXX")
   status=$(curl_json \
@@ -16,8 +16,23 @@ validate_saved_token() {
     -H "Authorization: token ${token}" \
     "${GITBUCKET_E2E_BASE_URL}/api/v3/user")
 
+  if [[ "${status}" == "200" ]] && python3 - "${response_file}" "${GITBUCKET_E2E_USER}" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as response:
+        data = json.load(response)
+    valid = isinstance(data, dict) and data.get("login") == sys.argv[2]
+except (OSError, ValueError):
+    valid = False
+sys.exit(0 if valid else 1)
+PY
+  then
+    valid=0
+  fi
   rm -f "${response_file}"
-  [[ "${status}" == "200" ]]
+  return "${valid}"
 }
 
 ensure_validation_user() {

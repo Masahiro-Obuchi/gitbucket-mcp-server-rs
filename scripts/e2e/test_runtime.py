@@ -119,6 +119,50 @@ if '-w' in args:
         self.assertEqual(list(root.iterdir()), [])
         self.assertEqual(stat.S_IMODE(root.stat().st_mode), 0o700)
 
+    def test_bootstrap_reuses_tokens_only_for_the_configured_user(self):
+        old_token = "a" * 40
+        new_token = "b" * 40
+        old_env = dict(self.env, GITBUCKET_E2E_REPO_OWNER="previous-user",
+                       GITBUCKET_E2E_GIT_USERNAME="previous-user")
+        bindir = self.root / "bin"
+        bindir.mkdir()
+        docker = bindir / "docker"
+        docker.write_text("#!/bin/bash\nexit 0\n")
+        docker.chmod(0o700)
+        curl = bindir / "curl"
+        curl.write_text("""#!/usr/bin/env python3
+import json, os, pathlib, sys
+args = sys.argv[1:]
+url = args[-1]
+if '-w' in args:
+    response = os.environ['SAVED_TOKEN_RESPONSE'] if url.endswith('/api/v3/user') else json.dumps({'login':'test-user'})
+    pathlib.Path(args[args.index('-o')+1]).write_text(response)
+    print('200', end='')
+elif url.endswith('/_personalToken'):
+    pathlib.Path(args[args.index('-o')+1]).write_text('data-clipboard-text="' + 'b'*40 + '"')
+""")
+        curl.chmod(0o700)
+        for response, expected in [
+            ('{"login":"previous-user"}', new_token),
+            ('{"login":"test-user"}', old_token),
+            ('{"login":123}', new_token),
+            ('[]', new_token),
+            ('not json', new_token),
+        ]:
+            with self.subTest(response=response):
+                with patch.dict(os.environ, old_env):
+                    runtime.write_runtime(old_token)
+                result = subprocess.run(["bash", str(SCRIPT_DIR / "bootstrap.sh")],
+                                        env=dict(self.env, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
+                                                 GITBUCKET_E2E_USER="test-user", SAVED_TOKEN_RESPONSE=response),
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                saved = runtime.read_runtime(Path(str(self.path) + ".json"))
+                self.assertEqual(saved["GITBUCKET_E2E_OWNER"], "test-user")
+                self.assertEqual(saved["GITBUCKET_E2E_TOKEN"], expected)
+                self.assertNotIn(old_token, result.stdout + result.stderr)
+                self.assertNotIn(new_token, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

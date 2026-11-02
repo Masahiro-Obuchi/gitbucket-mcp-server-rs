@@ -538,6 +538,10 @@ The same bootstrap flow is also automated in GitHub Actions through `.github/wor
 
 The bootstrap script starts a disposable GitBucket bound to `127.0.0.1`, creates a validation user, issues a personal access token, and provisions the repository. It writes shell-quoted `runtime.env` and a separate `runtime.env.json`, both mode `0600`, in the mode `0700` runtime directory. Both contain test credentials. Source only the generated shell file; CI imports JSON with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, not by stripping `export` from the shell file. Bootstrap removes its temporary cookie/response files on failure. Use `down.sh` to remove the stack and default runtime directory after testing.
 
+A saved E2E token is reused only when `/api/v3/user` identifies the configured
+validation user. A token for another account or an unreadable identity response
+causes bootstrap to obtain a token for the configured user.
+
 ## Acknowledgements
 
 This project exists thanks to [GitBucket](https://gitbucket.github.io/) and the community around it. Thank you for building and maintaining the software that made this MCP server worth creating.
