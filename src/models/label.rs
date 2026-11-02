@@ -12,21 +12,19 @@ pub struct Label {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct CreateLabel {
     pub name: String,
     pub color: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateLabel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
 }
 
 #[cfg(test)]
@@ -63,13 +61,11 @@ mod tests {
         let create = CreateLabel {
             name: "bug".to_string(),
             color: "fc2929".to_string(),
-            description: Some("Broken behavior".to_string()),
         };
 
         let json = serde_json::to_value(&create).unwrap();
         assert_eq!(json["name"], "bug");
         assert_eq!(json["color"], "fc2929");
-        assert_eq!(json["description"], "Broken behavior");
     }
 
     #[test]
@@ -77,12 +73,27 @@ mod tests {
         let update = UpdateLabel {
             new_name: Some("defect".to_string()),
             color: None,
-            description: Some("Defect reports".to_string()),
         };
 
         let json = serde_json::to_value(&update).unwrap();
         assert_eq!(json["new_name"], "defect");
-        assert_eq!(json["description"], "Defect reports");
         assert!(json.get("color").is_none());
+    }
+    #[test]
+    fn label_write_models_reject_removed_description_and_unknown_fields() {
+        for value in [
+            serde_json::json!(""),
+            serde_json::json!("ignored"),
+            serde_json::json!(null),
+        ] {
+            assert!(serde_json::from_value::<CreateLabel>(
+                serde_json::json!({"name":"label","color":"123456","description":value})
+            )
+            .is_err());
+            assert!(serde_json::from_value::<UpdateLabel>(
+                serde_json::json!({"new_name":"label","color":"123456","description":value})
+            )
+            .is_err());
+        }
     }
 }

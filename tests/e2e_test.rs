@@ -81,7 +81,13 @@ async fn spawn_client_and_server(
         config.web_username.as_deref(),
         config.web_password.as_deref(),
     )
-    .unwrap();
+    .unwrap()
+    .with_api_profile(
+        optional_env("GITBUCKET_E2E_API_PROFILE")
+            .unwrap_or_else(|| "rest-only".into())
+            .parse()
+            .unwrap(),
+    );
 
     tokio::spawn(async move {
         let server = GitBucketMcpServer::new(client)
@@ -537,7 +543,6 @@ async fn create_test_label(
 ) -> Value {
     let suffix = unique_suffix();
     let name = format!("e2e-label-{suffix}");
-    let description = format!("e2e label description {suffix}");
 
     let label = call_tool_json(
         client,
@@ -547,7 +552,6 @@ async fn create_test_label(
             "repo": repo,
             "name": name,
             "color": "#A1B2C3",
-            "description": description,
         }),
     )
     .await;
@@ -920,6 +924,46 @@ async fn test_e2e_label_lifecycle() {
             .any(|label| label["name"] == name),
         "expected created label to appear in list_labels output: {labels}"
     );
+
+    // Descriptions are unsupported by standard GitBucket, even when combined
+    // with otherwise valid changes; ensure no requested field was written.
+    let rejected = client
+        .call_tool(
+            CallToolRequestParams::new("update_label").with_arguments(
+                json!({
+                    "owner":owner,"repo":repo,"name":name,"new_name":format!("{name}-rejected"),
+                    "color":"ffffff","description":"must not be silently ignored"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(rejected,rmcp::service::ServiceError::McpError(error) if error.code==rmcp::model::ErrorCode::INVALID_PARAMS)
+    );
+    let unchanged = call_tool_json(
+        &client,
+        "get_label",
+        json!({"owner":owner,"repo":repo,"name":name}),
+    )
+    .await;
+    assert_eq!(unchanged["name"], created["name"]);
+    assert_eq!(unchanged["color"], created["color"]);
+
+    // Same-name color changes exercise the known REST 422 workaround.
+    let recolored = call_tool_json(
+        &client,
+        "update_label",
+        json!({
+            "owner":owner,"repo":repo,"name":name,"color":"#00FF11"
+        }),
+    )
+    .await;
+    assert_eq!(recolored["name"], name);
+    assert_eq!(recolored["color"], "00ff11");
 
     let updated_name = format!("{name}-updated");
     let updated = call_tool_json(
@@ -1319,7 +1363,9 @@ async fn test_e2e_update_issue() {
     let suffix = unique_suffix();
     let updated_title = format!("e2e-updated-issue-{suffix}");
     let updated_body = format!("e2e updated body {suffix}");
-    let has_web_fallback = config.web_username.is_some() && config.web_password.is_some();
+    let has_web_fallback = config.web_username.is_some()
+        && config.web_password.is_some()
+        && optional_env("GITBUCKET_E2E_API_PROFILE").is_some_and(|mode| mode != "rest-only");
     if has_web_fallback {
         let updated = call_tool(
             &client,

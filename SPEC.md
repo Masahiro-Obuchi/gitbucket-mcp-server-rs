@@ -70,6 +70,17 @@ Requirements:
 - Unix loads open without following symlinks, reject non-regular files, and warn about group/other permissions without modifying the file. Parent directories must be trusted. Non-Unix deployments must manage OS ACLs.
 - Config/credential Debug output is redacted. TOML parse errors report position and a generic explanation without source text.
 
+### Upstream API profiles
+
+`GITBUCKET_API_PROFILE` is env-only: `rest-only` (default) or `standard`. The common standard profile is verified on GitBucket 4.44.0 and 4.48.0; it describes actual upstream behavior, not compatibility with old client code. Credentials alone never activate web writes.
+
+- Both profiles return REST errors without attempting a secondary write. There are no legacy modes, version-specific aliases, PR-to-Issue write paths or 404-triggered web writes.
+- The standard profile selects REST for PR updates, label rename, ordinary milestone writes and deletion. Ordinary Issue updates use Web directly. Same-name label color changes use Web to avoid the verified REST self-name collision; restricted milestone titles select Web directly.
+- Label create/update request types and MCP schemas omit description and reject unknown fields. A description argument, including null, empty strings or combined changes, is an invalid-parameters error before HTTP. Direct JSON deserialization of the Rust request models also rejects it.
+- Label writes verify response name/color. No-op updates avoid writes, failed verification reads are unknown outcomes, and mismatches return `update_not_verified`. Reads/writes are not atomic.
+- All operations use the shared `OperationNotVerified` / `OperationOutcomeUnknown` errors. PR-only error variants and internal Issue stages used solely by the old PR fallback have been removed.
+- REST/Web identity agreement, general HTML parsing/verification and richer partial-application data remain separate work.
+
 ## 5. GitBucket API Contract
 
 - Base URLs are normalized to include scheme and `/api/v3`, preserving IPv6 and context paths. Only HTTP(S) hosts are accepted; userinfo, query, fragment, backslashes, dot segments, invalid percent escapes, escaped controls and escaped separators are rejected.
@@ -90,9 +101,9 @@ Requirements:
   list. The terminal empty-page request counts against this limit.
 - Lists are not atomic snapshots of concurrent activity. Existing MCP list
   result field names and state-filter inputs remain unchanged.
-- `update_label(new_name/color)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target label still exists via `GET`, and optional web credentials are configured. The web fallback does not support label description updates.
-- `update_issue(state=...)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target Issue still exists via `GET`, and optional web credentials are configured.
-- milestone create, update, and delete may fall back to the GitBucket web UI when the REST endpoint returns HTTP 404 and the target repository or milestone can still be verified.
+- Label routes follow the explicit operation profile above; description writes are rejected before HTTP.
+- Standard-profile Issue updates select Web directly; unknown instances attempt REST without fallback.
+- No API profile chooses a secondary write route from a failed write status.
 
 ## 6. MCP Tool Contract
 
@@ -113,8 +124,8 @@ All tools return MCP tool results.
 
 - `list_labels(owner, repo)`
 - `get_label(owner, repo, name)`
-- `create_label(owner, repo, name, color, description?)`
-- `update_label(owner, repo, name, new_name?, color?, description?)`
+- `create_label(owner, repo, name, color)`
+- `update_label(owner, repo, name, new_name?, color?)`
 - `delete_label(owner, repo, name)`
 
 ### 6.3 Issue Tools
@@ -145,9 +156,7 @@ milestone and construct complete title/state/description/due_on values. Explicit
 clears are sent as null in the REST payload. Unchanged requests need no write.
 Verify the response against requested and preserved values.
 
-The existing 404 web compatibility path remains available, including for titles
-that violate the official REST character restrictions. It is not evidence that
-the endpoint is absent. Web content forms must preserve UTC-midnight dates and
+The standard profile selects Web before writing titles that violate the official REST character restrictions. REST errors never trigger a web write. Web content forms must preserve UTC-midnight dates and
 description whitespace; reject requests that cannot be represented before a
 web write. State-only web changes do not submit the content form. Round-trip
 date verification also detects differing web-server timezone interpretation.
@@ -177,9 +186,8 @@ and any content sent to preserve an omitted field.
 `update_not_verified` and `outcome_unknown` are structured tool errors with
 `is_error=true`. They do not imply that no change was applied, and must not cause
 an automatic retry. This workflow does not provide atomic concurrent-edit
-protection. The existing 404 compatibility fallback is retained for legacy
-instances and its returned PR is verified as well.
-Fallback errors retain the operation stage: preparation and authentication
+protection. PR writes use only their dedicated REST endpoint.
+Web errors retain the operation context: preparation and authentication
 failures retain their original error; failed reads after a web write return
 `outcome_unknown` regardless of HTTP status. A later failure in a sequence of
 web writes also returns `outcome_unknown` because earlier changes may persist.
@@ -196,9 +204,10 @@ web writes also returns `outcome_unknown` because earlier changes may persist.
 - `list_issues.state`, `list_milestones.state`, and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` and `update_milestone.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
-- `update_label` must receive at least one of `new_name`, `color`, or `description`.
+- `update_label` must receive at least one of `new_name` or `color`.
+- Standard web label updates reject comma-containing names and leading/trailing whitespace before sign-in, preserving the stored name. REST label writes and no-op updates retain their supported names.
 - `update_milestone` must receive at least one of `title`, `description`, `due_on`, or `state`.
-- On GitBucket instances without REST issue update support, `update_issue` may fall back through the web UI for `state`, `title`, and `body` changes when web credentials are configured.
+- `update_issue` uses Web directly only under the `standard` profile with web credentials; `rest-only` uses REST. A failed REST write never activates another route.
 - Optional string fields may be trimmed before sending to GitBucket, except that
   `update_pull_request.body` preserves the supplied text exactly.
 - Validation failures must be returned without issuing an outbound API request.

@@ -31,6 +31,18 @@ cargo test --test e2e_test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+## Operation Routing Regression Tests
+
+```bash
+cargo test --test routing_test
+```
+
+Default clients (with web credentials present) retain unknown 404 errors without signing in or sending secondary writes. Profile tests distinguish REST rename/PR updates from known web Issue/same-name color/restricted-title operations. They cover 401/403/409/422 rejection, 408/5xx unknown outcomes, removed profile rejection, strict label-write schema/argument rejection before all HTTP, no-op color normalization, incorrect snapshots, and ignored REST/web responses.
+
+Whitespace-padded label regressions model the web form trimming a name during a color change. Standard web updates reject these names before sign-in or mutation; REST create/rename operations and unchanged labels still preserve them.
+
+Regression tests for deleted legacy write paths have been removed. The remaining standard web tests select the supported contract directly, without rejected REST-write fixtures. Label fixtures no longer claim standard description persistence. The label lifecycle E2E verifies a same-name color update and confirms that a rejected combined description/name/color request leaves the stored label unchanged.
+
 ## HTTP Budget Regression Tests
 
 ```bash
@@ -91,10 +103,7 @@ PR update regressions are covered with a stateful mock of GitBucket's coupled
 title/body update behavior. The tests cover independent content updates, empty
 and absent bodies, state-only updates, invalid/ignored base changes, unverified
 HTTP 200 responses, and unknown write outcomes without retries.
-Legacy fallback regressions distinguish issue read failures before and after a
-web write (including 403/404), missing credentials, sign-in failure, and partial
-web updates. Direct and fallback REST writes also cover rejected requests versus
-timeout/server failures and assert that writes are not retried.
+Standard web regressions distinguish failures before and after writing, and preserve unknown outcomes without replay. PRs use their dedicated REST endpoint; 404 errors do not activate Issue or Web writes. Transport tests cover rejected requests versus timeout/server failures.
 
 Against a disposable instance with the E2E variables below configured, run:
 
@@ -115,18 +124,20 @@ read. It leaves its uniquely named branch and PR in the disposable repository.
 - `GITBUCKET_E2E_REPO` for milestone, issue, and pull request tests against an existing repository
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD` for pull request write-path tests that create and push temporary branches
 - `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD` for explicit issue web-fallback credentials; when omitted, the E2E suite reuses git credentials
+- `GITBUCKET_E2E_API_PROFILE=standard` with web credentials for the full suite against official GitBucket; defaults to `rest-only`
 - `GITBUCKET_E2E_INSECURE_TLS=true` only when testing against local/self-signed HTTPS
 
 Run the ignored suite explicitly:
 
 ```bash
+export GITBUCKET_E2E_API_PROFILE=standard
 cargo test --test e2e_test -- --ignored --nocapture
 ```
 
 The write-path tests intentionally keep created repositories, Issues, comments, pull requests, and merged branches. Each run uses unique repo names, branch names, titles, file names, and comment bodies so reruns do not depend on cleanup.
 Label E2E creates, reads, updates, and deletes a unique label within the test itself so it does not leave label fixtures behind.
 Milestone E2E creates, updates, and deletes a unique milestone within the test itself so it does not leave milestone fixtures behind.
-Current GitBucket Docker coverage verifies that `update_issue(state/title/body)` and `update_label(new_name/color)` fall back through the web UI on the official `4.44.0` image when web credentials are available.
+The standard profile selects Web directly for Issue updates and same-name label color changes on the tested official `4.44.0` and `4.48.0` images. Label renames use REST; failed REST writes never activate a secondary route. Web credentials alone do not select the standard profile.
 Issue/PR fixtures use GitBucket's fixed 25-item pages, followed by an empty page.
 Repository, branch, label, milestone, and issue comment fixtures return the full
 response in one request and must not expect pagination parameters. The list
@@ -158,6 +169,7 @@ For a disposable local GitBucket:
 ```bash
 ./scripts/e2e/bootstrap.sh
 source ./.tmp/e2e/runtime.env
+export GITBUCKET_E2E_API_PROFILE=standard
 cargo test --test e2e_test -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```
@@ -172,6 +184,8 @@ the default runtime directory by `down.sh`. If `GITBUCKET_E2E_ENV_FILE` points
 outside that directory, remove both custom files explicitly. Docker's port is
 bound to `127.0.0.1` by default.
 
+For a fresh disposable 4.48.0 stack, set `GITBUCKET_E2E_IMAGE=ghcr.io/gitbucket/gitbucket:4.48.0` for bootstrap and explicitly set `GITBUCKET_E2E_API_PROFILE=standard` for the tests. Stop/remove any previous stack first or use separate Compose project, port and runtime-directory overrides. Image choice does not infer the profile; both tested versions use the same `standard` contract. The E2E client defaults to `rest-only` when no profile is supplied; tests requiring web operations need an appropriate explicit profile. The shared standard profile is tested against both versions with the full 22-case suite.
+
 ## GitHub Actions E2E
 
 GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
@@ -179,7 +193,7 @@ GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
 - `.github/workflows/ci.yml` runs `fmt`, `clippy`, `cargo test`, shell syntax checks, and Python runtime-file tests on every push and pull request.
 - `.github/workflows/e2e.yml` runs on `workflow_dispatch` and a nightly schedule.
 
-The `E2E` workflow validates the scripts, runs `./scripts/e2e/bootstrap.sh`, imports `runtime.env.json` with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
+The E2E and release workflows explicitly select the standard profile for their default Docker image. The `E2E` workflow validates the scripts, runs `./scripts/e2e/bootstrap.sh`, imports `runtime.env.json` with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
 
 ## Adding Tests
 

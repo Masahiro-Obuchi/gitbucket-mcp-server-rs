@@ -1,9 +1,7 @@
 //! Pull request update orchestration, separate from HTTP request construction.
 
 use super::client::GitBucketClient;
-use super::issue::IssueUpdateError;
 use crate::error::{GbMcpError, Result};
-use crate::models::issue::UpdateIssue;
 use crate::models::pull_request::{
     GitBucketPullRequestContent, GitBucketPullRequestUpdate, PullRequest, UpdatePullRequest,
 };
@@ -52,20 +50,9 @@ pub(super) async fn update(
         content,
     };
 
+    client.operation_route(super::profile::Operation::PullRequestUpdate);
     let path = format!("/repos/{owner}/{repo}/pulls/{number}");
-    let pr = match client.patch(&path, &request).await {
-        Ok(pr) => pr,
-        Err(original @ GbMcpError::Api { status: 404, .. }) => {
-            // Preserve legacy compatibility for this focused fix. Operation-
-            // specific capability routing replaces this policy separately.
-            match client.get_pull_request(owner, repo, number).await {
-                Ok(_) => legacy_update(client, owner, repo, number, &request).await?,
-                Err(GbMcpError::Api { status: 404, .. }) => return Err(original),
-                Err(err) => return Err(err),
-            }
-        }
-        Err(err) => return Err(after_write_error(err)),
-    };
+    let pr = client.patch(&path, &request).await?;
     verify(&request, &pr)?;
     Ok(pr)
 }
@@ -111,67 +98,9 @@ fn verify(request: &GitBucketPullRequestUpdate<'_>, pr: &PullRequest) -> Result<
     if fields.is_empty() {
         Ok(())
     } else {
-        Err(GbMcpError::UpdateNotVerified { fields })
-    }
-}
-
-async fn legacy_update(
-    client: &GitBucketClient,
-    owner: &str,
-    repo: &str,
-    number: u64,
-    request: &GitBucketPullRequestUpdate<'_>,
-) -> Result<PullRequest> {
-    if request.base.is_some() {
-        return Err(GbMcpError::Other(
-            "This GitBucket instance does not support REST pull request updates, and fallback cannot update the base branch.".into(),
-        ));
-    }
-    client
-        .update_issue_with_outcome(
-            owner,
-            repo,
-            number,
-            &UpdateIssue {
-                state: request.state.map(str::to_owned),
-                title: request
-                    .content
-                    .as_ref()
-                    .map(|content| content.title.to_owned()),
-                body: request
-                    .content
-                    .as_ref()
-                    .and_then(|content| content.body.map(str::to_owned)),
-            },
-        )
-        .await
-        .map_err(|error| match error {
-            IssueUpdateError::BeforeWrite(cause) => cause,
-            IssueUpdateError::Write(cause) => after_write_error(cause),
-            IssueUpdateError::AfterWrite(cause) => GbMcpError::WriteOutcomeUnknown {
-                cause: Box::new(cause),
-            },
-        })?;
-    client
-        .get_pull_request(owner, repo, number)
-        .await
-        .map_err(|cause| GbMcpError::WriteOutcomeUnknown {
-            cause: Box::new(cause),
+        Err(GbMcpError::OperationNotVerified {
+            operation: "Pull request update",
+            fields,
         })
-}
-
-fn after_write_error(error: GbMcpError) -> GbMcpError {
-    let error = match error {
-        GbMcpError::OperationOutcomeUnknown { cause, .. } => *cause,
-        other => other,
-    };
-    match error {
-        // A rejected request is distinct from losing the response to a write.
-        err @ GbMcpError::Api {
-            status: 400..=499, ..
-        } if !matches!(&err, GbMcpError::Api { status: 408, .. }) => err,
-        err => GbMcpError::WriteOutcomeUnknown {
-            cause: Box::new(err),
-        },
     }
 }

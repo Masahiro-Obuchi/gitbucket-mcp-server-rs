@@ -296,13 +296,9 @@ async fn test_create_label() {
         .and(path("/api/v3/repos/testuser/myrepo/labels"))
         .and(body_string_contains("\"name\":\"needs-review\""))
         .and(body_string_contains("\"color\":\"a1b2c3\""))
-        .and(body_string_contains(
-            "\"description\":\"Needs extra review\"",
-        ))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "name": "needs-review",
-            "color": "a1b2c3",
-            "description": "Needs extra review"
+            "color": "a1b2c3"
         })))
         .mount(&server.mock_server)
         .await;
@@ -310,7 +306,6 @@ async fn test_create_label() {
     let body = gitbucket_mcp_server::models::label::CreateLabel {
         name: "needs-review".to_string(),
         color: "a1b2c3".to_string(),
-        description: Some("Needs extra review".to_string()),
     };
     let label = client
         .create_label("testuser", "myrepo", &body)
@@ -338,13 +333,9 @@ async fn test_update_label_url_encodes_name() {
         .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
         .and(body_string_contains("\"name\":\"needs-review\""))
         .and(body_string_contains("\"color\":\"a1b2c3\""))
-        .and(body_string_contains(
-            "\"description\":\"Needs extra review\"",
-        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "name": "needs-review",
-            "color": "a1b2c3",
-            "description": "Needs extra review"
+            "color": "a1b2c3"
         })))
         .mount(&server.mock_server)
         .await;
@@ -352,7 +343,6 @@ async fn test_update_label_url_encodes_name() {
     let body = gitbucket_mcp_server::models::label::UpdateLabel {
         new_name: Some("needs-review".to_string()),
         color: Some("a1b2c3".to_string()),
-        description: Some("Needs extra review".to_string()),
     };
     let label = client
         .update_label("testuser", "myrepo", "needs review", &body)
@@ -360,143 +350,6 @@ async fn test_update_label_url_encodes_name() {
         .unwrap();
     assert_eq!(label.name, "needs-review");
     assert_eq!(label.color.as_deref(), Some("a1b2c3"));
-}
-
-#[tokio::test]
-async fn test_update_label_falls_back_to_web_session_on_404() {
-    let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
-    let get_call_count = Arc::new(AtomicUsize::new(0));
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/labels/bug"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/labels/bug"))
-        .respond_with({
-            let get_call_count = Arc::clone(&get_call_count);
-            move |_request: &wiremock::Request| {
-                let index = get_call_count.fetch_add(1, Ordering::SeqCst);
-                if index == 0 {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "name": "bug",
-                        "color": "fc2929"
-                    }))
-                } else {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "name": "defect",
-                        "color": "a1b2c3"
-                    }))
-                }
-            }
-        })
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/signin"))
-        .and(body_string_contains("userName=alice"))
-        .and(body_string_contains("password=secret-pass"))
-        .respond_with(
-            ResponseTemplate::new(303)
-                .insert_header("location", "/dashboard")
-                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
-        )
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/dashboard"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/owner/repo/issues/labels"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"<tr id="label-row-82">
-                 <a href="http://example.test/owner/repo/issues?labels=bug">bug</a>
-               </tr>"#,
-        ))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/owner/repo/issues/labels/82/edit"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .and(body_string_contains("labelName=defect"))
-        .and(body_string_contains("labelColor=%23a1b2c3"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/labels/defect"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "defect",
-            "color": "a1b2c3"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    let body = gitbucket_mcp_server::models::label::UpdateLabel {
-        new_name: Some("defect".to_string()),
-        color: Some("a1b2c3".to_string()),
-        description: Some("Defect reports".to_string()),
-    };
-    let label = client
-        .update_label("owner", "repo", "bug", &body)
-        .await
-        .unwrap();
-    assert_eq!(label.name, "defect");
-    assert_eq!(label.color.as_deref(), Some("a1b2c3"));
-}
-
-#[tokio::test]
-async fn test_update_label_fallback_rejects_description_change() {
-    let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/labels/bug"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/labels/bug"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "bug",
-            "color": "fc2929",
-            "description": "Broken behavior"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    let body = gitbucket_mcp_server::models::label::UpdateLabel {
-        new_name: None,
-        color: None,
-        description: Some("Defect reports".to_string()),
-    };
-    let err = client
-        .update_label("owner", "repo", "bug", &body)
-        .await
-        .unwrap_err();
-
-    assert!(
-        err.to_string()
-            .contains("does not support label description-only updates"),
-        "unexpected error: {err}"
-    );
 }
 
 #[tokio::test]
@@ -648,226 +501,6 @@ async fn test_delete_milestone() {
         .delete_milestone("testuser", "myrepo", 7)
         .await
         .unwrap();
-}
-
-#[tokio::test]
-async fn test_create_milestone_falls_back_to_web_session_on_404() {
-    let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
-
-    Mock::given(method("POST"))
-        .and(path("/api/v3/repos/owner/repo/milestones"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "name": "repo",
-            "full_name": "owner/repo",
-            "private": false,
-            "fork": false
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/signin"))
-        .and(body_string_contains("userName=alice"))
-        .and(body_string_contains("password=secret-pass"))
-        .respond_with(
-            ResponseTemplate::new(303)
-                .insert_header("location", "/dashboard")
-                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
-        )
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/dashboard"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/owner/repo/issues/milestones/new"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .and(body_string_contains("title=v1.0"))
-        .and(body_string_contains("description=first+release"))
-        .and(body_string_contains("dueDate=2026-04-01"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("created"))
-        .mount(&server.mock_server)
-        .await;
-
-    let list_reads = Arc::new(AtomicUsize::new(0));
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/milestones"))
-        .and(query_param("state", "all"))
-        .respond_with(move |_: &wiremock::Request| {
-            let items=if list_reads.fetch_add(1, Ordering::SeqCst)==0 {vec![]} else {
-                vec![serde_json::json!({"number":7,"title":"v1.0","state":"open","description":"first release","due_on":"2026-04-01T00:00:00Z"})]
-            };
-            ResponseTemplate::new(200).set_body_json(items)
-        }).expect(2).mount(&server.mock_server).await;
-
-    let body = gitbucket_mcp_server::models::milestone::CreateMilestone {
-        title: "v1.0".to_string(),
-        description: Some("first release".to_string()),
-        due_on: Some("2026-04-01".to_string()),
-    };
-    let milestone = client
-        .create_milestone("owner", "repo", &body)
-        .await
-        .unwrap();
-    assert_eq!(milestone.number, 7);
-}
-
-#[tokio::test]
-async fn test_update_milestone_falls_back_to_web_session_on_404() {
-    let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
-    let get_call_count = Arc::new(AtomicUsize::new(0));
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/milestones/7"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/milestones/7"))
-        .respond_with({
-            let get_call_count = Arc::clone(&get_call_count);
-            move |_request: &wiremock::Request| {
-                let index = get_call_count.fetch_add(1, Ordering::SeqCst);
-                if index == 0 {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "number": 7,
-                        "title": "v1.0",
-                        "state": "open",
-                        "description": "First release",
-                        "due_on": "2026-04-01T00:00:00Z"
-                    }))
-                } else {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "number": 7,
-                        "title": "v1.1",
-                        "state": "closed",
-                        "description": "",
-                        "due_on": null
-                    }))
-                }
-            }
-        })
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/signin"))
-        .and(body_string_contains("userName=alice"))
-        .and(body_string_contains("password=secret-pass"))
-        .respond_with(
-            ResponseTemplate::new(303)
-                .insert_header("location", "/dashboard")
-                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
-        )
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/dashboard"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/owner/repo/issues/milestones/7/edit"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .and(body_string_contains("title=v1.1"))
-        .and(body_string_contains("description="))
-        .and(body_string_contains("dueDate="))
-        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/owner/repo/issues/milestones/7/close"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("closed"))
-        .mount(&server.mock_server)
-        .await;
-
-    let body = gitbucket_mcp_server::models::milestone::UpdateMilestone {
-        title: Some("v1.1".to_string()),
-        description: Some(String::new()),
-        due_on: Some(String::new()),
-        state: Some("closed".to_string()),
-    };
-    let milestone = client
-        .update_milestone("owner", "repo", 7, &body)
-        .await
-        .unwrap();
-    assert_eq!(milestone.title, "v1.1");
-    assert_eq!(milestone.state, "closed");
-    assert_eq!(milestone.description.as_deref(), Some(""));
-    assert!(milestone.due_on.is_none());
-}
-
-#[tokio::test]
-async fn test_delete_milestone_falls_back_to_web_session_on_404() {
-    let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
-
-    Mock::given(method("DELETE"))
-        .and(path("/api/v3/repos/owner/repo/milestones/7"))
-        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/milestones/7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number": 7,
-            "title": "v1.0",
-            "state": "open"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/signin"))
-        .and(body_string_contains("userName=alice"))
-        .and(body_string_contains("password=secret-pass"))
-        .respond_with(
-            ResponseTemplate::new(303)
-                .insert_header("location", "/dashboard")
-                .insert_header("set-cookie", "JSESSIONID=session123; Path=/"),
-        )
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/dashboard"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/owner/repo/issues/milestones/7/delete"))
-        .and(header("cookie", "JSESSIONID=session123"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("deleted"))
-        .mount(&server.mock_server)
-        .await;
-
-    client.delete_milestone("owner", "repo", 7).await.unwrap();
 }
 
 #[tokio::test]
@@ -1031,18 +664,10 @@ async fn test_update_issue_close() {
 }
 
 #[tokio::test]
-async fn test_update_issue_state_falls_back_to_web_session_on_404() {
+async fn test_standard_issue_state_uses_web() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.standard_client_with_web_auth("alice", "secret-pass");
     let get_issue_call_count = Arc::new(AtomicUsize::new(0));
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
@@ -1115,13 +740,7 @@ async fn test_update_issue_state_falls_back_to_web_session_on_404() {
 #[tokio::test]
 async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/404"))
-        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
-        .mount(&server.mock_server)
-        .await;
+    let client = server.standard_client_with_web_auth("alice", "secret-pass");
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/404"))
@@ -1146,18 +765,10 @@ async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
 }
 
 #[tokio::test]
-async fn test_update_issue_title_body_fallback_updates_via_web_session() {
+async fn test_standard_issue_title_body_updates_via_web_session() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.standard_client_with_web_auth("alice", "secret-pass");
     let get_issue_call_count = Arc::new(AtomicUsize::new(0));
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
@@ -1248,15 +859,7 @@ async fn test_update_issue_title_body_fallback_updates_via_web_session() {
 #[tokio::test]
 async fn test_update_issue_state_without_web_credentials_returns_clear_error() {
     let server = TestServer::start().await;
-    let client = server.client();
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
+    let client = server.standard_client();
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
@@ -1693,7 +1296,7 @@ async fn test_update_pull_request_invalid_write_response_is_unknown_without_retr
             .client()
             .update_pull_request("owner", "repo", 7, &update)
             .await,
-        Err(gitbucket_mcp_server::error::GbMcpError::WriteOutcomeUnknown { .. })
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
     ));
     assert_eq!(
         server.mock_server.received_requests().await.unwrap().len(),
@@ -1718,7 +1321,7 @@ async fn test_update_pull_request_partial_application_is_not_success() {
     update.state = Some("closed".into());
     assert!(
         matches!(server.client().update_pull_request("owner", "repo", 7, &update).await,
-        Err(gitbucket_mcp_server::error::GbMcpError::UpdateNotVerified {fields}) if fields == ["state"])
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationNotVerified {fields, ..}) if fields == ["state"])
     );
 }
 
@@ -1744,382 +1347,39 @@ async fn test_update_pull_request_existing_base_ignored_by_api_is_not_success() 
     update.base = Some("develop".into());
     assert!(
         matches!(server.client().update_pull_request("owner", "repo", 7, &update).await,
-        Err(gitbucket_mcp_server::error::GbMcpError::UpdateNotVerified {fields}) if fields == ["base"])
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationNotVerified {fields, ..}) if fields == ["base"])
     );
 }
 
 #[tokio::test]
-async fn test_update_pull_request_fallback_read_failure_is_unknown() {
-    let server = TestServer::start().await;
-    let reads = Arc::new(AtomicUsize::new(0));
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(move |_: &wiremock::Request| {
-            if reads.fetch_add(1, Ordering::SeqCst) == 0 {
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"number":7,"title":"PR","state":"open"}))
-            } else {
-                ResponseTemplate::new(500)
-            }
-        })
-        .expect(2)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(ResponseTemplate::new(404))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/7"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({"number":7,"title":"PR","state":"closed"})),
-        )
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    let mut update = pull_request_update();
-    update.state = Some("closed".into());
-    assert!(matches!(
-        server
-            .client()
-            .update_pull_request("owner", "repo", 7, &update)
-            .await,
-        Err(gitbucket_mcp_server::error::GbMcpError::WriteOutcomeUnknown { .. })
-    ));
-}
-
-#[tokio::test]
-async fn test_update_pull_request_legacy_fallback_preserves_unspecified_body() {
-    let server = TestServer::start().await;
-    let reads = Arc::new(AtomicUsize::new(0));
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(move |_: &wiremock::Request| {
-            let title = if reads.fetch_add(1, Ordering::SeqCst) < 2 {
-                "Old title"
-            } else {
-                "New title"
-            };
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "number":7,"title":title,"body":"preserve me","state":"open"
-            }))
-        })
-        .expect(3)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(ResponseTemplate::new(404))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/7"))
-        .and(body_string_contains("\"title\":\"New title\""))
-        .and(body_string_contains("\"body\":\"preserve me\""))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number":7,"title":"New title","body":"preserve me","state":"open"
-        })))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    let mut update = pull_request_update();
-    update.title = Some("New title".into());
-    let pr = server
-        .client()
-        .update_pull_request("owner", "repo", 7, &update)
-        .await
-        .unwrap();
-    assert_eq!(pr.body.as_deref(), Some("preserve me"));
-}
-
-async fn mount_pull_request_legacy_routes(server: &TestServer) {
-    for resource in ["pulls", "issues"] {
+async fn test_update_pull_request_write_error_classification_without_retry() {
+    use gitbucket_mcp_server::error::GbMcpError;
+    for status in [403, 408, 422, 500] {
+        let server = TestServer::start().await;
         Mock::given(method("PATCH"))
-            .and(path(format!("/api/v3/repos/owner/repo/{resource}/7")))
-            .respond_with(ResponseTemplate::new(404))
-            .expect(1)
-            .mount(&server.mock_server)
-            .await;
-    }
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number":7,"title":"PR","body":"Original body","state":"open"
-        })))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-}
-
-async fn mount_pull_request_web_sign_in(server: &TestServer) {
-    Mock::given(method("POST"))
-        .and(path("/signin"))
-        .respond_with(
-            ResponseTemplate::new(303)
-                .insert_header("location", "/dashboard")
-                .insert_header("set-cookie", "JSESSIONID=pr-update; Path=/"),
-        )
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/dashboard"))
-        .and(header("cookie", "JSESSIONID=pr-update"))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-}
-
-#[tokio::test]
-async fn test_update_pull_request_web_write_then_issue_read_failure_is_unknown() {
-    use gitbucket_mcp_server::error::GbMcpError;
-
-    for status in [403, 404, 500, 200] {
-        let server = TestServer::start().await;
-        mount_pull_request_legacy_routes(&server).await;
-        mount_pull_request_web_sign_in(&server).await;
-        let reads = AtomicUsize::new(0);
-        Mock::given(method("GET"))
-            .and(path("/api/v3/repos/owner/repo/issues/7"))
-            .respond_with(move |_: &wiremock::Request| {
-                if reads.fetch_add(1, Ordering::SeqCst) == 0 {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "number":7,"title":"PR","body":"Original body","state":"open"
-                    }))
-                } else {
-                    ResponseTemplate::new(status).set_body_string("unreadable issue response")
-                }
-            })
-            .expect(2)
-            .mount(&server.mock_server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/owner/repo/issue_comments/state"))
-            .and(header("cookie", "JSESSIONID=pr-update"))
-            .and(body_string_contains("issueId=7"))
-            .and(body_string_contains("action=close"))
-            .respond_with(ResponseTemplate::new(200))
-            .expect(1)
-            .mount(&server.mock_server)
-            .await;
-
-        let mut update = pull_request_update();
-        update.state = Some("closed".into());
-        let err = server
-            .client_with_web_auth("alice", "secret-pass")
-            .update_pull_request("owner", "repo", 7, &update)
-            .await
-            .unwrap_err();
-        match err {
-            GbMcpError::WriteOutcomeUnknown { cause } if status == 200 => {
-                assert!(matches!(*cause, GbMcpError::Json(_)));
-            }
-            GbMcpError::WriteOutcomeUnknown { cause } => {
-                assert!(
-                    matches!(*cause, GbMcpError::Api { status: actual, .. } if actual == status)
-                );
-            }
-            other => {
-                panic!("expected unknown outcome after issue read HTTP {status}, got {other:?}")
-            }
-        }
-    }
-}
-
-#[tokio::test]
-async fn test_update_pull_request_fallback_pre_write_read_failure_keeps_original_error() {
-    use gitbucket_mcp_server::error::GbMcpError;
-
-    for status in [403, 404, 500] {
-        let server = TestServer::start().await;
-        mount_pull_request_legacy_routes(&server).await;
-        Mock::given(method("GET"))
-            .and(path("/api/v3/repos/owner/repo/issues/7"))
+            .and(path("/api/v3/repos/owner/repo/pulls/7"))
             .respond_with(ResponseTemplate::new(status))
             .expect(1)
             .mount(&server.mock_server)
             .await;
         let mut update = pull_request_update();
         update.state = Some("closed".into());
-        let err = server
-            .client_with_web_auth("alice", "secret-pass")
+        let error = server
+            .client()
             .update_pull_request("owner", "repo", 7, &update)
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, GbMcpError::Api { status: actual, .. } if actual == status),
-            "expected pre-write API {status}, got {err:?}"
-        );
-        let requests = server.mock_server.received_requests().await.unwrap();
-        assert!(requests.iter().all(|r| r.method != "POST"));
-    }
-}
-
-#[tokio::test]
-async fn test_update_pull_request_fallback_without_credentials_is_not_unknown() {
-    use gitbucket_mcp_server::error::GbMcpError;
-
-    let server = TestServer::start().await;
-    mount_pull_request_legacy_routes(&server).await;
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/issues/7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number":7,"title":"PR","state":"open"
-        })))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    let mut update = pull_request_update();
-    update.state = Some("closed".into());
-    let err = server
-        .client()
-        .update_pull_request("owner", "repo", 7, &update)
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(err, GbMcpError::Other(ref message) if message.contains("Set GITBUCKET_USERNAME")),
-        "{err:?}"
-    );
-}
-
-#[tokio::test]
-async fn test_update_pull_request_fallback_sign_in_failure_is_not_unknown() {
-    use gitbucket_mcp_server::error::GbMcpError;
-
-    let server = TestServer::start().await;
-    mount_pull_request_legacy_routes(&server).await;
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/issues/7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number":7,"title":"PR","state":"open"
-        })))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/signin"))
-        .respond_with(ResponseTemplate::new(403))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    let mut update = pull_request_update();
-    update.state = Some("closed".into());
-    let err = server
-        .client_with_web_auth("alice", "secret-pass")
-        .update_pull_request("owner", "repo", 7, &update)
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(err, GbMcpError::Other(ref message) if message.contains("sign-in failed")),
-        "{err:?}"
-    );
-    let requests = server.mock_server.received_requests().await.unwrap();
-    assert!(requests
-        .iter()
-        .all(|r| r.url.path() != "/owner/repo/issue_comments/state"));
-}
-
-#[tokio::test]
-async fn test_update_pull_request_partial_web_write_failure_is_unknown() {
-    use gitbucket_mcp_server::error::GbMcpError;
-
-    let server = TestServer::start().await;
-    mount_pull_request_legacy_routes(&server).await;
-    mount_pull_request_web_sign_in(&server).await;
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/issues/7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number":7,"title":"PR","body":"Original body","state":"open"
-        })))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/owner/repo/issues/edit_title/7"))
-        .and(body_string_contains("title=Updated+PR"))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/owner/repo/issues/edit/7"))
-        .and(body_string_contains("content=Updated+body"))
-        .respond_with(ResponseTemplate::new(403))
-        .expect(1)
-        .mount(&server.mock_server)
-        .await;
-    let mut update = pull_request_update();
-    update.title = Some("Updated PR".into());
-    update.body = Some("Updated body".into());
-    update.state = Some("closed".into());
-    let err = server
-        .client_with_web_auth("alice", "secret-pass")
-        .update_pull_request("owner", "repo", 7, &update)
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(err, GbMcpError::WriteOutcomeUnknown { .. }),
-        "{err:?}"
-    );
-    let requests = server.mock_server.received_requests().await.unwrap();
-    assert!(requests
-        .iter()
-        .all(|r| r.url.path() != "/owner/repo/issue_comments/state"));
-}
-
-#[tokio::test]
-async fn test_update_pull_request_write_error_classification_without_retry() {
-    use gitbucket_mcp_server::error::GbMcpError;
-
-    for legacy in [false, true] {
-        for status in [403, 408, 422, 500] {
-            let server = TestServer::start().await;
-            Mock::given(method("PATCH"))
-                .and(path("/api/v3/repos/owner/repo/pulls/7"))
-                .respond_with(ResponseTemplate::new(if legacy { 404 } else { status }))
-                .expect(1)
-                .mount(&server.mock_server)
-                .await;
-            if legacy {
-                Mock::given(method("GET"))
-                    .and(path("/api/v3/repos/owner/repo/pulls/7"))
-                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "number":7,"title":"PR","state":"open"
-                    })))
-                    .expect(1)
-                    .mount(&server.mock_server)
-                    .await;
-                Mock::given(method("PATCH"))
-                    .and(path("/api/v3/repos/owner/repo/issues/7"))
-                    .respond_with(ResponseTemplate::new(status))
-                    .expect(1)
-                    .mount(&server.mock_server)
-                    .await;
-            }
-            let mut update = pull_request_update();
-            update.state = Some("closed".into());
-            let err = server
-                .client()
-                .update_pull_request("owner", "repo", 7, &update)
-                .await
-                .unwrap_err();
-            match status {
-                408 | 500 => assert!(matches!(err, GbMcpError::WriteOutcomeUnknown { cause }
-                        if matches!(*cause, GbMcpError::Api { status: actual, .. } if actual == status))),
-                _ => assert!(
-                    matches!(err, GbMcpError::Api { status: actual, .. } if actual == status)
-                ),
-            }
-            assert_eq!(
-                server.mock_server.received_requests().await.unwrap().len(),
-                if legacy { 3 } else { 1 }
+        if status == 408 || status == 500 {
+            assert!(
+                matches!(error,GbMcpError::OperationOutcomeUnknown {cause,..} if matches!(*cause,GbMcpError::Api{status:s,..} if s==status))
             );
+        } else {
+            assert!(matches!(error,GbMcpError::Api {status:s,..} if s==status));
         }
+        assert_eq!(
+            server.mock_server.received_requests().await.unwrap().len(),
+            1
+        );
     }
 }
 
@@ -2167,74 +1427,6 @@ async fn test_update_pull_request_maps_wrapped_404_to_api_error() {
 }
 
 #[tokio::test]
-async fn test_update_pull_request_falls_back_to_issue_update_on_404() {
-    let server = TestServer::start().await;
-    let client = server.client();
-    let get_pr_call_count = Arc::new(AtomicUsize::new(0));
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
-            "message": "Not Found"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with({
-            let get_pr_call_count = Arc::clone(&get_pr_call_count);
-            move |_request: &wiremock::Request| {
-                let call_index = get_pr_call_count.fetch_add(1, Ordering::SeqCst);
-                if call_index == 0 {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "number": 7,
-                        "title": "Original PR",
-                        "body": "original body",
-                        "state": "open"
-                    }))
-                } else {
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "number": 7,
-                        "title": "Updated PR",
-                        "body": "updated body",
-                        "state": "closed"
-                    }))
-                }
-            }
-        })
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/7"))
-        .and(body_string_contains("\"title\":\"Updated PR\""))
-        .and(body_string_contains("\"body\":\"updated body\""))
-        .and(body_string_contains("\"state\":\"closed\""))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number": 7,
-            "title": "Updated PR",
-            "body": "updated body",
-            "state": "closed"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
-        state: Some("closed".to_string()),
-        title: Some("Updated PR".to_string()),
-        body: Some("updated body".to_string()),
-        base: None,
-    };
-    let pr = client
-        .update_pull_request("owner", "repo", 7, &body)
-        .await
-        .unwrap();
-    assert_eq!(pr.title, "Updated PR");
-    assert_eq!(pr.state, "closed");
-}
-
-#[tokio::test]
 async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
     let server = TestServer::start().await;
     let client = server.client();
@@ -2269,53 +1461,6 @@ async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
         }
         err => panic!("expected original API 404, got {err:?}"),
     }
-}
-
-#[tokio::test]
-async fn test_update_pull_request_fallback_rejects_base_branch_change() {
-    let server = TestServer::start().await;
-    let client = server.client();
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/branches/develop"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({"name":"develop"})),
-        )
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls/7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "number": 7,
-            "title": "Original PR",
-            "state": "open"
-        })))
-        .mount(&server.mock_server)
-        .await;
-
-    let body = gitbucket_mcp_server::models::pull_request::UpdatePullRequest {
-        state: None,
-        title: None,
-        body: None,
-        base: Some("develop".to_string()),
-    };
-    let err = client
-        .update_pull_request("owner", "repo", 7, &body)
-        .await
-        .unwrap_err();
-
-    assert!(
-        err.to_string()
-            .contains("fallback cannot update the base branch"),
-        "unexpected error: {err}"
-    );
 }
 
 #[tokio::test]

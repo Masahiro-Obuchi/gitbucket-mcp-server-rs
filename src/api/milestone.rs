@@ -54,52 +54,15 @@ impl GitBucketClient {
     /// Delete a milestone.
     pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
         super::url_safety::repository(owner, repo)?;
-        match self
-            .delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
+        self.operation_route(super::profile::Operation::MilestoneDelete);
+        self.delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
             .await
-        {
-            Ok(()) => Ok(()),
-            Err(err @ GbMcpError::Api { status: 404, .. }) => {
-                self.delete_milestone_with_404_handling(owner, repo, number, err)
-                    .await
-            }
-            Err(err) => Err(err),
-        }
-    }
-
-    async fn delete_milestone_with_404_handling(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-        original_error: GbMcpError,
-    ) -> Result<()> {
-        super::url_safety::repository(owner, repo)?;
-        match self.get_milestone(owner, repo, number).await {
-            Ok(_) => {
-                self.delete_milestone_via_web_fallback(owner, repo, number)
-                    .await
-            }
-            Err(GbMcpError::Api { status: 404, .. }) => Err(original_error),
-            Err(err) => Err(err),
-        }
-    }
-
-    async fn delete_milestone_via_web_fallback(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<()> {
-        super::url_safety::repository(owner, repo)?;
-        let session = self.milestone_web_session().await?;
-        session.delete_milestone(owner, repo, number).await
     }
 
     pub(super) async fn milestone_web_session(&self) -> Result<GitBucketWebSession> {
         let credentials = self.web_credentials().ok_or_else(|| {
             GbMcpError::Other(
-                "The REST milestone request could not be completed. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD to enable web compatibility fallback; HTTP 404 alone does not establish that the REST endpoint is unavailable."
+                "The selected standard milestone route requires GITBUCKET_USERNAME and GITBUCKET_PASSWORD."
                     .to_string(),
             )
         })?;

@@ -35,6 +35,8 @@ jobs:
         run: python3 scripts/e2e/runtime.py github "$GITHUB_ENV"
 
       - name: Run E2E tests
+        env:
+          GITBUCKET_E2E_API_PROFILE: standard
         run: cargo test --test e2e_test -- --ignored --nocapture
 
       - name: Tear down Docker GitBucket

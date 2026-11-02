@@ -59,12 +59,6 @@ pub fn from_gb_error(error: GbMcpError) -> ToolResult {
         err @ GbMcpError::OperationOutcomeUnknown { .. } => {
             error_payload("outcome_unknown", err.to_string(), None)
         }
-        err @ GbMcpError::UpdateNotVerified { .. } => {
-            error_payload("update_not_verified", err.to_string(), None)
-        }
-        err @ GbMcpError::WriteOutcomeUnknown { .. } => {
-            error_payload("outcome_unknown", err.to_string(), None)
-        }
         GbMcpError::Config(message) => error_payload("config_error", message, None),
         GbMcpError::Api { status, message } => error_payload(
             "api_error",
@@ -100,7 +94,8 @@ mod tests {
 
     #[test]
     fn test_unverified_update_is_a_tool_error() {
-        let result = from_gb_error(GbMcpError::UpdateNotVerified {
+        let result = from_gb_error(GbMcpError::OperationNotVerified {
+            operation: "Test update",
             fields: vec!["body"],
         })
         .unwrap();
@@ -115,7 +110,8 @@ mod tests {
 
     #[test]
     fn test_unknown_write_outcome_is_a_tool_error() {
-        let result = from_gb_error(GbMcpError::WriteOutcomeUnknown {
+        let result = from_gb_error(GbMcpError::OperationOutcomeUnknown {
+            operation: "Test write",
             cause: Box::new(GbMcpError::Api {
                 status: 500,
                 message: "response unavailable".into(),

@@ -14,7 +14,7 @@ The MCP server runs over stdio. The client configuration should launch `gitbucke
 - `GITBUCKET_URL` and `GITBUCKET_TOKEN` in the environment, or
 - `~/.config/gitbucket-mcp-server/config.toml` containing `url` and `token`.
 
-Optional web fallback operations require both `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` in the environment. These credentials are only for GitBucket web UI fallback operations, not for Git over HTTP.
+Web operations require both `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` and `GITBUCKET_API_PROFILE=standard`. The standard upstream contract is verified on 4.44.0 and 4.48.0. The default `rest-only` does not write through Web, even with credentials present. No failed REST write triggers another write route; never infer API absence from a 404. Web credentials are separate from Git-over-HTTP credentials.
 
 Never reveal tokens, passwords, or private instance URLs in responses.
 
@@ -105,12 +105,12 @@ Some GitBucket versions differ from GitHub-compatible REST behavior.
 
 - Milestone updates preserve fields that are omitted. Pass an empty string to clear `description` or `due_on`; do not send placeholder values for fields that should remain unchanged.
 - Milestone dates accept `YYYY-MM-DD` or RFC3339 and normalize to UTC whole seconds. State-only updates use REST when available; web credentials are not generally required for that operation.
-- Japanese or space-containing milestone titles can require web compatibility because of REST validation restrictions. The web content form cannot safely preserve arbitrary timestamps; `unsupported_error` rejects such requests before a web write.
+- Japanese or space-containing milestone titles select web compatibility under the standard profile because of REST validation restrictions. The web content form cannot safely preserve arbitrary timestamps; `unsupported_error` rejects such requests before a web write.
 - For `update_not_verified` or `outcome_unknown` errors, inspect the resource before retrying. This includes write timeouts, disconnects, malformed/oversized responses, and interrupted verification; a failed response does not mean the write was not applied. Do the same after client-side cancellation, which may hide the server response.
 - Read operations can return `timeout_error`, `cancelled_error` or `response_too_large`. Requests have connection/body deadlines and JSON/HTML byte limits; a complete MCP tool also has a deadline. README documents env-only limit settings. No automatic retry is performed.
 
-- `update_label` first tries the REST endpoint. If the endpoint is unavailable, the server can use a web UI fallback for name and color changes.
-- The web fallback cannot perform description-only label updates. If a request changes name or color and also includes a description, name and color can still be updated, but the description is not changed by the fallback.
+- `update_label` uses REST for rename and Web for same-name color changes under a selected standard profile. The default `rest-only` does not write through Web; unknown 404/422 errors do not enable it.
+- Label create/update tools do not accept description. Do not send the field, including null or an empty string; unknown arguments are rejected before HTTP, so a combined request cannot partially apply name/color.
 - Some GitBucket issue responses omit `closed_at`. For closed issues, the server fills missing `closed_at` from `updated_at` as a best-effort GitHub-compatible value.
 
 ## Safety
