@@ -115,7 +115,7 @@ Owner/user names accept ASCII letters, digits, `-`, `_` and `.`; repository name
 Low-level Rust POST calls with query parameters use `post_with_query(path, query, body)`.
 The path remains free of query syntax; query keys and values are encoded separately.
 
-Debug output redacts configuration and credentials. API errors report the HTTP status and a standard reason rather than the server's raw error body, which can echo credentials or private content. HTTP diagnostics omit request URLs and JSON decoding diagnostics omit values. Existing MCP error kinds and status fields are preserved.
+Debug output redacts configuration and credentials. API errors report the HTTP status and a standard reason rather than the server's raw error body, which can echo credentials or private content. HTTP diagnostics omit request URLs and JSON decoding diagnostics omit values, including when traversing the standard error source chain. Existing MCP error kinds and status fields are preserved.
 
 ### Environment Variables
 

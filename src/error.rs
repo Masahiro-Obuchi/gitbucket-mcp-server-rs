@@ -12,7 +12,7 @@ pub enum GbMcpError {
     Http(reqwest::Error),
 
     #[error("JSON response could not be decoded at line {}, column {}", .0.line(), .0.column())]
-    Json(#[from] serde_json::Error),
+    Json(serde_json::Error),
 
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
@@ -54,6 +54,14 @@ pub type Result<T> = std::result::Result<T, GbMcpError>;
 impl From<reqwest::Error> for GbMcpError {
     fn from(error: reqwest::Error) -> Self {
         Self::Http(error.without_url())
+    }
+}
+
+impl From<serde_json::Error> for GbMcpError {
+    fn from(error: serde_json::Error) -> Self {
+        // Preserve the public variant and conversion without exposing the raw
+        // response value through thiserror's automatic source chain.
+        Self::Json(error)
     }
 }
 

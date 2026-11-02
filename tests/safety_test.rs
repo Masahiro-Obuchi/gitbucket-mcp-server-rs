@@ -15,8 +15,13 @@ use wiremock::{
 
 const SECRET: &str = "fake-private-token-password-123";
 
-fn assert_redacted(value: impl std::fmt::Debug + std::fmt::Display) {
+fn assert_redacted(value: impl std::error::Error) {
     assert!(!format!("{value:?} {value}").contains(SECRET));
+    let mut source = value.source();
+    while let Some(cause) = source {
+        assert!(!format!("{cause:?} {cause}").contains(SECRET));
+        source = cause.source();
+    }
 }
 
 #[test]
@@ -239,6 +244,23 @@ async fn api_error_payloads_and_invalid_json_do_not_echo_secrets() {
         .mount(&server)
         .await;
     assert_redacted(client.get::<u64>("/json").await.unwrap_err());
+}
+
+#[tokio::test]
+async fn json_error_sources_do_not_echo_remote_field_values() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/users/user"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "login":"user", "site_admin":SECRET
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = GitBucketClient::new(&server.uri(), SECRET).unwrap();
+    let error = client.get_user("user").await.unwrap_err();
+    assert!(matches!(error, GbMcpError::Json(_)));
+    assert_redacted(error);
 }
 
 #[tokio::test]

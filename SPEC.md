@@ -216,7 +216,7 @@ Expected error classes:
 Behavior:
 
 - Startup configuration failures stop the process.
-- Non-success GitBucket responses, including status wrappers, use the HTTP status and a standard reason. Raw error bodies are not returned or read for HTTP failures. Web failures also omit error bodies. HTTP diagnostics expose a failure category without URLs; JSON diagnostics expose line/column without values. Successful response-size limits and timeout budgets are separate follow-up work.
+- Non-success GitBucket responses, including status wrappers, use the HTTP status and a standard reason. Raw error bodies are not returned or read for HTTP failures. Web failures also omit error bodies. HTTP diagnostics expose a failure category without URLs; JSON diagnostics expose line/column without values and do not expose the raw decoder error through the standard source chain. Successful response-size limits and timeout budgets are separate follow-up work.
 - Tool handlers convert internal errors to structured MCP error payloads.
 
 ## 9. Security Requirements

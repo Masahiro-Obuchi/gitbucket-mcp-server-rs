@@ -47,6 +47,9 @@ Redirect regressions include contexts ending in `/api/v3`, blocking out-of-conte
 POST query tests verify the Issue `action=close` fixture call and separately
 encoded query values; the large-list E2E uses the same `post_with_query` API.
 
+JSON diagnostic tests also traverse `Error::source()` to prevent raw response
+field values from leaking through error-chain logging.
+
 The Python tests round-trip spaces, quotes, backslashes, dollars, backticks and newlines through shell and GitHub environment formats. They also verify `0700`/`0600`, symlink refusal, replacement failure cleanup, and bootstrap failure cleanup. Bootstrap serializes custom user/password values as JSON rather than interpolating them into JSON strings.
 
 ## Live E2E Tests
