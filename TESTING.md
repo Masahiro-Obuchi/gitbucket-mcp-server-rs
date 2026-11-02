@@ -39,6 +39,8 @@ cargo test --test http_budget_test
 
 Local TCP/HTTP/TLS mocks cover delayed headers, delayed body chunks, TLS handshake stalls, declared/chunked/unframed oversized bodies, exact-size acceptance, and explicit longer merge budgets. Mutating requests that arrive before a disconnect, malformed JSON, timeout or size failure return an unknown outcome without replay. Web sign-in, label HTML and web mutations use the same limits.
 
+REST redirect regressions cover POST/PATCH/PUT/DELETE across HTTP 301/302/303/307/308. Each write stops at the original 3xx with an unknown outcome, without reaching the redirect target or triggering issue compatibility fallback. A separate read regression preserves safe GET redirects.
+
 MCP protocol tests exercise a whole-call deadline across multiple pages, concurrent read/write isolation, clearing a definitively rejected attempt, cancellation notifications and verification reads after web writes. The server classification is also tested before rmcp's client discards a cancelled response. A delayed custom API verifies conservative write outcomes without transport tracking. Unit tests validate settings, env overrides and secret-free configuration diagnostics.
 
 The default budgets were exercised against official Docker GitBucket 4.44.0 with all 22 existing E2Es, including the two large-list fixtures. This does not establish hard CPU deadlines or compatibility with every production workload; adjust the documented env settings where needed.

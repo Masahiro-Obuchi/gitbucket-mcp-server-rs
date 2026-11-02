@@ -152,6 +152,8 @@ Time overrides must be integer seconds from 1 to 86400; response limits must be 
 
 Bodies are limited while streaming, even without `Content-Length`. API error bodies remain unread and are summarized by status. An oversized read returns `response_too_large`; a timed-out read returns `timeout_error`. A mutation whose response times out, disconnects, cannot be decoded or exceeds the limit returns `outcome_unknown`, since the server may already have saved it. Definite REST rejections (HTTP 4xx except 408) retain `api_error`. Inspect the target before retrying an unknown outcome.
 
+REST writes stop at HTTP redirects and return `outcome_unknown` with the original 3xx status. This prevents resubmitting a write at a redirect target or treating a redirected read's failure as rejection of an already saved write. REST reads and web sessions follow redirects within the configured GitBucket origin and context path.
+
 MCP cancellation stops further local work but cannot undo a remote write. The server classifies interrupted reads as `cancelled_error` and interrupted writes as `outcome_unknown`; some MCP clients (including rmcp) discard a cancelled request's later response and surface their own cancellation instead. Inspect any possibly submitted write before retrying in that case as well.
 
 These are per-response byte limits and cooperative async time limits, not a total memory cap or a hard CPU deadline. Synchronous decoding/serialization cannot be preempted. Aggregate list/output limits are separate work; no diff endpoint or separate diff limit is introduced here.

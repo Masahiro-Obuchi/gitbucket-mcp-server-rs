@@ -213,6 +213,113 @@ async fn mutations_with_timeout_disconnect_invalid_json_or_oversize_are_unknown_
 }
 
 #[tokio::test]
+async fn rest_mutations_do_not_follow_redirects_or_replay_writes() {
+    let server = MockServer::start().await;
+    Mock::given(path("/api/v3/redirect-target"))
+        .respond_with(ResponseTemplate::new(404))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let client = client(&server.uri(), settings());
+    for verb in ["POST", "PATCH", "PUT", "DELETE"] {
+        for status in [301, 302, 303, 307, 308] {
+            let route = format!("/write-{verb}-{status}");
+            Mock::given(method(verb))
+                .and(path(format!("/api/v3{route}")))
+                .and(wiremock::matchers::header(
+                    "Authorization",
+                    "token fake-token",
+                ))
+                .and(wiremock::matchers::header("Accept", "application/json"))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .insert_header("Location", "/api/v3/redirect-target"),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            let body = json!({"saved": true});
+            let result = match verb {
+                "POST" => client.post::<Value, _>(&route, &body).await,
+                "PATCH" => client.patch::<Value, _>(&route, &body).await,
+                "PUT" => client.put::<Value, _>(&route, &body).await,
+                "DELETE" => client.delete(&route).await.map(|_| Value::Null),
+                _ => unreachable!(),
+            };
+            let error = result.unwrap_err();
+            assert!(
+                matches!(error, GbMcpError::OperationOutcomeUnknown { .. }),
+                "{verb} {status}: {error:?}"
+            );
+            assert!(
+                matches!(cause(&error), GbMcpError::Api { status: actual, .. } if *actual == status),
+                "{verb} {status}: {error:?}"
+            );
+        }
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), 20);
+}
+
+#[tokio::test]
+async fn rest_reads_still_follow_safe_redirects() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/redirect"))
+        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/api/v3/target"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/target"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    assert_eq!(
+        client(&server.uri(), settings())
+            .get::<Value>("/redirect")
+            .await
+            .unwrap(),
+        json!({"ok": true})
+    );
+}
+
+#[tokio::test]
+async fn redirected_rest_write_does_not_enter_issue_fallback() {
+    let server = MockServer::start().await;
+    Mock::given(method("PATCH"))
+        .and(path("/api/v3/repos/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(303).insert_header("Location", "/api/v3/missing"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(404))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let peer = protocol(client(&server.uri(), settings()), Duration::from_secs(3)).await;
+    let result = peer
+        .call_tool(
+            CallToolRequestParams::new("update_issue").with_arguments(
+                json!({"owner": "owner", "repo": "repo", "issue_number": 1, "title": "new"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.is_error, Some(true));
+    assert_eq!(
+        result.structured_content.unwrap()["kind"],
+        "outcome_unknown"
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    peer.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn errors_keep_safe_status_and_wrapped_404_still_allows_compatibility() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

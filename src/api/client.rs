@@ -12,6 +12,7 @@ use crate::error::{GbMcpError, Result};
 #[derive(Clone)]
 pub struct GitBucketClient {
     client: reqwest::Client,
+    write_client: reqwest::Client,
     http_settings: super::http::HttpSettings,
     base_url: String,
     allow_invalid_certs: bool,
@@ -76,16 +77,26 @@ impl GitBucketClient {
         headers.insert(AUTHORIZATION, authorization);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
-        let client = http_settings
-            .configure(reqwest::Client::builder())
-            .default_headers(headers)
+        let client_builder = || {
+            http_settings
+                .configure(reqwest::Client::builder())
+                .default_headers(headers.clone())
+                .danger_accept_invalid_certs(allow_invalid_certs)
+        };
+        let client = client_builder()
             .redirect(super::url_safety::redirect_policy(&normalized)?)
-            .danger_accept_invalid_certs(allow_invalid_certs)
+            .build()
+            .map_err(GbMcpError::from)?;
+        // A write may already be saved before a redirect. Following it could
+        // replay the write or mistake a later GET's 4xx for a rejected write.
+        let write_client = client_builder()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(GbMcpError::from)?;
 
         Ok(Self {
             client,
+            write_client,
             http_settings,
             base_url: normalized,
             allow_invalid_certs,
@@ -118,11 +129,12 @@ impl GitBucketClient {
     ) -> Result<T> {
         let request = builder.build().map_err(GbMcpError::from)?;
         let future = async {
-            let response = self
-                .client
-                .execute(request)
-                .await
-                .map_err(GbMcpError::from)?;
+            let client = if mutation {
+                &self.write_client
+            } else {
+                &self.client
+            };
+            let response = client.execute(request).await.map_err(GbMcpError::from)?;
             self.handle_response(response, method, path).await
         };
         if mutation {
@@ -156,7 +168,7 @@ impl GitBucketClient {
         if !query.is_empty() {
             url.query_pairs_mut().extend_pairs(query.iter().copied());
         }
-        self.json_request(self.client.post(url).json(body), "POST", path, true)
+        self.json_request(self.write_client.post(url).json(body), "POST", path, true)
             .await
     }
 
@@ -175,13 +187,13 @@ impl GitBucketClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        self.json_request(self.client.patch(url).json(body), "PATCH", path, true)
+        self.json_request(self.write_client.patch(url).json(body), "PATCH", path, true)
             .await
     }
 
     pub async fn put<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = super::url_safety::route(&self.base_url, path)?;
-        self.json_request(self.client.put(url).json(body), "PUT", path, true)
+        self.json_request(self.write_client.put(url).json(body), "PUT", path, true)
             .await
     }
 
@@ -192,7 +204,7 @@ impl GitBucketClient {
     ) -> Result<T> {
         let url = super::url_safety::route(&self.base_url, path)?;
         self.json_request(
-            self.client
+            self.write_client
                 .put(url)
                 .json(body)
                 .timeout(self.http_settings.merge_timeout),
@@ -209,10 +221,14 @@ impl GitBucketClient {
     }
 
     pub(crate) async fn delete_url(&self, url: Url, path: &str) -> Result<()> {
-        let request = self.client.delete(url).build().map_err(GbMcpError::from)?;
+        let request = self
+            .write_client
+            .delete(url)
+            .build()
+            .map_err(GbMcpError::from)?;
         super::http::mutation("GitBucket REST delete", async {
             let response = self
-                .client
+                .write_client
                 .execute(request)
                 .await
                 .map_err(GbMcpError::from)?;
