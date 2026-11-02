@@ -4,6 +4,8 @@ This repository uses layered tests so failures can be isolated quickly:
 
 - Unit tests in `src/**` cover models, config loading, validation, and tool behavior.
 - `tests/api_client_test.rs` verifies HTTP request and response handling with `wiremock`.
+- `tests/list_api_test.rs` covers endpoint-specific list contracts, boundary
+  counts, duplicate identities, and failure/limit behavior.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label create/read/update/delete lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge coverage.
 
@@ -68,7 +70,29 @@ The write-path tests intentionally keep created repositories, Issues, comments, 
 Label E2E creates, reads, updates, and deletes a unique label within the test itself so it does not leave label fixtures behind.
 Milestone E2E creates, updates, and deletes a unique milestone within the test itself so it does not leave milestone fixtures behind.
 Current GitBucket Docker coverage verifies that `update_issue(state/title/body)` and `update_label(new_name/color)` fall back through the web UI on the official `4.44.0` image when web credentials are available.
-The API client also auto-paginates list endpoints with `per_page=100` until the last short page, so multi-page fixtures should be used when adding regression tests for list behavior.
+Issue/PR fixtures use GitBucket's fixed 25-item pages, followed by an empty page.
+Repository, branch, label, milestone, and issue comment fixtures return the full
+response in one request and must not expect pagination parameters. The list
+contract tests cover 0/1/24/25/26/50/51 paged items and 0/1/99/100/101 unpaged
+items, all Issue/PR state filters, short non-final pages, changed/reordered
+duplicate pages, overlapping pages, later failures, and the 100-request guard.
+
+Two additional E2E tests exercise large lists through MCP, explicitly without
+web credentials. Run them **only against a disposable GitBucket**:
+
+```bash
+cargo test --test e2e_test test_e2e_list_paged_resources_over_25_items -- --ignored --nocapture
+cargo test --test e2e_test test_e2e_list_unpaged_resources_over_100_items -- --ignored --nocapture
+```
+
+The first creates a unique repository with 51 issues (26 closed, 25 open) and
+26 PRs, then compares the complete identifier sets. The second creates another
+repository with 101 each of labels, milestones, comments, and branches and
+checks that every created identifier is returned without duplicates. It also
+checks repository discovery; 101-repository responses and organization fallback
+are covered by HTTP mocks. These tests leave their repositories and fixtures in
+place. The paged test requires Git credentials to seed a commit; the unpaged test
+uses REST to seed references and needs only a token with repository write access.
 
 ## Docker E2E Flow
 

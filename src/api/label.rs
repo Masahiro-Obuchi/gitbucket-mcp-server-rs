@@ -17,7 +17,7 @@ struct GitBucketUpdateLabel<'a> {
 
 impl GitBucketClient {
     pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<Label>> {
-        self.get_paginated(&format!("/repos/{}/{}/labels", owner, repo), &[])
+        self.get_with_query(&format!("/repos/{}/{}/labels", owner, repo), &[])
             .await
     }
 

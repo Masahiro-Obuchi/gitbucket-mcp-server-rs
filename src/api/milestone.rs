@@ -13,7 +13,7 @@ impl GitBucketClient {
         state: Option<&str>,
     ) -> Result<Vec<Milestone>> {
         let state_param = state.unwrap_or("open");
-        self.get_paginated(
+        self.get_with_query(
             &format!("/repos/{owner}/{repo}/milestones"),
             &[("state", state_param)],
         )

@@ -74,7 +74,15 @@ Requirements:
 - Authentication uses the `Authorization: token <token>` header.
 - Requests accept JSON responses.
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
-- List endpoints auto-paginate with `page` and `per_page=100` until the final short page.
+- Issue and pull request lists use `page` and `per_page=25`, terminating only on
+  an empty page. A short page alone does not prove completion.
+- Repository, branch, label, milestone, and issue comment lists are fetched once
+  without `page`/`per_page`. State filters are retained where applicable.
+- Paged issue/PR results must have distinct numbers. Repeated numbers, page
+  failures, or the 100-request limit return an error, not a successful partial
+  list. The terminal empty-page request counts against this limit.
+- Lists are not atomic snapshots of concurrent activity. Existing MCP list
+  result field names and state-filter inputs remain unchanged.
 - `update_label(new_name/color)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target label still exists via `GET`, and optional web credentials are configured. The web fallback does not support label description updates.
 - `update_issue(state=...)` may fall back to a GitBucket web session only when the REST `PATCH` endpoint returns HTTP 404, the target Issue still exists via `GET`, and optional web credentials are configured.
 - milestone create, update, and delete may fall back to the GitBucket web UI when the REST endpoint returns HTTP 404 and the target repository or milestone can still be verified.

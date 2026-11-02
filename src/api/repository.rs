@@ -7,12 +7,12 @@ impl GitBucketClient {
     /// List repositories for a user. Falls back to org endpoint on 404.
     pub async fn list_repositories(&self, owner: &str) -> Result<Vec<Repository>> {
         let result = self
-            .get_paginated::<Repository>(&format!("/users/{}/repos", owner), &[])
+            .get_with_query::<Vec<Repository>>(&format!("/users/{}/repos", owner), &[])
             .await;
         match result {
             Ok(repos) => Ok(repos),
             Err(crate::error::GbMcpError::Api { status: 404, .. }) => {
-                self.get_paginated::<Repository>(&format!("/orgs/{}/repos", owner), &[])
+                self.get_with_query::<Vec<Repository>>(&format!("/orgs/{}/repos", owner), &[])
                     .await
             }
             Err(e) => Err(e),
@@ -40,7 +40,7 @@ impl GitBucketClient {
 
     /// List branches for a repository.
     pub async fn list_branches(&self, owner: &str, repo: &str) -> Result<Vec<Branch>> {
-        self.get_paginated(&format!("/repos/{}/{}/branches", owner, repo), &[])
+        self.get_with_query(&format!("/repos/{}/{}/branches", owner, repo), &[])
             .await
     }
 }

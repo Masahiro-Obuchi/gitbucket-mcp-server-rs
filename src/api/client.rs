@@ -2,6 +2,8 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
+use std::hash::Hash;
 use tracing::{debug, warn};
 use url::Url;
 
@@ -201,27 +203,82 @@ impl GitBucketClient {
         }
     }
 
+    pub(crate) async fn get_with_query<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<T> {
+        let mut url = Url::parse(&format!("{}{}", self.base_url, path))?;
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(query.iter().copied());
+        }
+        self.get_url(url, path).await
+    }
+
+    /// Collect an explicitly paged endpoint, terminating on an empty page.
+    /// Domain APIs select their own page size and stable item identity instead.
     pub async fn get_paginated<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<Vec<T>> {
+        self.get_paginated_decoded(path, query, Self::DEFAULT_PER_PAGE, |value| {
+            let key = value.to_string();
+            let item = serde_json::from_value(value).map_err(GbMcpError::Json)?;
+            Ok((item, key))
+        })
+        .await
+    }
+
+    pub(crate) async fn get_paginated_with_identity<T, K>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        page_size: usize,
+        identity: impl Fn(&T) -> K,
+    ) -> Result<Vec<T>>
+    where
+        T: DeserializeOwned,
+        K: Eq + Hash,
+    {
+        self.get_paginated_decoded(path, query, page_size, |value| {
+            let item = serde_json::from_value(value).map_err(GbMcpError::Json)?;
+            let key = identity(&item);
+            Ok((item, key))
+        })
+        .await
+    }
+
+    async fn get_paginated_decoded<T, K: Eq + Hash>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        page_size: usize,
+        decode: impl Fn(Value) -> Result<(T, K)>,
+    ) -> Result<Vec<T>> {
         let mut results = Vec::new();
+        let mut seen = HashSet::new();
 
         for page in 1..=Self::MAX_PAGINATION_PAGES {
-            let url = self.paginated_url(path, query, page)?;
+            let url = self.paginated_url(path, query, page, page_size)?;
             let resp = self
                 .client
                 .get(url)
                 .send()
                 .await
                 .map_err(GbMcpError::Http)?;
-            let items: Vec<T> = self.handle_response(resp, "GET", path).await?;
-            let item_count = items.len();
-            results.extend(items);
-
-            if item_count < Self::DEFAULT_PER_PAGE {
+            let items: Vec<Value> = self.handle_response(resp, "GET", path).await?;
+            if items.is_empty() {
                 return Ok(results);
+            }
+            for value in items {
+                let (item, key) = decode(value)?;
+                if !seen.insert(key) {
+                    return Err(GbMcpError::Other(format!(
+                        "Pagination returned a duplicate item for {path}; the list may have changed or the server may be ignoring page. No complete list was returned."
+                    )));
+                }
+                results.push(item);
             }
         }
 
@@ -264,7 +321,13 @@ impl GitBucketClient {
         }
     }
 
-    fn paginated_url(&self, path: &str, query: &[(&str, &str)], page: usize) -> Result<Url> {
+    fn paginated_url(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        page: usize,
+        page_size: usize,
+    ) -> Result<Url> {
         let mut url =
             Url::parse(&format!("{}{}", self.base_url, path)).map_err(GbMcpError::UrlParse)?;
         {
@@ -272,7 +335,7 @@ impl GitBucketClient {
             for (key, value) in query {
                 pairs.append_pair(key, value);
             }
-            pairs.append_pair("per_page", &Self::DEFAULT_PER_PAGE.to_string());
+            pairs.append_pair("per_page", &page_size.to_string());
             pairs.append_pair("page", &page.to_string());
         }
         Ok(url)

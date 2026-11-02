@@ -156,43 +156,16 @@ async fn test_list_repositories_fallback_to_org() {
 }
 
 #[tokio::test]
-async fn test_list_repositories_paginates_across_user_pages() {
+async fn test_list_repositories_returns_all_101_items_without_pagination() {
     let server = TestServer::start().await;
-    let client = server.client();
-
     Mock::given(method("GET"))
         .and(path("/api/v3/users/testuser/repos"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
-            (1..=100)
-                .map(|i| serde_json::json!({
-                    "name": format!("repo-{i}"),
-                    "full_name": format!("testuser/repo-{i}"),
-                    "private": false,
-                    "fork": false
-                }))
-                .collect::<Vec<_>>()
-        )))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/users/testuser/repos"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            {
-                "name": "repo-101",
-                "full_name": "testuser/repo-101",
-                "private": false,
-                "fork": false
-            }
-        ])))
-        .mount(&server.mock_server)
-        .await;
-
-    let repos = client.list_repositories("testuser").await.unwrap();
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            (1..=101).map(|i|serde_json::json!({
+                "name":format!("repo-{i}"),"full_name":format!("testuser/repo-{i}"),"private":false
+            })).collect::<Vec<_>>()
+        )).expect(1).mount(&server.mock_server).await;
+    let repos = server.client().list_repositories("testuser").await.unwrap();
     assert_eq!(repos.len(), 101);
     assert_eq!(repos[100].name, "repo-101");
 }
@@ -255,8 +228,6 @@ async fn test_list_branches() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/testuser/myrepo/branches"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {"name": "main", "commit": {"sha": "abc123"}},
             {"name": "develop", "commit": {"sha": "def456"}}
@@ -277,8 +248,6 @@ async fn test_list_labels() {
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/testuser/myrepo/labels"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
                 "name": "bug",
@@ -555,8 +524,6 @@ async fn test_list_milestones() {
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/testuser/myrepo/milestones"))
         .and(query_param("state", "all"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
                 "number": 7,
@@ -729,8 +696,6 @@ async fn test_create_milestone_falls_back_to_web_session_on_404() {
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/milestones"))
         .and(query_param("state", "all"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
                 "number": 7,
@@ -905,7 +870,7 @@ async fn test_list_issues() {
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues"))
         .and(query_param("state", "open"))
-        .and(query_param("per_page", "100"))
+        .and(query_param("per_page", "25"))
         .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
@@ -915,6 +880,13 @@ async fn test_list_issues() {
                 "labels": [{"name": "bug"}]
             }
         ])))
+        .mount(&server.mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/issues"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
         .mount(&server.mock_server)
         .await;
 
@@ -929,39 +901,22 @@ async fn test_list_issues() {
 }
 
 #[tokio::test]
-async fn test_list_issue_comments_paginates() {
+async fn test_list_issue_comments_returns_all_101_items_without_pagination() {
     let server = TestServer::start().await;
-    let client = server.client();
-
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/42/comments"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
-            (1..=100)
-                .map(|i| serde_json::json!({
-                    "id": i,
-                    "body": format!("comment-{i}")
-                }))
-                .collect::<Vec<_>>()
-        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                (1..=101)
+                    .map(|i| serde_json::json!({"id":i,"body":format!("comment-{i}")}))
+                    .collect::<Vec<_>>(),
+            ),
+        )
+        .expect(1)
         .mount(&server.mock_server)
         .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/issues/42/comments"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            {
-                "id": 101,
-                "body": "comment-101"
-            }
-        ])))
-        .mount(&server.mock_server)
-        .await;
-
-    let comments = client
+    let comments = server
+        .client()
         .list_issue_comments("owner", "repo", 42)
         .await
         .unwrap();
@@ -1354,7 +1309,7 @@ async fn test_list_pull_requests() {
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/pulls"))
         .and(query_param("state", "open"))
-        .and(query_param("per_page", "100"))
+        .and(query_param("per_page", "25"))
         .and(query_param("page", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
             {
@@ -1368,6 +1323,13 @@ async fn test_list_pull_requests() {
         .mount(&server.mock_server)
         .await;
 
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/pulls"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+        .mount(&server.mock_server)
+        .await;
+
     let prs = client
         .list_pull_requests("owner", "repo", Some("open"))
         .await
@@ -1378,48 +1340,25 @@ async fn test_list_pull_requests() {
 }
 
 #[tokio::test]
-async fn test_list_pull_requests_paginates() {
+async fn test_list_pull_requests_paginates_in_25_item_pages() {
     let server = TestServer::start().await;
-    let client = server.client();
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls"))
-        .and(query_param("state", "open"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!(
-            (1..=100)
-                .map(|i| serde_json::json!({
-                    "number": i,
-                    "title": format!("PR {i}"),
-                    "state": "open"
-                }))
-                .collect::<Vec<_>>()
-        )))
-        .mount(&server.mock_server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/api/v3/repos/owner/repo/pulls"))
-        .and(query_param("state", "open"))
-        .and(query_param("per_page", "100"))
-        .and(query_param("page", "2"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            {
-                "number": 101,
-                "title": "PR 101",
-                "state": "open"
-            }
-        ])))
-        .mount(&server.mock_server)
-        .await;
-
-    let prs = client
+    for (page, start, end) in [(1, 1, 25), (2, 26, 26), (3, 1, 0)] {
+        Mock::given(method("GET"))
+            .and(path("/api/v3/repos/owner/repo/pulls"))
+            .and(query_param("state","open"))
+            .and(query_param("per_page","25"))
+            .and(query_param("page",page.to_string()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                (start..=end).map(|i|serde_json::json!({"number":i,"title":format!("PR {i}"),"state":"open"})).collect::<Vec<_>>()
+            )).expect(1).mount(&server.mock_server).await;
+    }
+    let prs = server
+        .client()
         .list_pull_requests("owner", "repo", Some("open"))
         .await
         .unwrap();
-    assert_eq!(prs.len(), 101);
-    assert_eq!(prs[100].number, 101);
+    assert_eq!(prs.len(), 26);
+    assert_eq!(prs[25].number, 26);
 }
 
 #[tokio::test]
