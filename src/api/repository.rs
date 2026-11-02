@@ -6,6 +6,7 @@ use super::client::GitBucketClient;
 impl GitBucketClient {
     /// List repositories for a user. Falls back to org endpoint on 404.
     pub async fn list_repositories(&self, owner: &str) -> Result<Vec<Repository>> {
+        super::url_safety::identifier(owner, "owner")?;
         let result = self
             .get_with_query::<Vec<Repository>>(&format!("/users/{}/repos", owner), &[])
             .await;
@@ -21,6 +22,7 @@ impl GitBucketClient {
 
     /// Get repository details.
     pub async fn get_repository(&self, owner: &str, repo: &str) -> Result<Repository> {
+        super::url_safety::repository(owner, repo)?;
         self.get(&format!("/repos/{}/{}", owner, repo)).await
     }
 
@@ -31,6 +33,7 @@ impl GitBucketClient {
 
     /// Fork a repository.
     pub async fn fork_repository(&self, owner: &str, repo: &str) -> Result<Repository> {
+        super::url_safety::repository(owner, repo)?;
         self.post::<Repository, serde_json::Value>(
             &format!("/repos/{}/{}/forks", owner, repo),
             &serde_json::json!({}),
@@ -40,6 +43,7 @@ impl GitBucketClient {
 
     /// List branches for a repository.
     pub async fn list_branches(&self, owner: &str, repo: &str) -> Result<Vec<Branch>> {
+        super::url_safety::repository(owner, repo)?;
         self.get_with_query(&format!("/repos/{}/{}/branches", owner, repo), &[])
             .await
     }

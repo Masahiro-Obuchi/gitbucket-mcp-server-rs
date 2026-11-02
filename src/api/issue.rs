@@ -32,6 +32,7 @@ impl GitBucketClient {
         repo: &str,
         state: Option<&str>,
     ) -> Result<Vec<Issue>> {
+        super::url_safety::repository(owner, repo)?;
         let state_param = state.unwrap_or("open");
         let issues = self
             .get_paginated_with_identity(
@@ -49,6 +50,7 @@ impl GitBucketClient {
 
     /// Get a single issue.
     pub async fn get_issue(&self, owner: &str, repo: &str, number: u64) -> Result<Issue> {
+        super::url_safety::repository(owner, repo)?;
         let issue = self
             .get(&format!("/repos/{}/{}/issues/{}", owner, repo, number))
             .await?;
@@ -57,6 +59,7 @@ impl GitBucketClient {
 
     /// Create a new issue.
     pub async fn create_issue(&self, owner: &str, repo: &str, body: &CreateIssue) -> Result<Issue> {
+        super::url_safety::repository(owner, repo)?;
         self.post(&format!("/repos/{}/{}/issues", owner, repo), body)
             .await
     }
@@ -69,6 +72,7 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateIssue,
     ) -> Result<Issue> {
+        super::url_safety::repository(owner, repo)?;
         self.update_issue_with_outcome(owner, repo, number, body)
             .await
             .map_err(IssueUpdateError::into_cause)
@@ -81,6 +85,7 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateIssue,
     ) -> IssueUpdateResult {
+        super::url_safety::repository(owner, repo).map_err(IssueUpdateError::BeforeWrite)?;
         match self
             .patch(
                 &format!("/repos/{}/{}/issues/{}", owner, repo, number),
@@ -104,6 +109,7 @@ impl GitBucketClient {
         repo: &str,
         number: u64,
     ) -> Result<Vec<Comment>> {
+        super::url_safety::repository(owner, repo)?;
         self.get_with_query(
             &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
             &[],
@@ -119,6 +125,7 @@ impl GitBucketClient {
         number: u64,
         body: &CreateComment,
     ) -> Result<Comment> {
+        super::url_safety::repository(owner, repo)?;
         self.post(
             &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
             body,
@@ -134,6 +141,7 @@ impl GitBucketClient {
         body: &UpdateIssue,
         original_error: GbMcpError,
     ) -> IssueUpdateResult {
+        super::url_safety::repository(owner, repo).map_err(IssueUpdateError::BeforeWrite)?;
         match self.get_issue(owner, repo, number).await {
             Ok(current_issue) => {
                 self.update_issue_via_web_fallback(owner, repo, number, body, &current_issue)
@@ -154,6 +162,7 @@ impl GitBucketClient {
         body: &UpdateIssue,
         current_issue: &Issue,
     ) -> IssueUpdateResult {
+        super::url_safety::repository(owner, repo).map_err(IssueUpdateError::BeforeWrite)?;
         let current_body = current_issue.body.as_deref().unwrap_or_default();
         let next_title = body
             .title

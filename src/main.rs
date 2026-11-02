@@ -20,10 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Configuration error: {}", e);
         e
     })?;
-    eprintln!(
-        "gitbucket-mcp-server starting for {} over stdio",
-        config.gitbucket_url
-    );
+    eprintln!("gitbucket-mcp-server starting over stdio");
     tracing::info!("Starting GitBucket MCP Server");
 
     // Create API client

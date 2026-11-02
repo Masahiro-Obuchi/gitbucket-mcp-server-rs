@@ -36,7 +36,13 @@ compose() {
 }
 
 ensure_runtime_dir() {
+  umask 077
+  if [[ -L "${GITBUCKET_E2E_ROOT}" ]]; then
+    echo "E2E runtime directory must not be a symlink" >&2
+    return 1
+  fi
   mkdir -p "${GITBUCKET_E2E_ROOT}"
+  chmod 700 "${GITBUCKET_E2E_ROOT}"
 }
 
 wait_for_gitbucket() {

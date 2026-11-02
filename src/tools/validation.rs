@@ -7,6 +7,9 @@ pub fn required_trimmed(value: &str, field: &str) -> std::result::Result<String,
     if trimmed.is_empty() {
         return Err(error(format!("{field} must not be empty")));
     }
+    if matches!(field, "owner" | "repo" | "username") {
+        crate::api::url_safety::identifier(trimmed, field).map_err(|e| e.to_string())?;
+    }
     Ok(trimmed.to_string())
 }
 

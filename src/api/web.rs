@@ -1,9 +1,8 @@
-use reqwest::redirect::Policy;
 use reqwest::{Client, Response, StatusCode};
 
 use crate::error::{GbMcpError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GitBucketWebSession {
     client: Client,
     base_url: String,
@@ -16,20 +15,21 @@ impl GitBucketWebSession {
         password: &str,
         allow_invalid_certs: bool,
     ) -> Result<Self> {
-        let base_url = normalize_web_base_url(api_base_url);
+        let api_base_url = super::client::normalize_base_url(api_base_url)?;
+        let base_url = normalize_web_base_url(&api_base_url);
         let client = Client::builder()
             .cookie_store(true)
-            .redirect(Policy::limited(10))
+            .redirect(super::url_safety::redirect_policy(&api_base_url)?)
             .danger_accept_invalid_certs(allow_invalid_certs)
             .build()
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
 
         let response = client
-            .post(format!("{base_url}/signin"))
+            .post(super::url_safety::append(&base_url, &["signin"])?)
             .form(&[("userName", username), ("password", password), ("hash", "")])
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
 
         let status = response.status();
         let final_path = response.url().path().to_string();
@@ -37,10 +37,10 @@ impl GitBucketWebSession {
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
             || final_path.ends_with("/signin")
         {
-            return Err(GbMcpError::Other(format!(
-                "GitBucket web sign-in failed for '{}'. Check GITBUCKET_USERNAME and GITBUCKET_PASSWORD.",
-                username
-            )));
+            return Err(GbMcpError::Other(
+                "GitBucket web sign-in failed. Check GITBUCKET_USERNAME and GITBUCKET_PASSWORD."
+                    .into(),
+            ));
         }
 
         if !status.is_success() && !status.is_redirection() {
@@ -60,6 +60,7 @@ impl GitBucketWebSession {
         number: u64,
         action: &str,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         self.post_form(
             &format!("/{owner}/{repo}/issue_comments/state"),
             vec![
@@ -79,6 +80,7 @@ impl GitBucketWebSession {
         number: u64,
         title: &str,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         self.post_form(
             &format!("/{owner}/{repo}/issues/edit_title/{number}"),
             vec![("title", title.to_string())],
@@ -95,6 +97,7 @@ impl GitBucketWebSession {
         title: &str,
         content: &str,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         self.post_form(
             &format!("/{owner}/{repo}/issues/edit/{number}"),
             vec![
@@ -114,6 +117,7 @@ impl GitBucketWebSession {
         description: Option<&str>,
         due_date: Option<&str>,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         self.post_form(
             &format!("/{owner}/{repo}/issues/milestones/new"),
             vec![
@@ -135,6 +139,7 @@ impl GitBucketWebSession {
         description: Option<&str>,
         due_date: Option<&str>,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         self.post_form(
             &format!("/{owner}/{repo}/issues/milestones/{number}/edit"),
             vec![
@@ -154,6 +159,7 @@ impl GitBucketWebSession {
         number: u64,
         action: &str,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         let action = match action {
             "open" | "close" => action,
             other => {
@@ -166,37 +172,56 @@ impl GitBucketWebSession {
 
         let response = self
             .client
-            .get(format!(
-                "{}/{owner}/{repo}/issues/milestones/{number}/{action}",
-                self.base_url
-            ))
+            .get(super::url_safety::append(
+                &self.base_url,
+                &[
+                    owner,
+                    repo,
+                    "issues",
+                    "milestones",
+                    &number.to_string(),
+                    action,
+                ],
+            )?)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.ensure_success(response, "change the milestone state")
             .await
     }
 
     pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         let response = self
             .client
-            .get(format!(
-                "{}/{owner}/{repo}/issues/milestones/{number}/delete",
-                self.base_url
-            ))
+            .get(super::url_safety::append(
+                &self.base_url,
+                &[
+                    owner,
+                    repo,
+                    "issues",
+                    "milestones",
+                    &number.to_string(),
+                    "delete",
+                ],
+            )?)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.ensure_success(response, "delete the milestone").await
     }
 
     pub async fn find_label_id(&self, owner: &str, repo: &str, name: &str) -> Result<u64> {
+        super::url_safety::repository(owner, repo)?;
         let response = self
             .client
-            .get(format!("{}/{owner}/{repo}/issues/labels", self.base_url))
+            .get(super::url_safety::append(
+                &self.base_url,
+                &[owner, repo, "issues", "labels"],
+            )?)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         let body = self
             .success_text(response, "load repository labels")
             .await?;
@@ -216,6 +241,7 @@ impl GitBucketWebSession {
         name: &str,
         color: &str,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         self.post_form(
             &format!("/{owner}/{repo}/issues/labels/{label_id}/edit"),
             vec![
@@ -230,11 +256,11 @@ impl GitBucketWebSession {
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
             .client
-            .post(format!("{}{}", self.base_url, path))
+            .post(super::url_safety::route(&self.base_url, path)?)
             .form(&fields)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.ensure_success(response, action).await
     }
 
@@ -245,7 +271,6 @@ impl GitBucketWebSession {
     async fn success_text(&self, response: Response, action: &str) -> Result<String> {
         let status = response.status();
         let final_path = response.url().path().to_string();
-        let body = response.text().await.unwrap_or_default();
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
             || final_path.ends_with("/signin")
@@ -257,25 +282,22 @@ impl GitBucketWebSession {
         }
 
         if status.is_success() || status.is_redirection() {
-            return Ok(body);
+            return response.text().await.map_err(GbMcpError::from);
         }
 
-        let suffix = if body.trim().is_empty() {
-            String::new()
-        } else {
-            format!(": {}", body.trim())
-        };
         Err(GbMcpError::Other(format!(
-            "Failed to {}: HTTP {}{}",
+            "Failed to {}: HTTP {}",
             action,
-            status.as_u16(),
-            suffix
+            status.as_u16()
         )))
     }
 }
 
 fn normalize_web_base_url(api_base_url: &str) -> String {
-    api_base_url.trim_end_matches("/api/v3").to_string()
+    api_base_url
+        .strip_suffix("/api/v3")
+        .unwrap_or(api_base_url)
+        .to_string()
 }
 
 fn label_id_from_page(body: &str, name: &str) -> Option<u64> {
@@ -314,6 +336,12 @@ fn find_label_marker(body: &str, marker: &str) -> Option<usize> {
     }
 
     None
+}
+
+impl std::fmt::Debug for GitBucketWebSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GitBucketWebSession([REDACTED])")
+    }
 }
 
 #[cfg(test)]

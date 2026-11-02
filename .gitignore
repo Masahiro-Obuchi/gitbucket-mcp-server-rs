@@ -8,3 +8,6 @@
 
 # OS files
 .DS_Store
+
+# Python script caches
+__pycache__/

@@ -11,6 +11,7 @@ impl GitBucketClient {
 
     /// Get a user by username.
     pub async fn get_user(&self, username: &str) -> Result<User> {
+        super::url_safety::identifier(username, "username")?;
         self.get(&format!("/users/{}", username)).await
     }
 }

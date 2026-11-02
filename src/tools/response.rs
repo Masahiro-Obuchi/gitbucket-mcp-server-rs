@@ -70,12 +70,8 @@ pub fn from_gb_error(error: GbMcpError) -> ToolResult {
             },
             Some(status),
         ),
-        GbMcpError::Http(error) => {
-            error_payload("http_error", format!("HTTP error: {}", error), None)
-        }
-        GbMcpError::Json(error) => {
-            error_payload("json_error", format!("JSON error: {}", error), None)
-        }
+        err @ GbMcpError::Http(_) => error_payload("http_error", err.to_string(), None),
+        err @ GbMcpError::Json(_) => error_payload("json_error", err.to_string(), None),
         GbMcpError::UrlParse(error) => error_payload(
             "url_parse_error",
             format!("URL parse error: {}", error),

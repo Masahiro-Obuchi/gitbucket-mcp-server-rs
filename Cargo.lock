@@ -490,6 +490,7 @@ dependencies = [
  "assert-json-diff",
  "chrono",
  "dirs",
+ "libc",
  "reqwest",
  "rmcp",
  "schemars",

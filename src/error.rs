@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error)]
 pub enum GbMcpError {
     #[error("Configuration error: {0}")]
     Config(String),
@@ -8,11 +8,11 @@ pub enum GbMcpError {
     #[error("API error ({status}): {message}")]
     Api { status: u16, message: String },
 
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
+    #[error("HTTP request failed ({})", http_kind(.0))]
+    Http(reqwest::Error),
 
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    #[error("JSON response could not be decoded at line {}, column {}", .0.line(), .0.column())]
+    Json(serde_json::Error),
 
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
@@ -50,6 +50,39 @@ pub enum GbMcpError {
 }
 
 pub type Result<T> = std::result::Result<T, GbMcpError>;
+
+impl From<reqwest::Error> for GbMcpError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Http(error.without_url())
+    }
+}
+
+impl From<serde_json::Error> for GbMcpError {
+    fn from(error: serde_json::Error) -> Self {
+        // Preserve the public variant and conversion without exposing the raw
+        // response value through thiserror's automatic source chain.
+        Self::Json(error)
+    }
+}
+
+fn http_kind(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "connection"
+    } else if error.is_redirect() {
+        "redirect rejected"
+    } else if error.is_decode() {
+        "decode"
+    } else {
+        "transport"
+    }
+}
+impl std::fmt::Debug for GbMcpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
 
 #[cfg(test)]
 mod tests {

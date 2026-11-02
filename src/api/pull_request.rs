@@ -14,6 +14,7 @@ impl GitBucketClient {
         repo: &str,
         state: Option<&str>,
     ) -> Result<Vec<PullRequest>> {
+        super::url_safety::repository(owner, repo)?;
         let state_param = state.unwrap_or("open");
         self.get_paginated_with_identity(
             &format!("/repos/{}/{}/pulls", owner, repo),
@@ -31,6 +32,7 @@ impl GitBucketClient {
         repo: &str,
         number: u64,
     ) -> Result<PullRequest> {
+        super::url_safety::repository(owner, repo)?;
         self.get(&format!("/repos/{}/{}/pulls/{}", owner, repo, number))
             .await
     }
@@ -42,6 +44,7 @@ impl GitBucketClient {
         repo: &str,
         body: &CreatePullRequest,
     ) -> Result<PullRequest> {
+        super::url_safety::repository(owner, repo)?;
         self.post(&format!("/repos/{}/{}/pulls", owner, repo), body)
             .await
     }
@@ -54,6 +57,7 @@ impl GitBucketClient {
         number: u64,
         body: &UpdatePullRequest,
     ) -> Result<PullRequest> {
+        super::url_safety::repository(owner, repo)?;
         super::pull_request_update::update(self, owner, repo, number, body).await
     }
 
@@ -65,6 +69,7 @@ impl GitBucketClient {
         number: u64,
         body: &MergePullRequest,
     ) -> Result<MergeResult> {
+        super::url_safety::repository(owner, repo)?;
         self.put(
             &format!("/repos/{}/{}/pulls/{}/merge", owner, repo, number),
             body,
@@ -80,6 +85,7 @@ impl GitBucketClient {
         number: u64,
         body: &CreateComment,
     ) -> Result<Comment> {
+        super::url_safety::repository(owner, repo)?;
         self.post(
             &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
             body,

@@ -2265,7 +2265,7 @@ async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
     match err {
         gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
             assert_eq!(status, 404);
-            assert_eq!(message, "Pull API not found");
+            assert_eq!(message, "Not Found");
         }
         err => panic!("expected original API 404, got {err:?}"),
     }

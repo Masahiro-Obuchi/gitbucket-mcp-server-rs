@@ -38,6 +38,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 toml = "0.8"
 dirs = "6"
+tempfile = "3"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
@@ -45,5 +46,7 @@ rmcp = { version = "1", features = ["client", "server", "transport-io"] }
 wiremock = "0.6"
 tokio-test = "0.4"
 assert-json-diff = "2"
-tempfile = "3"
 serial_test = "3.4.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

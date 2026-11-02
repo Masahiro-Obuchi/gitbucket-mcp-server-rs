@@ -97,9 +97,25 @@ url = "https://gitbucket.example.com"
 token = "your-personal-access-token"
 ```
 
-The config file is created with `0600` permissions (owner-only read/write) to protect the token. Web fallback credentials are intentionally **not** read from `config.toml`; set `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` via environment variables only.
+The server does not create a config file on startup. Before editing it on Unix, create the directory and file privately:
+
+```bash
+(umask 077; mkdir -p ~/.config/gitbucket-mcp-server; touch ~/.config/gitbucket-mcp-server/config.toml)
+chmod 600 ~/.config/gitbucket-mcp-server/config.toml
+```
+
+The library's save method atomically replaces regular files with a `0600` file, including existing `0644` files. On Unix, loading rejects symlinks and non-regular files, and warns about group/other permissions without changing the file. Save rejects symlink destinations. Keep parent directories under your control. On non-Unix systems, restrict access using the OS's ACL controls; Unix mode bits are not an ACL guarantee. Web fallback credentials are intentionally **not** read from `config.toml`; set `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` via environment variables only.
 
 The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` environment variable.
+
+GitBucket URLs accept HTTP(S), a host (including IPv6), an optional port and a context path. A missing scheme defaults to HTTPS. Embedded credentials, query strings, fragments, dot segments, backslashes, and escaped path separators are rejected rather than silently normalized to another target. Put the PAT in `GITBUCKET_TOKEN`. REST and web redirects must stay within the configured origin and context path; configure the final instance URL if a proxy redirects to a different host or context.
+
+Owner/user names accept ASCII letters, digits, `-`, `_` and `.`; repository names also accept `+`. A leading `-` or `_`, and the complete names `.` and `..`, are rejected. These follow the identifier character rules in GitBucket 4.44.0/4.48.0; GitBucket may impose additional length or reserved-name restrictions. Label and branch names use their own segment encoding, so legitimate spaces, Unicode and branch slashes do not become URL syntax.
+
+Low-level Rust POST calls with query parameters use `post_with_query(path, query, body)`.
+The path remains free of query syntax; query keys and values are encoded separately.
+
+Debug output redacts configuration and credentials. API errors report the HTTP status and a standard reason rather than the server's raw error body, which can echo credentials or private content. HTTP diagnostics omit request URLs and JSON decoding diagnostics omit values, including when traversing the standard error source chain. Existing MCP error kinds and status fields are preserved.
 
 ### Environment Variables
 
@@ -520,7 +536,11 @@ cargo test --test e2e_test -- --ignored --nocapture
 
 The same bootstrap flow is also automated in GitHub Actions through `.github/workflows/e2e.yml`. Use the regular `CI` workflow for fast feedback and the `E2E` workflow for full Docker-backed smoke coverage.
 
-The bootstrap script starts GitBucket with Docker, creates a validation user, issues a personal access token, creates an initialized target repository, and writes `./.tmp/e2e/runtime.env` with the `GITBUCKET_E2E_*` variables expected by `tests/e2e_test.rs`, including git-over-HTTP credentials for pull request E2E and the authenticated context needed for repository create-path E2E.
+The bootstrap script starts a disposable GitBucket bound to `127.0.0.1`, creates a validation user, issues a personal access token, and provisions the repository. It writes shell-quoted `runtime.env` and a separate `runtime.env.json`, both mode `0600`, in the mode `0700` runtime directory. Both contain test credentials. Source only the generated shell file; CI imports JSON with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, not by stripping `export` from the shell file. Bootstrap removes its temporary cookie/response files on failure. Use `down.sh` to remove the stack and default runtime directory after testing.
+
+A saved E2E token is reused only when `/api/v3/user` identifies the configured
+validation user. A token for another account or an unreadable identity response
+causes bootstrap to obtain a token for the configured user.
 
 ## Acknowledgements
 

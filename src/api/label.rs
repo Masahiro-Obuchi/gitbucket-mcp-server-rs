@@ -17,17 +17,20 @@ struct GitBucketUpdateLabel<'a> {
 
 impl GitBucketClient {
     pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<Label>> {
+        super::url_safety::repository(owner, repo)?;
         self.get_with_query(&format!("/repos/{}/{}/labels", owner, repo), &[])
             .await
     }
 
     pub async fn get_label(&self, owner: &str, repo: &str, name: &str) -> Result<Label> {
+        super::url_safety::repository(owner, repo)?;
         let path = format!("/repos/{owner}/{repo}/labels/{name}");
         let url = label_url(self, owner, repo, name)?;
         self.get_url(url, &path).await
     }
 
     pub async fn create_label(&self, owner: &str, repo: &str, body: &CreateLabel) -> Result<Label> {
+        super::url_safety::repository(owner, repo)?;
         self.post(&format!("/repos/{}/{}/labels", owner, repo), body)
             .await
     }
@@ -39,6 +42,7 @@ impl GitBucketClient {
         name: &str,
         body: &UpdateLabel,
     ) -> Result<Label> {
+        super::url_safety::repository(owner, repo)?;
         // Only fetch the current label when we need it to fill in missing fields.
         let current_opt: Option<Label> = if body.new_name.is_none() || body.color.is_none() {
             Some(self.get_label(owner, repo, name).await?)
@@ -86,6 +90,7 @@ impl GitBucketClient {
     }
 
     pub async fn delete_label(&self, owner: &str, repo: &str, name: &str) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         let path = format!("/repos/{owner}/{repo}/labels/{name}");
         let url = label_url(self, owner, repo, name)?;
         self.delete_url(url, &path).await
@@ -99,6 +104,7 @@ impl GitBucketClient {
         current: &Label,
         _original_error: GbMcpError,
     ) -> Result<Label> {
+        super::url_safety::repository(owner, repo)?;
         self.update_label_via_web_fallback(owner, repo, body, current)
             .await
     }
@@ -110,6 +116,7 @@ impl GitBucketClient {
         body: &UpdateLabel,
         current: &Label,
     ) -> Result<Label> {
+        super::url_safety::repository(owner, repo)?;
         let next_name = body
             .new_name
             .as_deref()
@@ -174,13 +181,6 @@ impl GitBucketClient {
 }
 
 fn label_url(client: &GitBucketClient, owner: &str, repo: &str, name: &str) -> Result<Url> {
-    let mut url = Url::parse(client.base_url()).map_err(GbMcpError::UrlParse)?;
-    {
-        let mut segments = url.path_segments_mut().map_err(|_| {
-            GbMcpError::Other("GitBucket base URL cannot be used as a path base".to_string())
-        })?;
-        segments.pop_if_empty();
-        segments.extend(["repos", owner, repo, "labels", name]);
-    }
-    Ok(url)
+    super::url_safety::repository(owner, repo)?;
+    super::url_safety::append(client.base_url(), &["repos", owner, repo, "labels", name])
 }

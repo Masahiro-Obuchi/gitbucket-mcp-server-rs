@@ -66,11 +66,18 @@ Requirements:
 - Empty values are invalid.
 - Missing config files are treated as “not configured yet”.
 - Malformed or unreadable config files must fail startup with a configuration error.
-- On Unix, written config files must use `0600` permissions.
+- Config saves use a private temporary file and atomic replacement; Unix files use `0600` even when replacing a permissive file. Symlink/non-regular destinations are rejected.
+- Unix loads open without following symlinks, reject non-regular files, and warn about group/other permissions without modifying the file. Parent directories must be trusted. Non-Unix deployments must manage OS ACLs.
+- Config/credential Debug output is redacted. TOML parse errors report position and a generic explanation without source text.
 
 ## 5. GitBucket API Contract
 
-- Base URLs are normalized to include scheme and `/api/v3`.
+- Base URLs are normalized to include scheme and `/api/v3`, preserving IPv6 and context paths. Only HTTP(S) hosts are accepted; userinfo, query, fragment, backslashes, dot segments, invalid percent escapes, escaped controls and escaped separators are rejected.
+- Owner/username identifiers accept ASCII alphanumeric characters and `-_.`; repository identifiers also accept `+`. Leading hyphens/underscores and dot segments are rejected before HTTP. Length/reserved-name validation remains with GitBucket.
+- All REST/web paths are constructed with segment encoding. Labels and branch names are not subject to the owner/repository grammar; dot-only segments and controls are rejected. Low-level Rust string paths must start with `/` and must not embed queries, fragments or percent escapes; query values use query builders.
+- REST/web redirects are limited to ten hops within the configured origin and context path, without userinfo or encoded traversal/separators. External proxy redirects require configuring the final URL.
+- The API suffix is removed exactly once when defining the web redirect boundary, including contexts ending in `/api/v3`.
+- Rust POST queries use `post_with_query` with separate query pairs; embedded query syntax in paths remains rejected.
 - Authentication uses the `Authorization: token <token>` header.
 - Requests accept JSON responses.
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
@@ -209,7 +216,7 @@ Expected error classes:
 Behavior:
 
 - Startup configuration failures stop the process.
-- Non-success GitBucket responses are surfaced as API errors with HTTP status and body text when available.
+- Non-success GitBucket responses, including status wrappers, use the HTTP status and a standard reason. Raw error bodies are not returned or read for HTTP failures. Web failures also omit error bodies. HTTP diagnostics expose a failure category without URLs; JSON diagnostics expose line/column without values and do not expose the raw decoder error through the standard source chain. Successful response-size limits and timeout budgets are separate follow-up work.
 - Tool handlers convert internal errors to structured MCP error payloads.
 
 ## 9. Security Requirements
