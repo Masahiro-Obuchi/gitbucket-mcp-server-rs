@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.gitbucket_password.as_deref(),
         gitbucket_mcp_server::api::http::HttpSettings::from_env()?,
     )?
-    .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::from_env()?);
+    .with_api_profile(gitbucket_mcp_server::api::profile::ApiProfile::from_env()?);
 
     // Create and start MCP server via stdio transport
     let server = GitBucketMcpServer::new(client);

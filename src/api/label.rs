@@ -22,12 +22,10 @@ impl GitBucketClient {
 
     pub async fn create_label(&self, owner: &str, repo: &str, body: &CreateLabel) -> Result<Label> {
         super::url_safety::repository(owner, repo)?;
-        super::label_write::reject_description(self, body.description.as_deref())?;
         super::label_write::name(&body.name)?;
         let request = CreateLabel {
             name: body.name.clone(),
             color: super::label_write::color(&body.color)?,
-            description: None,
         };
         let label = self
             .post(&format!("/repos/{}/{}/labels", owner, repo), &request)
@@ -57,7 +55,7 @@ impl GitBucketClient {
     pub(super) async fn label_web_session(&self) -> Result<GitBucketWebSession> {
         let credentials = self.web_credentials().ok_or_else(|| {
             GbMcpError::Other(
-                "The selected label update compatibility route requires GITBUCKET_USERNAME and GITBUCKET_PASSWORD. HTTP 404 alone does not prove an absent REST endpoint."
+                "The standard label color update route requires GITBUCKET_USERNAME and GITBUCKET_PASSWORD."
                     .to_string(),
             )
         })?;

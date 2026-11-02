@@ -38,8 +38,7 @@ fn client(base: &str, settings: HttpSettings) -> GitBucketClient {
 }
 fn cause(error: &GbMcpError) -> &GbMcpError {
     match error {
-        GbMcpError::OperationOutcomeUnknown { cause, .. }
-        | GbMcpError::WriteOutcomeUnknown { cause } => cause.as_ref(),
+        GbMcpError::OperationOutcomeUnknown { cause, .. } => cause.as_ref(),
         error => error,
     }
 }
@@ -320,7 +319,7 @@ async fn redirected_rest_write_does_not_enter_issue_fallback() {
 }
 
 #[tokio::test]
-async fn errors_keep_safe_status_and_wrapped_404_still_allows_compatibility() {
+async fn errors_keep_safe_status_and_wrapped_404_still_allows_api_profile() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/api/v3/wrapped"))
@@ -623,14 +622,8 @@ async fn cancellation_stops_in_flight_reads_and_writes_without_replay() {
 }
 
 #[tokio::test]
-async fn definitive_rejection_does_not_mark_later_prewrite_timeout_as_unknown() {
+async fn standard_issue_prewrite_read_timeout_is_not_unknown() {
     let server = MockServer::start().await;
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(404))
-        .expect(1)
-        .mount(&server)
-        .await;
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
         .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(1)))
@@ -641,7 +634,7 @@ async fn definitive_rejection_does_not_mark_later_prewrite_timeout_as_unknown() 
     policy.request_timeout = Duration::from_secs(2);
     let peer = protocol(
         client(&server.uri(), policy)
-            .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::Legacy404),
+            .with_api_profile(gitbucket_mcp_server::api::profile::ApiProfile::Standard),
         Duration::from_millis(150),
     )
     .await;
@@ -657,7 +650,7 @@ async fn definitive_rejection_does_not_mark_later_prewrite_timeout_as_unknown() 
         .await
         .unwrap();
     assert_eq!(result.structured_content.unwrap()["kind"], "timeout_error");
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
     peer.cancel().await.unwrap();
 }
 
@@ -666,11 +659,6 @@ async fn successful_web_write_then_failed_verification_is_unknown() {
     let server = MockServer::start().await;
     let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count = reads.clone();
-    Mock::given(method("PATCH"))
-        .and(path("/api/v3/repos/owner/repo/issues/1"))
-        .respond_with(ResponseTemplate::new(404))
-        .mount(&server)
-        .await;
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
         .respond_with(move |_: &wiremock::Request| {
@@ -693,7 +681,7 @@ async fn successful_web_write_then_failed_verification_is_unknown() {
         .mount(&server)
         .await;
     let error = client(&server.uri(), settings())
-        .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::Legacy404)
+        .with_api_profile(gitbucket_mcp_server::api::profile::ApiProfile::Standard)
         .update_issue(
             "owner",
             "repo",

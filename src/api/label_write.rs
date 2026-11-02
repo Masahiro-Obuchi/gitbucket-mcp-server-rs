@@ -1,7 +1,7 @@
 //! Label update intent, route selection and result verification.
 use super::{
     client::GitBucketClient,
-    compatibility::{Operation, Route},
+    profile::{Operation, Route},
 };
 use crate::{
     error::{GbMcpError, Result},
@@ -15,17 +15,6 @@ const UPDATE: &str = "Label update";
 struct LabelWrite<'a> {
     name: &'a str,
     color: &'a str,
-}
-
-pub(super) fn reject_description(
-    client: &GitBucketClient,
-    description: Option<&str>,
-) -> Result<()> {
-    if description.is_some() {
-        client.operation_route(Operation::LabelDescription);
-        return Err(GbMcpError::Unsupported("Label description writes are not supported by this server's GitBucket contracts. Omit description; no label changes were sent.".into()));
-    }
-    Ok(())
 }
 
 pub(super) fn color(value: &str) -> Result<String> {
@@ -57,7 +46,6 @@ pub(super) async fn update(
     old_name: &str,
     change: &UpdateLabel,
 ) -> Result<Label> {
-    reject_description(client, change.description.as_deref())?;
     if change.new_name.is_none() && change.color.is_none() {
         return Err(GbMcpError::InvalidInput(
             "At least one of new_name or color is required".into(),
@@ -106,7 +94,7 @@ pub(super) async fn update(
         web_update(client, owner, repo, old_name, next_name, &next_color).await?
     } else {
         let url = super::label::label_url(client, owner, repo, old_name)?;
-        match client
+        client
             .patch_url(
                 url,
                 "label update",
@@ -115,26 +103,7 @@ pub(super) async fn update(
                     color: &next_color,
                 },
             )
-            .await
-        {
-            Ok(label) => label,
-            Err(original @ GbMcpError::Api { status: 404, .. })
-                if client.compatibility().legacy_404() =>
-            {
-                match client.get_label(owner, repo, old_name).await {
-                    Ok(current) if current.name == old_name => {}
-                    Ok(_) => {
-                        return Err(GbMcpError::Other(
-                            "GitBucket returned a different label; no web update was sent".into(),
-                        ))
-                    }
-                    Err(GbMcpError::Api { status: 404, .. }) => return Err(original),
-                    Err(error) => return Err(error),
-                }
-                web_update(client, owner, repo, old_name, next_name, &next_color).await?
-            }
-            Err(error) => return Err(error),
-        }
+            .await?
     };
     verify(&result, next_name, &next_color, UPDATE)?;
     Ok(result)

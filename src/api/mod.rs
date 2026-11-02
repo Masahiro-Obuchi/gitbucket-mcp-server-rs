@@ -14,13 +14,13 @@ use crate::models::user::User;
 
 mod adapter;
 pub mod client;
-pub mod compatibility;
 pub mod http;
 pub mod issue;
 pub mod label;
 mod label_write;
 pub mod milestone;
 mod milestone_write;
+pub mod profile;
 pub mod pull_request;
 mod pull_request_update;
 pub mod repository;

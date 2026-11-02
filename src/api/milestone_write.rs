@@ -129,33 +129,20 @@ pub(super) async fn create(
             .transpose()?,
     };
     let route = client.operation_route(
-        if super::compatibility::restricted_milestone_title(&expected.title) {
-            super::compatibility::Operation::MilestoneRestrictedTitle
+        if super::profile::restricted_milestone_title(&expected.title) {
+            super::profile::Operation::MilestoneRestrictedTitle
         } else {
-            super::compatibility::Operation::MilestoneWrite
+            super::profile::Operation::MilestoneWrite
         },
     );
-    if route == super::compatibility::Route::Web {
+    if route == super::profile::Route::Web {
         let result = web_create(client, owner, repo, &expected).await?;
         verify(&expected, &result, None, CREATE)?;
         return Ok(result);
     }
-    let result = match client
+    let result = client
         .post(&format!("/repos/{owner}/{repo}/milestones"), &expected)
-        .await
-    {
-        Ok(value) => value,
-        Err(original @ GbMcpError::Api { status: 404, .. })
-            if client.compatibility().legacy_404() =>
-        {
-            match client.get_repository(owner, repo).await {
-                Ok(_) => web_create(client, owner, repo, &expected).await?,
-                Err(GbMcpError::Api { status: 404, .. }) => return Err(original),
-                Err(err) => return Err(err),
-            }
-        }
-        Err(err) => return Err(write_error(CREATE, err)),
-    };
+        .await?;
     verify(&expected, &result, None, CREATE)?;
     Ok(result)
 }
@@ -182,30 +169,23 @@ pub(super) async fn update(
         return Ok(current);
     }
     let route = client.operation_route(
-        if super::compatibility::restricted_milestone_title(&expected.title) {
-            super::compatibility::Operation::MilestoneRestrictedTitle
+        if super::profile::restricted_milestone_title(&expected.title) {
+            super::profile::Operation::MilestoneRestrictedTitle
         } else {
-            super::compatibility::Operation::MilestoneWrite
+            super::profile::Operation::MilestoneWrite
         },
     );
-    if route == super::compatibility::Route::Web {
+    if route == super::profile::Route::Web {
         let result = web_update(client, owner, repo, number, &before, &expected).await?;
         verify(&expected, &result, Some(number), UPDATE)?;
         return Ok(result);
     }
-    let result = match client
+    let result = client
         .patch(
             &format!("/repos/{owner}/{repo}/milestones/{number}"),
             &expected,
         )
-        .await
-    {
-        Ok(value) => value,
-        Err(GbMcpError::Api { status: 404, .. }) if client.compatibility().legacy_404() => {
-            web_update(client, owner, repo, number, &before, &expected).await?
-        }
-        Err(err) => return Err(write_error(UPDATE, err)),
-    };
+        .await?;
     verify(&expected, &result, Some(number), UPDATE)?;
     Ok(result)
 }
@@ -351,17 +331,5 @@ async fn web_update(
 }
 
 fn unknown(operation: &'static str, cause: GbMcpError) -> GbMcpError {
-    GbMcpError::OperationOutcomeUnknown {
-        operation,
-        cause: Box::new(cause),
-    }
-}
-
-fn write_error(operation: &'static str, error: GbMcpError) -> GbMcpError {
-    match error {
-        err @ GbMcpError::Api {
-            status: 400..=499, ..
-        } if !matches!(&err, GbMcpError::Api { status: 408, .. }) => err,
-        err => unknown(operation, err),
-    }
+    super::http::unknown(operation, cause)
 }

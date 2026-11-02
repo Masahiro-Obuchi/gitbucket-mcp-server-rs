@@ -45,15 +45,6 @@ pub enum GbMcpError {
         cause: Box<GbMcpError>,
     },
 
-    #[error("Pull request update could not be verified for fields {fields:?}. Changes may already have been applied; inspect the pull request before retrying.")]
-    UpdateNotVerified { fields: Vec<&'static str> },
-
-    #[error("Pull request update outcome is unknown. Changes may already have been applied; inspect the pull request before retrying. Cause: {cause}")]
-    WriteOutcomeUnknown {
-        #[source]
-        cause: Box<GbMcpError>,
-    },
-
     #[error("{0}")]
     Other(String),
 }

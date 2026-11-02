@@ -7,8 +7,7 @@ use crate::models::label::{CreateLabel, UpdateLabel};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{
-    error, label_color, optional_trimmed, repository_fields, required_optional_trimmed,
-    required_trimmed,
+    error, label_color, repository_fields, required_optional_trimmed, required_trimmed,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -30,6 +29,7 @@ pub struct GetLabelParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateLabelParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -39,13 +39,10 @@ pub struct CreateLabelParams {
     pub name: String,
     #[schemars(description = "6-digit label color, with or without #")]
     pub color: String,
-    #[schemars(
-        description = "Reserved for API extensions; built-in GitBucket contracts reject supplied description before writes"
-    )]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateLabelParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -57,10 +54,6 @@ pub struct UpdateLabelParams {
     pub new_name: Option<String>,
     #[schemars(description = "New 6-digit label color, with or without #")]
     pub color: Option<String>,
-    #[schemars(
-        description = "Reserved for API extensions; built-in GitBucket contracts reject supplied description, including an empty string, before writes"
-    )]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -132,11 +125,7 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
-        let body = CreateLabel {
-            name,
-            color,
-            description: optional_trimmed(params.description),
-        };
+        let body = CreateLabel { name, color };
 
         match self.client.create_label(&owner, &repo, &body).await {
             Ok(label) => success(&label),
@@ -144,9 +133,7 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(
-        description = "Update a label name or color in a GitBucket repository; description writes are unsupported"
-    )]
+    #[tool(description = "Update a label name or color in a GitBucket repository")]
     pub async fn update_label(
         &self,
         Parameters(params): Parameters<UpdateLabelParams>,
@@ -170,19 +157,12 @@ impl GitBucketMcpServer {
             },
             None => None,
         };
-        let description = optional_trimmed(params.description);
 
-        if new_name.is_none() && color.is_none() && description.is_none() {
-            return validation_error(error(
-                "at least one of new_name, color, or description must be provided",
-            ));
+        if new_name.is_none() && color.is_none() {
+            return validation_error(error("at least one of new_name or color must be provided"));
         }
 
-        let body = UpdateLabel {
-            new_name,
-            color,
-            description,
-        };
+        let body = UpdateLabel { new_name, color };
 
         match self.client.update_label(&owner, &repo, &name, &body).await {
             Ok(label) => success(&label),
@@ -235,7 +215,6 @@ mod tests {
                 repo: "project".to_string(),
                 name: "bug".to_string(),
                 color: "zzz".to_string(),
-                description: None,
             }))
             .await;
 
@@ -261,7 +240,6 @@ mod tests {
                 name: "bug".to_string(),
                 new_name: None,
                 color: None,
-                description: None,
             }))
             .await;
 
@@ -269,8 +247,7 @@ mod tests {
             error_payload(result),
             ToolErrorPayload {
                 kind: "validation_error".to_string(),
-                message: "at least one of new_name, color, or description must be provided"
-                    .to_string(),
+                message: "at least one of new_name or color must be provided".to_string(),
                 status: None,
             }
         );
@@ -336,7 +313,6 @@ mod tests {
                 repo: "  project  ".to_string(),
                 name: "  needs-review  ".to_string(),
                 color: "  #A1B2C3  ".to_string(),
-                description: Some("  Needs extra review  ".to_string()),
             }))
             .await;
 
@@ -348,7 +324,6 @@ mod tests {
                 assert_eq!(repo, "project");
                 assert_eq!(body.name, "needs-review");
                 assert_eq!(body.color, "a1b2c3");
-                assert_eq!(body.description.as_deref(), Some("Needs extra review"));
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }
@@ -366,7 +341,6 @@ mod tests {
                 name: "  needs review  ".to_string(),
                 new_name: Some("  needs-review  ".to_string()),
                 color: Some("  #A1B2C3  ".to_string()),
-                description: Some("  Needs extra review  ".to_string()),
             }))
             .await;
 
@@ -384,7 +358,6 @@ mod tests {
                 assert_eq!(name, "needs review");
                 assert_eq!(body.new_name.as_deref(), Some("needs-review"));
                 assert_eq!(body.color.as_deref(), Some("a1b2c3"));
-                assert_eq!(body.description.as_deref(), Some("Needs extra review"));
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }

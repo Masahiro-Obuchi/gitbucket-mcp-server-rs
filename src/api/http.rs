@@ -199,8 +199,7 @@ pub async fn mutation<T>(
 
 pub(crate) fn unknown(operation: &'static str, error: GbMcpError) -> GbMcpError {
     match error {
-        err @ (GbMcpError::OperationOutcomeUnknown { .. }
-        | GbMcpError::WriteOutcomeUnknown { .. }) => err,
+        err @ GbMcpError::OperationOutcomeUnknown { .. } => err,
         cause => GbMcpError::OperationOutcomeUnknown {
             operation,
             cause: Box::new(cause),

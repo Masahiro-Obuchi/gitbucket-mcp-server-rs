@@ -1,7 +1,7 @@
 use gitbucket_mcp_server::{
     api::{
         client::GitBucketClient,
-        compatibility::{Compatibility, Operation, Route},
+        profile::{ApiProfile, Operation, Route},
     },
     error::GbMcpError,
     models::{
@@ -21,7 +21,7 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
-fn client(server: &MockServer, mode: Compatibility) -> GitBucketClient {
+fn client(server: &MockServer, mode: ApiProfile) -> GitBucketClient {
     GitBucketClient::new_with_web_auth(
         &server.uri(),
         "fake-token",
@@ -30,20 +30,18 @@ fn client(server: &MockServer, mode: Compatibility) -> GitBucketClient {
         Some("fake-password"),
     )
     .unwrap()
-    .with_compatibility(mode)
+    .with_api_profile(mode)
 }
 fn rename() -> UpdateLabel {
     UpdateLabel {
         new_name: Some("new-name".into()),
         color: Some("ABCDEF".into()),
-        description: None,
     }
 }
 fn recolor() -> UpdateLabel {
     UpdateLabel {
         new_name: None,
         color: Some("ABCDEF".into()),
-        description: None,
     }
 }
 fn pr_update() -> UpdatePullRequest {
@@ -84,54 +82,49 @@ async fn sign_in(server: &MockServer) {
 }
 
 #[test]
-fn profiles_express_operations_and_evidence_without_guessing_version() {
-    for mode in [Compatibility::GitBucket444, Compatibility::GitBucket448] {
-        for op in [
-            Operation::IssueUpdate,
-            Operation::LabelSameNameUpdate,
-            Operation::MilestoneRestrictedTitle,
-        ] {
-            assert_eq!(mode.capability(op).route, Route::Web);
-        }
-        for op in [
-            Operation::PullRequestUpdate,
-            Operation::LabelRename,
-            Operation::MilestoneWrite,
-            Operation::MilestoneDelete,
-        ] {
-            assert_eq!(mode.capability(op).route, Route::Rest);
-        }
-        assert!(mode
-            .capability(Operation::IssueUpdate)
-            .evidence
-            .contains("Operator-selected"));
+fn profiles_express_the_supported_contract_without_legacy_aliases() {
+    let standard = ApiProfile::Standard;
+    for op in [
+        Operation::IssueUpdate,
+        Operation::LabelSameNameUpdate,
+        Operation::MilestoneRestrictedTitle,
+    ] {
+        assert_eq!(standard.capability(op).route, Route::Web);
     }
-    assert_eq!(Compatibility::default(), Compatibility::RestOnly);
+    for op in [
+        Operation::PullRequestUpdate,
+        Operation::LabelRename,
+        Operation::MilestoneWrite,
+        Operation::MilestoneDelete,
+    ] {
+        assert_eq!(standard.capability(op).route, Route::Rest);
+    }
+    assert!(standard
+        .capability(Operation::IssueUpdate)
+        .evidence
+        .contains("4.44.0 and 4.48.0"));
+    assert_eq!(ApiProfile::default(), ApiProfile::RestOnly);
     assert_eq!(
-        Compatibility::RestOnly
+        ApiProfile::RestOnly
             .capability(Operation::IssueUpdate)
             .route,
-        Route::Unverified
+        Route::Rest
     );
-    assert_eq!(
-        Compatibility::Legacy404
-            .capability(Operation::LabelDescription)
-            .route,
-        Route::Unsupported
-    );
-    for mode in [
-        "rest-only",
+    for value in ["rest-only", "standard"] {
+        assert!(value.parse::<ApiProfile>().is_ok());
+    }
+    for value in [
+        "legacy-404",
         "gitbucket-4.44.0",
         "gitbucket-4.48.0",
-        "legacy-404",
+        "fake-secret-mode",
     ] {
-        assert!(mode.parse::<Compatibility>().is_ok());
+        assert!(!value
+            .parse::<ApiProfile>()
+            .unwrap_err()
+            .to_string()
+            .contains(value));
     }
-    assert!(!"fake-secret-bad-mode"
-        .parse::<Compatibility>()
-        .unwrap_err()
-        .to_string()
-        .contains("fake-secret"));
 }
 
 #[tokio::test]
@@ -149,7 +142,7 @@ async fn unknown_404_preserves_error_without_preflight_or_web_even_with_credenti
         .respond_with(ResponseTemplate::new(404))
         .mount(&server)
         .await;
-    let client = client(&server, Compatibility::RestOnly);
+    let client = client(&server, ApiProfile::RestOnly);
     let results = [
         client
             .update_pull_request("owner", "repo", 1, &pr_update())
@@ -192,7 +185,7 @@ async fn unknown_404_preserves_error_without_preflight_or_web_even_with_credenti
 
 #[tokio::test]
 async fn standard_profiles_keep_rest_for_pr_rename_and_normal_milestone_errors() {
-    for mode in [Compatibility::GitBucket444, Compatibility::GitBucket448] {
+    for mode in [ApiProfile::Standard] {
         for status in [401, 403, 404, 409, 422] {
             let server = MockServer::start().await;
             Mock::given(method("PATCH"))
@@ -236,11 +229,7 @@ async fn standard_profiles_keep_rest_for_pr_rename_and_normal_milestone_errors()
 
 #[tokio::test]
 async fn label_rename_stays_rest_and_ignored_responses_are_not_success() {
-    for mode in [
-        Compatibility::RestOnly,
-        Compatibility::GitBucket444,
-        Compatibility::GitBucket448,
-    ] {
+    for mode in [ApiProfile::RestOnly, ApiProfile::Standard] {
         let server = MockServer::start().await;
         Mock::given(method("PATCH"))
             .and(path("/api/v3/repos/owner/repo/labels/old-name"))
@@ -271,7 +260,7 @@ async fn label_rename_stays_rest_and_ignored_responses_are_not_success() {
         .mount(&server)
         .await;
     assert!(matches!(
-        client(&server, Compatibility::GitBucket444)
+        client(&server, ApiProfile::Standard)
             .update_label("owner", "repo", "old-name", &rename())
             .await,
         Err(GbMcpError::OperationNotVerified { .. })
@@ -280,7 +269,7 @@ async fn label_rename_stays_rest_and_ignored_responses_are_not_success() {
 
 #[tokio::test]
 async fn same_name_color_uses_web_only_for_selected_contract_and_verifies_result() {
-    for mode in [Compatibility::GitBucket444, Compatibility::GitBucket448] {
+    for mode in [ApiProfile::Standard] {
         for applies in [true, false] {
             let server = MockServer::start().await;
             let changed = Arc::new(AtomicBool::new(false));
@@ -322,7 +311,7 @@ async fn same_name_color_uses_web_only_for_selected_contract_and_verifies_result
 
 #[tokio::test]
 async fn unverified_color_422_is_not_a_reason_to_try_web() {
-    for mode in [Compatibility::RestOnly, Compatibility::Legacy404] {
+    for mode in [ApiProfile::RestOnly] {
         let server = MockServer::start().await;
         current_label(&server).await;
         Mock::given(method("PATCH"))
@@ -341,48 +330,59 @@ async fn unverified_color_422_is_not_a_reason_to_try_web() {
 }
 
 #[tokio::test]
-async fn description_including_clear_or_combined_change_is_rejected_before_any_request() {
-    let server = MockServer::start().await;
-    for mode in [
-        Compatibility::RestOnly,
-        Compatibility::GitBucket444,
-        Compatibility::GitBucket448,
-        Compatibility::Legacy404,
-    ] {
-        let c = client(&server, mode);
-        for description in ["", "ignored"] {
-            let create = CreateLabel {
-                name: "label".into(),
-                color: "123456".into(),
-                description: Some(description.into()),
-            };
-            assert!(matches!(
-                c.create_label("owner", "repo", &create).await,
-                Err(GbMcpError::Unsupported(_))
-            ));
-            for mut change in [
-                rename(),
-                recolor(),
-                UpdateLabel {
-                    new_name: None,
-                    color: None,
-                    description: None,
-                },
-            ] {
-                change.description = Some(description.into());
-                let error = c
-                    .update_label("owner", "repo", "old-name", &change)
-                    .await
-                    .unwrap_err();
-                let result = gitbucket_mcp_server::tools::response::from_gb_error(error).unwrap();
-                assert_eq!(
-                    result.structured_content.unwrap()["kind"],
-                    "unsupported_error"
-                );
+async fn label_write_schema_omits_description_and_rejects_extra_arguments_before_http() {
+    use rmcp::{
+        model::{CallToolRequestParams, ErrorCode},
+        ServiceExt,
+    };
+    let http = MockServer::start().await;
+    let (server_transport, client_transport) = tokio::io::duplex(16384);
+    let server =
+        gitbucket_mcp_server::server::GitBucketMcpServer::new(client(&http, ApiProfile::Standard));
+    tokio::spawn(async move {
+        let running = server.serve(server_transport).await.unwrap();
+        let _ = running.waiting().await;
+    });
+    let peer = ().serve(client_transport).await.unwrap();
+    let tools = peer.list_all_tools().await.unwrap();
+    for tool_name in ["create_label", "update_label"] {
+        let tool = tools.iter().find(|t| t.name == tool_name).unwrap();
+        assert!(tool.input_schema["properties"].get("description").is_none());
+        assert_eq!(tool.input_schema["additionalProperties"], json!(false));
+        for value in [json!(""), json!("ignored"), json!(null)] {
+            let mut arguments =
+                json!({"owner":"owner","repo":"repo","color":"123456","description":value});
+            if tool_name == "create_label" {
+                arguments["name"] = json!("label");
+            } else {
+                arguments["name"] = json!("old-name");
+                arguments["new_name"] = json!("new-name");
             }
+            let error = peer
+                .call_tool(
+                    CallToolRequestParams::new(tool_name)
+                        .with_arguments(arguments.as_object().unwrap().clone()),
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(error,rmcp::service::ServiceError::McpError(error) if error.code==ErrorCode::INVALID_PARAMS)
+            );
         }
+        let mut arguments = json!({"owner":"owner","repo":"repo","name":"label","color":"123456","colour":"ignored"});
+        if tool_name == "update_label" {
+            arguments["new_name"] = json!("new-name");
+        }
+        assert!(peer
+            .call_tool(
+                CallToolRequestParams::new(tool_name)
+                    .with_arguments(arguments.as_object().unwrap().clone())
+            )
+            .await
+            .is_err());
     }
-    assert!(server.received_requests().await.unwrap().is_empty());
+    assert!(http.received_requests().await.unwrap().is_empty());
+    peer.cancel().await.unwrap();
 }
 
 #[tokio::test]
@@ -391,11 +391,10 @@ async fn normalized_color_noop_and_missing_web_credentials_do_not_write() {
     current_label(&server).await;
     let c = GitBucketClient::new(&server.uri(), "fake-token")
         .unwrap()
-        .with_compatibility(Compatibility::GitBucket444);
+        .with_api_profile(ApiProfile::Standard);
     let noop = UpdateLabel {
         new_name: Some("old-name".into()),
         color: Some("#123456".into()),
-        description: None,
     };
     assert_eq!(
         c.update_label("owner", "repo", "old-name", &noop)
@@ -437,7 +436,7 @@ async fn known_issue_updates_use_web_directly_without_patch_or_dummy_comment() {
         .mount(&server)
         .await;
     assert_eq!(
-        client(&server, Compatibility::GitBucket444)
+        client(&server, ApiProfile::Standard)
             .update_issue("owner", "repo", 1, &issue_update())
             .await
             .unwrap()
@@ -477,7 +476,7 @@ async fn known_restricted_milestone_titles_select_web_before_rest_write() {
         .mount(&server)
         .await;
     assert_eq!(
-        client(&server, Compatibility::GitBucket448)
+        client(&server, ApiProfile::Standard)
             .create_milestone(
                 "owner",
                 "repo",
@@ -501,43 +500,6 @@ async fn known_restricted_milestone_titles_select_web_before_rest_write() {
 }
 
 #[tokio::test]
-async fn explicit_legacy_mode_does_not_fallback_from_rejections_or_unknown_outcomes() {
-    for status in [401, 403, 409, 422, 408, 500] {
-        let server = MockServer::start().await;
-        Mock::given(method("PATCH"))
-            .respond_with(ResponseTemplate::new(status))
-            .mount(&server)
-            .await;
-        let c = client(&server, Compatibility::Legacy404);
-        let results = [
-            c.update_issue("owner", "repo", 1, &issue_update())
-                .await
-                .unwrap_err(),
-            c.update_pull_request("owner", "repo", 1, &pr_update())
-                .await
-                .unwrap_err(),
-            c.update_label("owner", "repo", "old-name", &rename())
-                .await
-                .unwrap_err(),
-        ];
-        for error in results {
-            if status == 408 || status == 500 {
-                assert!(matches!(
-                    error,
-                    GbMcpError::OperationOutcomeUnknown { .. }
-                        | GbMcpError::WriteOutcomeUnknown { .. }
-                ));
-            } else {
-                assert!(matches!(error,GbMcpError::Api{status:s,..} if s==status));
-            }
-        }
-        let requests = server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 3);
-        assert!(requests.iter().all(|r| r.method.as_str() == "PATCH"));
-    }
-}
-
-#[tokio::test]
 async fn a_wrong_label_snapshot_is_not_used_for_a_web_write() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -549,7 +511,7 @@ async fn a_wrong_label_snapshot_is_not_used_for_a_web_write() {
         .expect(1)
         .mount(&server)
         .await;
-    assert!(client(&server, Compatibility::GitBucket444)
+    assert!(client(&server, ApiProfile::Standard)
         .update_label("owner", "repo", "old-name", &recolor())
         .await
         .is_err());
@@ -568,14 +530,13 @@ async fn label_creation_verifies_name_and_color_instead_of_assuming_http_success
         .mount(&server)
         .await;
     assert!(matches!(
-        client(&server, Compatibility::RestOnly)
+        client(&server, ApiProfile::RestOnly)
             .create_label(
                 "owner",
                 "repo",
                 &CreateLabel {
                     name: "label".into(),
                     color: "abcdef".into(),
-                    description: None
                 }
             )
             .await,

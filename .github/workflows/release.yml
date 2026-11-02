@@ -120,7 +120,7 @@ jobs:
 
       - name: Run E2E tests
         env:
-          GITBUCKET_E2E_COMPATIBILITY: gitbucket-4.44.0
+          GITBUCKET_E2E_API_PROFILE: standard
         run: cargo test --test e2e_test -- --ignored --nocapture
 
       - name: Tear down Docker GitBucket

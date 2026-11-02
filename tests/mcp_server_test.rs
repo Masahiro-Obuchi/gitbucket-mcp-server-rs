@@ -985,7 +985,6 @@ async fn test_mcp_call_tool_create_label_normalizes_color_and_serializes_json() 
                     "repo": " repo ",
                     "name": "  needs-review  ",
                     "color": "  #A1B2C3  ",
-                    "description": "  Needs extra review  "
                 })
                 .as_object()
                 .unwrap()
@@ -1002,7 +1001,6 @@ async fn test_mcp_call_tool_create_label_normalizes_color_and_serializes_json() 
             assert_eq!(repo, "repo");
             assert_eq!(body.name, "needs-review");
             assert_eq!(body.color, "a1b2c3");
-            assert_eq!(body.description.as_deref(), Some("Needs extra review"));
         }
         calls => panic!("unexpected calls: {calls:?}"),
     }
@@ -1057,7 +1055,6 @@ async fn test_mcp_call_tool_update_label_normalizes_color_and_serializes_json() 
                     "name": "  needs review  ",
                     "new_name": "  needs-review  ",
                     "color": "  #A1B2C3  ",
-                    "description": "  Needs extra review  "
                 })
                 .as_object()
                 .unwrap()
@@ -1080,7 +1077,6 @@ async fn test_mcp_call_tool_update_label_normalizes_color_and_serializes_json() 
             assert_eq!(name, "needs review");
             assert_eq!(body.new_name.as_deref(), Some("needs-review"));
             assert_eq!(body.color.as_deref(), Some("a1b2c3"));
-            assert_eq!(body.description.as_deref(), Some("Needs extra review"));
         }
         calls => panic!("unexpected calls: {calls:?}"),
     }

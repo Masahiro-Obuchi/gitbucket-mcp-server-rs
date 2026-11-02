@@ -82,8 +82,8 @@ async fn spawn_client_and_server(
         config.web_password.as_deref(),
     )
     .unwrap()
-    .with_compatibility(
-        optional_env("GITBUCKET_E2E_COMPATIBILITY")
+    .with_api_profile(
+        optional_env("GITBUCKET_E2E_API_PROFILE")
             .unwrap_or_else(|| "rest-only".into())
             .parse()
             .unwrap(),
@@ -927,16 +927,23 @@ async fn test_e2e_label_lifecycle() {
 
     // Descriptions are unsupported by standard GitBucket, even when combined
     // with otherwise valid changes; ensure no requested field was written.
-    let rejected = call_tool(
-        &client,
-        "update_label",
-        json!({
-            "owner":owner,"repo":repo,"name":name,"new_name":format!("{name}-rejected"),
-            "color":"ffffff","description":"must not be silently ignored"
-        }),
-    )
-    .await;
-    assert_eq!(parse_error(&rejected).kind, "unsupported_error");
+    let rejected = client
+        .call_tool(
+            CallToolRequestParams::new("update_label").with_arguments(
+                json!({
+                    "owner":owner,"repo":repo,"name":name,"new_name":format!("{name}-rejected"),
+                    "color":"ffffff","description":"must not be silently ignored"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(rejected,rmcp::service::ServiceError::McpError(error) if error.code==rmcp::model::ErrorCode::INVALID_PARAMS)
+    );
     let unchanged = call_tool_json(
         &client,
         "get_label",
@@ -1358,7 +1365,7 @@ async fn test_e2e_update_issue() {
     let updated_body = format!("e2e updated body {suffix}");
     let has_web_fallback = config.web_username.is_some()
         && config.web_password.is_some()
-        && optional_env("GITBUCKET_E2E_COMPATIBILITY").is_some_and(|mode| mode != "rest-only");
+        && optional_env("GITBUCKET_E2E_API_PROFILE").is_some_and(|mode| mode != "rest-only");
     if has_web_fallback {
         let updated = call_tool(
             &client,
