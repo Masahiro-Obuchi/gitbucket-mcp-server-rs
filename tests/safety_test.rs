@@ -300,6 +300,80 @@ async fn web_errors_do_not_echo_payloads_and_invalid_targets_are_rejected() {
     assert_eq!(server.received_requests().await.unwrap().len(), count);
 }
 
+#[tokio::test]
+async fn web_redirects_cannot_escape_a_context_ending_in_the_api_suffix() {
+    for status in [307, 308] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/team/api/v3/signin"))
+            .respond_with(
+                ResponseTemplate::new(status).insert_header("Location", "/team/collector"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/team/collector"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let result = GitBucketWebSession::sign_in(
+            &format!("{}/team/api/v3/api/v3", server.uri()),
+            "test-user",
+            SECRET,
+            false,
+        )
+        .await;
+        assert!(result.is_err(), "out-of-context HTTP {status} was followed");
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn web_redirects_preserve_contexts_ending_in_the_api_suffix() {
+    for context in ["/team/api/v3", "/team/api/v3/api/v3"] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!("{context}/signin")))
+            .respond_with(
+                ResponseTemplate::new(303)
+                    .insert_header("Location", format!("{context}/dashboard"))
+                    .insert_header("Set-Cookie", "JSESSIONID=nested-context; Path=/"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("{context}/dashboard")))
+            .and(wiremock::matchers::header(
+                "cookie",
+                "JSESSIONID=nested-context",
+            ))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("{context}/owner/repo/issues/edit_title/1")))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let web = GitBucketWebSession::sign_in(
+            &format!("{}{context}/api/v3", server.uri()),
+            "test-user",
+            SECRET,
+            false,
+        )
+        .await
+        .unwrap();
+        web.edit_issue_title("owner", "repo", 1, "title")
+            .await
+            .unwrap();
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+}
+
 #[test]
 fn config_debug_and_parse_diagnostics_redact_values() {
     let config = Config {

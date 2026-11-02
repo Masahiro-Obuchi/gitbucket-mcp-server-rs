@@ -15,10 +15,11 @@ impl GitBucketWebSession {
         password: &str,
         allow_invalid_certs: bool,
     ) -> Result<Self> {
-        let base_url = normalize_web_base_url(&super::client::normalize_base_url(api_base_url)?);
+        let api_base_url = super::client::normalize_base_url(api_base_url)?;
+        let base_url = normalize_web_base_url(&api_base_url);
         let client = Client::builder()
             .cookie_store(true)
-            .redirect(super::url_safety::redirect_policy(&base_url)?)
+            .redirect(super::url_safety::redirect_policy(&api_base_url)?)
             .danger_accept_invalid_certs(allow_invalid_certs)
             .build()
             .map_err(GbMcpError::from)?;
