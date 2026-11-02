@@ -34,9 +34,11 @@ impl GitBucketClient {
     ) -> Result<Vec<Issue>> {
         let state_param = state.unwrap_or("open");
         let issues = self
-            .get_paginated(
+            .get_paginated_with_identity(
                 &format!("/repos/{}/{}/issues", owner, repo),
                 &[("state", state_param)],
+                25,
+                |issue: &Issue| issue.number,
             )
             .await?;
         Ok(issues
@@ -102,7 +104,7 @@ impl GitBucketClient {
         repo: &str,
         number: u64,
     ) -> Result<Vec<Comment>> {
-        self.get_paginated(
+        self.get_with_query(
             &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
             &[],
         )

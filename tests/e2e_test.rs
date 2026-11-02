@@ -5,6 +5,7 @@ use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
 use serde_json::{json, Value};
 use serial_test::serial;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -157,6 +158,213 @@ fn unique_suffix() -> String {
         .as_nanos();
 
     format!("{}-{}", std::process::id(), now)
+}
+
+fn assert_list_contains(result: &Value, key: &str, field: &str, expected: &BTreeSet<String>) {
+    let rows = result[key]
+        .as_array()
+        .expect("list result must be an array");
+    let actual: BTreeSet<_> = rows
+        .iter()
+        .map(|row| {
+            assert!(!row[field].is_null(), "missing {field}");
+            row[field].to_string()
+        })
+        .collect();
+    assert_eq!(rows.len(), actual.len(), "duplicate list identities");
+    assert!(
+        expected.is_subset(&actual),
+        "missing {} identities in {key}",
+        expected.difference(&actual).count()
+    );
+}
+
+#[tokio::test]
+#[ignore = "creates 51 issues, 26 PRs, and branches in a disposable GitBucket"]
+#[serial]
+async fn test_e2e_list_paged_resources_over_25_items() {
+    let mut config = E2eConfig::from_env();
+    config.web_username = None;
+    config.web_password = None;
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo, _) = create_test_repository(&client).await;
+    let api =
+        GitBucketClient::new_with_options(&config.url, &config.token, config.allow_invalid_certs)
+            .unwrap();
+    let seed = push_test_pr_branch(&client, &config, &owner, &repo).await;
+    let branch: Value = api
+        .get(&format!(
+            "/repos/{owner}/{repo}/branches/{}",
+            seed.feature_branch
+        ))
+        .await
+        .unwrap();
+    let sha = branch["commit"]["sha"].as_str().unwrap();
+    let mut issue_numbers = BTreeSet::new();
+    let mut closed_numbers = BTreeSet::new();
+    for i in 0..51 {
+        let issue = create_test_issue(&client, &owner, &repo).await;
+        issue_numbers.insert(issue["number"].to_string());
+        if i < 26 {
+            let number = issue["number"].as_u64().unwrap();
+            // Seed closed fixtures using the actual comment+close REST action.
+            let _: Value = api
+                .post(
+                    &format!("/repos/{owner}/{repo}/issues/{number}/comments?action=close"),
+                    &json!({"body":"Close disposable list fixture"}),
+                )
+                .await
+                .unwrap();
+            closed_numbers.insert(issue["number"].to_string());
+        }
+    }
+    for (state, expected) in [
+        ("all", issue_numbers.clone()),
+        ("closed", closed_numbers.clone()),
+        (
+            "open",
+            issue_numbers.difference(&closed_numbers).cloned().collect(),
+        ),
+    ] {
+        let result = call_tool_json(
+            &client,
+            "list_issues",
+            json!({"owner":owner,"repo":repo,"state":state}),
+        )
+        .await;
+        assert_list_contains(&result, "issues", "number", &expected);
+        assert_eq!(result["issues"].as_array().unwrap().len(), expected.len());
+    }
+    let mut prs = BTreeSet::new();
+    let suffix = unique_suffix();
+    for i in 0..26 {
+        let head = format!("list-pr-{suffix}-{i}");
+        let _: Value = api
+            .post(
+                &format!("/repos/{owner}/{repo}/git/refs"),
+                &json!({"ref":format!("refs/heads/{head}"),"sha":sha}),
+            )
+            .await
+            .unwrap();
+        let pr=call_tool_json(&client,"create_pull_request",json!({
+            "owner":owner,"repo":repo,"title":format!("List PR {i}"),"head":head,"base":seed.base_branch
+        })).await;
+        prs.insert(pr["number"].to_string());
+    }
+    for state in ["open", "all"] {
+        let result = call_tool_json(
+            &client,
+            "list_pull_requests",
+            json!({"owner":owner,"repo":repo,"state":state}),
+        )
+        .await;
+        assert_list_contains(&result, "pull_requests", "number", &prs);
+        assert_eq!(result["pull_requests"].as_array().unwrap().len(), prs.len());
+    }
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "creates over 100 labels, milestones, comments, and branches in a disposable GitBucket"]
+#[serial]
+async fn test_e2e_list_unpaged_resources_over_100_items() {
+    let mut config = E2eConfig::from_env();
+    config.web_username = None;
+    config.web_password = None;
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo, created) = create_test_repository(&client).await;
+    let api =
+        GitBucketClient::new_with_options(&config.url, &config.token, config.allow_invalid_certs)
+            .unwrap();
+    let default_branch = created["default_branch"].as_str().unwrap();
+    let branch: Value = api
+        .get(&format!("/repos/{owner}/{repo}/branches/{default_branch}"))
+        .await
+        .unwrap();
+    let sha = branch["commit"]["sha"].as_str().unwrap();
+    let issue = create_test_issue(&client, &owner, &repo).await;
+    let issue_number = issue["number"].as_u64().unwrap();
+    let mut labels = BTreeSet::new();
+    let mut milestones = BTreeSet::new();
+    let mut comments = BTreeSet::new();
+    let mut branches = BTreeSet::new();
+    let suffix = unique_suffix();
+    for i in 0..101 {
+        let name = format!("list-{suffix}-{i}");
+        let label = call_tool_json(
+            &client,
+            "create_label",
+            json!({"owner":owner,"repo":repo,"name":name,"color":"123456"}),
+        )
+        .await;
+        labels.insert(label["name"].to_string());
+        let milestone = call_tool_json(
+            &client,
+            "create_milestone",
+            json!({"owner":owner,"repo":repo,"title":name}),
+        )
+        .await;
+        milestones.insert(milestone["number"].to_string());
+        let comment = call_tool_json(
+            &client,
+            "add_issue_comment",
+            json!({"owner":owner,"repo":repo,"issue_number":issue_number,"body":name}),
+        )
+        .await;
+        comments.insert(comment["id"].to_string());
+        let _: Value = api
+            .post(
+                &format!("/repos/{owner}/{repo}/git/refs"),
+                &json!({"ref":format!("refs/heads/{name}"),"sha":sha}),
+            )
+            .await
+            .unwrap();
+        branches.insert(json!(name).to_string());
+        if (i + 1) % 25 == 0 {
+            eprintln!("Seeded {} of 101 list fixtures", i + 1);
+        }
+    }
+    for (tool, key, field, expected, args) in [
+        (
+            "list_labels",
+            "labels",
+            "name",
+            labels,
+            json!({"owner":owner,"repo":repo}),
+        ),
+        (
+            "list_milestones",
+            "milestones",
+            "number",
+            milestones,
+            json!({"owner":owner,"repo":repo,"state":"all"}),
+        ),
+        (
+            "list_issue_comments",
+            "comments",
+            "id",
+            comments,
+            json!({"owner":owner,"repo":repo,"issue_number":issue_number}),
+        ),
+        (
+            "list_branches",
+            "branches",
+            "name",
+            branches,
+            json!({"owner":owner,"repo":repo}),
+        ),
+    ] {
+        let result = call_tool_json(&client, tool, args).await;
+        assert_list_contains(&result, key, field, &expected);
+    }
+    let repositories = call_tool_json(&client, "list_repositories", json!({"owner":owner})).await;
+    assert_list_contains(
+        &repositories,
+        "repositories",
+        "name",
+        &BTreeSet::from([json!(repo).to_string()]),
+    );
+    client.cancel().await.unwrap();
 }
 
 fn authenticated_git_url(config: &E2eConfig, clone_url: &str) -> String {

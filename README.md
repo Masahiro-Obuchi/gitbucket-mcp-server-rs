@@ -353,6 +353,21 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
 
+List retrieval follows GitBucket's endpoint-specific behavior:
+
+- Issues and pull requests use 25-item pages and continue until an empty page,
+  including when a non-final page contains fewer than 25 items.
+- Repositories, branches, labels, milestones, and issue comments are fetched once
+  without pagination parameters, so responses of 100 or more items are accepted.
+- Repeated issue/PR numbers, a failed page, or the existing 100-request pagination
+  limit produce a tool error instead of a successful partial list. The limit
+  includes the final empty-page request.
+
+List results retain the JSON fields above. They are not atomic snapshots: edits
+during retrieval can cause overlapping pages, which are reported as an error;
+not every concurrent change can be detected. MCP response-size limits and
+client-controlled continuation are separate follow-up work.
+
 For GitBucket versions that do not expose the REST label update endpoint, `update_label` uses the web fallback for name/color changes. Standard GitBucket does not support label description updates through that fallback; description-only updates return an unsupported error, while name/color updates can proceed even if a description is included in the request.
 
 GitBucket's issue API does not expose `closed_at` on some versions. When a closed issue has no `closed_at` but does have `updated_at`, this server fills `closed_at` with `updated_at` as a best-effort GitHub-compatible value.
