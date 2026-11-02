@@ -9,7 +9,7 @@ use url::Url;
 
 use crate::error::{GbMcpError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GitBucketClient {
     client: reqwest::Client,
     base_url: String,
@@ -17,7 +17,7 @@ pub struct GitBucketClient {
     web_credentials: Option<WebCredentials>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct WebCredentials {
     pub username: String,
     pub password: String,
@@ -50,18 +50,18 @@ impl GitBucketClient {
         let web_credentials = resolve_web_credentials(web_username, web_password)?;
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("token {}", token))
-                .map_err(|e| GbMcpError::Other(format!("Invalid token header: {}", e)))?,
-        );
+        let mut authorization = HeaderValue::from_str(&format!("token {}", token))
+            .map_err(|_| GbMcpError::Config("Invalid token header".into()))?;
+        authorization.set_sensitive(true);
+        headers.insert(AUTHORIZATION, authorization);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
+            .redirect(super::url_safety::redirect_policy(&normalized)?)
             .danger_accept_invalid_certs(allow_invalid_certs)
             .build()
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
 
         Ok(Self {
             client,
@@ -84,13 +84,13 @@ impl GitBucketClient {
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = super::url_safety::route(&self.base_url, path)?;
         let resp = self
             .client
-            .get(&url)
+            .get(url)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.handle_response(resp, "GET", path).await
     }
 
@@ -100,19 +100,19 @@ impl GitBucketClient {
             .get(url)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.handle_response(resp, "GET", path).await
     }
 
     pub async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = super::url_safety::route(&self.base_url, path)?;
         let resp = self
             .client
-            .post(&url)
+            .post(url)
             .json(body)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.handle_response(resp, "POST", path).await
     }
 
@@ -121,14 +121,14 @@ impl GitBucketClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = super::url_safety::route(&self.base_url, path)?;
         let resp = self
             .client
-            .patch(&url)
+            .patch(url)
             .json(body)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.handle_response(resp, "PATCH", path).await
     }
 
@@ -144,36 +144,36 @@ impl GitBucketClient {
             .json(body)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.handle_response(resp, "PATCH", path).await
     }
 
     pub async fn put<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = super::url_safety::route(&self.base_url, path)?;
         let resp = self
             .client
-            .put(&url)
+            .put(url)
             .json(body)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
         self.handle_response(resp, "PUT", path).await
     }
 
     pub async fn delete(&self, path: &str) -> Result<()> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = super::url_safety::route(&self.base_url, path)?;
         let resp = self
             .client
-            .delete(&url)
+            .delete(url)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
 
         if resp.status().is_success() {
             Ok(())
         } else {
             let status = resp.status().as_u16();
-            let message = resp.text().await.unwrap_or_default();
+            let message = safe_status_message(status);
             warn!(
                 method = "DELETE",
                 path, status, "GitBucket API request failed"
@@ -188,13 +188,13 @@ impl GitBucketClient {
             .delete(url)
             .send()
             .await
-            .map_err(GbMcpError::Http)?;
+            .map_err(GbMcpError::from)?;
 
         if resp.status().is_success() {
             Ok(())
         } else {
             let status = resp.status().as_u16();
-            let message = resp.text().await.unwrap_or_default();
+            let message = safe_status_message(status);
             warn!(
                 method = "DELETE",
                 path, status, "GitBucket API request failed"
@@ -208,7 +208,7 @@ impl GitBucketClient {
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<T> {
-        let mut url = Url::parse(&format!("{}{}", self.base_url, path))?;
+        let mut url = super::url_safety::route(&self.base_url, path)?;
         if !query.is_empty() {
             url.query_pairs_mut().extend_pairs(query.iter().copied());
         }
@@ -266,7 +266,7 @@ impl GitBucketClient {
                 .get(url)
                 .send()
                 .await
-                .map_err(GbMcpError::Http)?;
+                .map_err(GbMcpError::from)?;
             let items: Vec<Value> = self.handle_response(resp, "GET", path).await?;
             if items.is_empty() {
                 return Ok(results);
@@ -297,7 +297,7 @@ impl GitBucketClient {
     ) -> Result<T> {
         let status = resp.status();
         if status.is_success() {
-            let text = resp.text().await.map_err(GbMcpError::Http)?;
+            let text = resp.text().await.map_err(GbMcpError::from)?;
             debug!(
                 method,
                 path,
@@ -307,7 +307,7 @@ impl GitBucketClient {
             parse_success_body(&text)
         } else {
             let status_code = status.as_u16();
-            let message = resp.text().await.unwrap_or_default();
+            let message = safe_status_message(status_code);
             warn!(
                 method,
                 path,
@@ -328,8 +328,7 @@ impl GitBucketClient {
         page: usize,
         page_size: usize,
     ) -> Result<Url> {
-        let mut url =
-            Url::parse(&format!("{}{}", self.base_url, path)).map_err(GbMcpError::UrlParse)?;
+        let mut url = super::url_safety::route(&self.base_url, path)?;
         {
             let mut pairs = url.query_pairs_mut();
             for (key, value) in query {
@@ -398,38 +397,15 @@ fn status_code_from_value(value: &Value) -> Option<u16> {
     }
 }
 
-fn wrapped_error_message(value: &Value, status: u16) -> String {
-    value
-        .get("message")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|message| !message.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            value
-                .get("body")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|message| !message.is_empty())
-                .map(str::to_string)
-        })
-        .or_else(|| {
-            value
-                .get("body")
-                .filter(|body| {
-                    !body.is_null()
-                        && !body
-                            .as_str()
-                            .is_some_and(|message| message.trim().is_empty())
-                })
-                .map(ToString::to_string)
-        })
-        .unwrap_or_else(|| {
-            reqwest::StatusCode::from_u16(status)
-                .ok()
-                .and_then(|status| status.canonical_reason().map(str::to_string))
-                .unwrap_or_else(|| "GitBucket API request failed".to_string())
-        })
+fn safe_status_message(status: u16) -> String {
+    reqwest::StatusCode::from_u16(status)
+        .ok()
+        .and_then(|s| s.canonical_reason().map(str::to_owned))
+        .unwrap_or_else(|| "GitBucket API request failed".into())
+}
+
+fn wrapped_error_message(_value: &Value, status: u16) -> String {
+    safe_status_message(status)
 }
 
 fn resolve_web_credentials(
@@ -465,43 +441,91 @@ fn resolve_web_credentials(
 ///
 /// Ensures the URL has a scheme, strips trailing slashes, and appends `/api/v3` if not present.
 pub fn normalize_base_url(input: &str) -> Result<String> {
-    let trimmed = input.trim().trim_end_matches('/');
-
-    if trimmed.is_empty() {
-        return Err(GbMcpError::Config("Base URL must not be empty".to_string()));
-    }
-
-    // Add https:// scheme if missing
-    let with_scheme = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        trimmed.to_string()
-    } else {
-        format!("https://{}", trimmed)
+    let input = input.trim();
+    let invalid = || {
+        GbMcpError::Config("GitBucket URL must be HTTP(S) with a host and an optional context path, without credentials, query, fragment, backslashes or dot segments".into())
     };
-
-    // Parse to validate
-    let parsed = url::Url::parse(&with_scheme).map_err(GbMcpError::UrlParse)?;
-
-    // Reconstruct: scheme + host + optional port + path
-    let mut base = format!(
-        "{}://{}",
-        parsed.scheme(),
-        parsed.host_str().unwrap_or("localhost")
-    );
-    if let Some(port) = parsed.port() {
-        base = format!("{}:{}", base, port);
+    if input.is_empty() || input.chars().any(char::is_control) || input.contains('\\') {
+        return Err(invalid());
     }
-
-    let path = parsed.path().trim_end_matches('/');
-    if !path.is_empty() {
-        base.push_str(path);
+    let with_scheme = if input.contains("://") {
+        input.to_owned()
+    } else {
+        format!("https://{input}")
+    };
+    let authority = with_scheme
+        .split_once("://")
+        .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
+        .unwrap_or("");
+    if authority.is_empty() {
+        return Err(invalid());
     }
-
-    // Append /api/v3 if not already present
-    if !base.ends_with("/api/v3") {
-        base.push_str("/api/v3");
+    // Check percent escapes and the raw path before parsing normalizes it.
+    let raw_path = with_scheme
+        .split_once("://")
+        .and_then(|(_, rest)| rest.split_once('/').map(|(_, p)| p))
+        .unwrap_or("");
+    for segment in raw_path.split('/') {
+        let bytes = segment.as_bytes();
+        let mut index = 0;
+        while index < bytes.len() {
+            if bytes[index] == b'%' {
+                let value = segment
+                    .get(index + 1..index + 3)
+                    .and_then(|v| u8::from_str_radix(v, 16).ok())
+                    .ok_or_else(invalid)?;
+                if value.is_ascii_control() {
+                    return Err(invalid());
+                }
+                index += 3;
+            } else {
+                index += 1;
+            }
+        }
+        let lower = segment.to_ascii_lowercase();
+        if matches!(segment, "." | "..")
+            || lower.contains("%2e")
+            || lower.contains("%2f")
+            || lower.contains("%5c")
+            || lower.contains("%25")
+        {
+            return Err(invalid());
+        }
     }
+    let mut parsed = Url::parse(&with_scheme).map_err(|_| invalid())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || with_scheme
+            .split_once("://")
+            .is_some_and(|(_, rest)| rest.split('/').next().unwrap_or("").contains('@'))
+    {
+        return Err(invalid());
+    }
+    let mut path = parsed.path().trim_end_matches('/').to_owned();
+    if !path.ends_with("/api/v3") {
+        path.push_str("/api/v3");
+    }
+    parsed.set_path(&path);
+    Ok(parsed.to_string().trim_end_matches('/').to_owned())
+}
 
-    Ok(base)
+impl std::fmt::Debug for GitBucketClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitBucketClient")
+            .field("base_url", &"[REDACTED]")
+            .field("allow_invalid_certs", &self.allow_invalid_certs)
+            .field("web_credentials", &self.web_credentials)
+            .finish_non_exhaustive()
+    }
+}
+impl std::fmt::Debug for WebCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WebCredentials([REDACTED])")
+    }
 }
 
 #[cfg(test)]
@@ -645,7 +669,7 @@ mod tests {
         match err {
             GbMcpError::Api { status, message } => {
                 assert_eq!(status, 422);
-                assert_eq!(message, "Validation Failed");
+                assert_eq!(message, "Unprocessable Entity");
             }
             err => panic!("expected wrapped API error, got {err:?}"),
         }

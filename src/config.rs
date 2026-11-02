@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{GbMcpError, Result};
 
 /// Runtime configuration resolved from TOML file + environment variables.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub gitbucket_url: String,
     pub gitbucket_token: String,
@@ -19,7 +19,7 @@ pub struct Config {
 /// url = "https://gitbucket.example.com"
 /// token = "your-personal-access-token"
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct ConfigFile {
     #[serde(default)]
     pub url: Option<String>,
@@ -53,21 +53,46 @@ pub fn config_file_path() -> Result<PathBuf> {
 impl ConfigFile {
     /// Load config from a specific TOML file path. Returns default if file does not exist.
     pub fn load_from(path: &std::path::Path) -> Result<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
+        use std::io::Read;
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
         }
-        let content = std::fs::read_to_string(path).map_err(|e| {
+        let mut file = match options.open(path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(_) => {
+                return Err(GbMcpError::Config(
+                    "Failed to open config file (symlinks are not allowed on Unix)".into(),
+                ))
+            }
+        };
+        let metadata = file
+            .metadata()
+            .map_err(|_| GbMcpError::Config("Failed to inspect config file".into()))?;
+        if !metadata.is_file() {
+            return Err(GbMcpError::Config("Config must be a regular file".into()));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                tracing::warn!("Config file permissions allow group/other access; restrict them with chmod 600 before use");
+            }
+        }
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .map_err(|_| GbMcpError::Config("Failed to read config file".into()))?;
+        let config: Self = toml::from_str(&content).map_err(|e: toml::de::Error| {
+            let position = e
+                .span()
+                .map(|s| format!(" at byte {}", s.start))
+                .unwrap_or_default();
             GbMcpError::Config(format!(
-                "Failed to read config file {}: {}",
-                path.display(),
-                e
-            ))
-        })?;
-        let config: Self = toml::from_str(&content).map_err(|e| {
-            GbMcpError::Config(format!(
-                "Failed to parse config file {}: {}",
-                path.display(),
-                e
+                "Failed to parse config file{position}; check TOML syntax and field types"
             ))
         })?;
         config.validate_file_web_credentials(path)?;
@@ -122,44 +147,43 @@ impl ConfigFile {
 
 /// Write config file with restricted permissions (0600 on Unix).
 fn write_config_file(path: &std::path::Path, content: &str) -> Result<()> {
+    use std::io::Write;
+    let failure = || GbMcpError::Config("Failed to save config file atomically".into());
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.is_file() || metadata.file_type().is_symlink() => {
+            return Err(GbMcpError::Config(
+                "Refusing to replace a symlink or non-regular config file".into(),
+            ));
+        }
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(failure()),
+        _ => {}
+    }
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(|_| failure())?;
     #[cfg(unix)]
     {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| {
-                GbMcpError::Config(format!(
-                    "Failed to write config file {}: {}",
-                    path.display(),
-                    e
-                ))
-            })?;
-        file.write_all(content.as_bytes()).map_err(|e| {
-            GbMcpError::Config(format!(
-                "Failed to write config file {}: {}",
-                path.display(),
-                e
-            ))
-        })?;
-        Ok(())
+        use std::os::unix::fs::PermissionsExt;
+        temp.as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|_| failure())?;
     }
+    temp.write_all(content.as_bytes()).map_err(|_| failure())?;
+    temp.as_file().sync_all().map_err(|_| failure())?;
+    temp.persist(path).map_err(|_| failure())?;
+    Ok(())
+}
 
-    #[cfg(not(unix))]
-    {
-        std::fs::write(path, content).map_err(|e| {
-            GbMcpError::Config(format!(
-                "Failed to write config file {}: {}",
-                path.display(),
-                e
-            ))
-        })?;
-        Ok(())
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Config([REDACTED])")
+    }
+}
+impl std::fmt::Debug for ConfigFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ConfigFile([REDACTED])")
     }
 }
 

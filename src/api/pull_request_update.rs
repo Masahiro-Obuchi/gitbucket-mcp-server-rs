@@ -1,5 +1,4 @@
 //! Pull request update orchestration, separate from HTTP request construction.
-use url::Url;
 
 use super::client::GitBucketClient;
 use super::issue::IssueUpdateError;
@@ -77,10 +76,9 @@ async fn validate_base(
     repo: &str,
     base: &str,
 ) -> Result<()> {
-    let mut url = Url::parse(client.base_url())?;
-    url.path_segments_mut()
-        .map_err(|_| GbMcpError::Other("GitBucket URL cannot be a path base".into()))?
-        .extend(["repos", owner, repo, "branches", base]);
+    super::url_safety::repository(owner, repo)?;
+    let url =
+        super::url_safety::append(client.base_url(), &["repos", owner, repo, "branches", base])?;
     let branch: Branch = client.get_url(url, "pull request base branch").await?;
     if branch.name != base {
         return Err(GbMcpError::Other(

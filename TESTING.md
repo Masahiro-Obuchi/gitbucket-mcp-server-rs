@@ -31,6 +31,18 @@ cargo test --test e2e_test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+## Safety Regression Tests
+
+```bash
+cargo test --test safety_test
+python3 scripts/e2e/test_runtime.py
+bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
+```
+
+HTTP mocks cover invalid identifiers without requests, exact label targets, IPv6/context URLs, redirect boundaries, and secret-free API/web/tool diagnostics. Process tests check startup stderr with malformed TOML and credential-bearing URLs. Unix config tests cover private creation, replacement of permissive files, inode replacement, symlinks, and preservation after failed saves.
+
+The Python tests round-trip spaces, quotes, backslashes, dollars, backticks and newlines through shell and GitHub environment formats. They also verify `0700`/`0600`, symlink refusal, replacement failure cleanup, and bootstrap failure cleanup. Bootstrap serializes custom user/password values as JSON rather than interpolating them into JSON strings.
+
 ## Live E2E Tests
 
 Milestone partial-update regressions have a PAT-only E2E and a separate
@@ -125,14 +137,22 @@ cargo test --test e2e_test -- --ignored --nocapture
 
 The bootstrap script starts GitBucket with Docker, creates a validation user, creates a personal access token, provisions an initialized target repository, and writes `./.tmp/e2e/runtime.env`, including the authenticated context for repository and milestone E2E, git-over-HTTP credentials for PR E2E, and web-fallback credentials for `update_issue`.
 
+Runtime directories are `0700`; both the shell-quoted `runtime.env` and canonical
+`runtime.env.json` are `0600`. The JSON file is used to reuse a token and import CI
+variables without executing a saved shell script. Do not feed shell quoting to
+`GITHUB_ENV`. Runtime files contain disposable credentials and are removed with
+the default runtime directory by `down.sh`. If `GITBUCKET_E2E_ENV_FILE` points
+outside that directory, remove both custom files explicitly. Docker's port is
+bound to `127.0.0.1` by default.
+
 ## GitHub Actions E2E
 
 GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
 
-- `.github/workflows/ci.yml` runs `fmt`, `clippy`, and `cargo test` on every push and pull request.
+- `.github/workflows/ci.yml` runs `fmt`, `clippy`, `cargo test`, shell syntax checks, and Python runtime-file tests on every push and pull request.
 - `.github/workflows/e2e.yml` runs on `workflow_dispatch` and a nightly schedule.
 
-The `E2E` workflow validates the shell scripts, runs `./scripts/e2e/bootstrap.sh`, loads `./.tmp/e2e/runtime.env`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
+The `E2E` workflow validates the scripts, runs `./scripts/e2e/bootstrap.sh`, imports `runtime.env.json` with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
 
 ## Adding Tests
 

@@ -12,6 +12,7 @@ impl GitBucketClient {
         repo: &str,
         state: Option<&str>,
     ) -> Result<Vec<Milestone>> {
+        super::url_safety::repository(owner, repo)?;
         let state_param = state.unwrap_or("open");
         self.get_with_query(
             &format!("/repos/{owner}/{repo}/milestones"),
@@ -22,6 +23,7 @@ impl GitBucketClient {
 
     /// Get a single milestone.
     pub async fn get_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<Milestone> {
+        super::url_safety::repository(owner, repo)?;
         self.get(&format!("/repos/{owner}/{repo}/milestones/{number}"))
             .await
     }
@@ -33,6 +35,7 @@ impl GitBucketClient {
         repo: &str,
         body: &CreateMilestone,
     ) -> Result<Milestone> {
+        super::url_safety::repository(owner, repo)?;
         super::milestone_write::create(self, owner, repo, body).await
     }
 
@@ -44,11 +47,13 @@ impl GitBucketClient {
         number: u64,
         body: &UpdateMilestone,
     ) -> Result<Milestone> {
+        super::url_safety::repository(owner, repo)?;
         super::milestone_write::update(self, owner, repo, number, body).await
     }
 
     /// Delete a milestone.
     pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         match self
             .delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
             .await
@@ -69,6 +74,7 @@ impl GitBucketClient {
         number: u64,
         original_error: GbMcpError,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         match self.get_milestone(owner, repo, number).await {
             Ok(_) => {
                 self.delete_milestone_via_web_fallback(owner, repo, number)
@@ -85,6 +91,7 @@ impl GitBucketClient {
         repo: &str,
         number: u64,
     ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
         let session = self.milestone_web_session().await?;
         session.delete_milestone(owner, repo, number).await
     }

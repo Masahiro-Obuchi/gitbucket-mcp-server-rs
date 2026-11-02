@@ -24,5 +24,10 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Validate E2E scripts
+        run: |
+          bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
+          python3 scripts/e2e/test_runtime.py
+
       - name: Run tests
         run: cargo test
