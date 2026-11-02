@@ -209,8 +209,9 @@ async fn test_e2e_list_paged_resources_over_25_items() {
             let number = issue["number"].as_u64().unwrap();
             // Seed closed fixtures using the actual comment+close REST action.
             let _: Value = api
-                .post(
-                    &format!("/repos/{owner}/{repo}/issues/{number}/comments?action=close"),
+                .post_with_query(
+                    &format!("/repos/{owner}/{repo}/issues/{number}/comments"),
+                    &[("action", "close")],
                     &json!({"body":"Close disposable list fixture"}),
                 )
                 .await

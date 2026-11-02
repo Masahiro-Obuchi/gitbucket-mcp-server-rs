@@ -105,7 +105,20 @@ impl GitBucketClient {
     }
 
     pub async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
-        let url = super::url_safety::route(&self.base_url, path)?;
+        self.post_with_query(path, &[], body).await
+    }
+
+    /// POST to a validated path with separately encoded query keys and values.
+    pub async fn post_with_query<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        body: &B,
+    ) -> Result<T> {
+        let mut url = super::url_safety::route(&self.base_url, path)?;
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(query.iter().copied());
+        }
         let resp = self
             .client
             .post(url)

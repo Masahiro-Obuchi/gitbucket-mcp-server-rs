@@ -156,6 +156,45 @@ async fn valid_identifiers_and_special_label_names_preserve_exact_targets() {
 }
 
 #[tokio::test]
+async fn issue_close_action_reaches_the_intended_comment_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/context/api/v3/repos/owner/repo/issues/7/comments"))
+        .and(wiremock::matchers::query_param("action", "close"))
+        .and(wiremock::matchers::query_param("note", "日本語 /#?%"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id":1})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = GitBucketClient::new(&format!("{}/context", server.uri()), SECRET).unwrap();
+    let comment: Value = client
+        .post_with_query(
+            "/repos/owner/repo/issues/7/comments",
+            &[("action", "close"), ("note", "日本語 /#?%")],
+            &json!({"body":"Close disposable list fixture"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(comment["id"], 1);
+    for unsafe_path in [
+        "/comments?action=close",
+        "/comments#other",
+        "/comments%2fother",
+    ] {
+        assert!(matches!(
+            client
+                .post_with_query::<Value, _>(unsafe_path, &[("action", "close")], &json!({}))
+                .await,
+            Err(GbMcpError::InvalidInput(_))
+        ));
+    }
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].url.query_pairs().count(), 2);
+    assert!(requests[0].url.fragment().is_none());
+}
+
+#[tokio::test]
 async fn api_error_payloads_and_invalid_json_do_not_echo_secrets() {
     let server = MockServer::start().await;
     let client = GitBucketClient::new(&server.uri(), SECRET).unwrap();

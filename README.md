@@ -112,6 +112,9 @@ GitBucket URLs accept HTTP(S), a host (including IPv6), an optional port and a c
 
 Owner/user names accept ASCII letters, digits, `-`, `_` and `.`; repository names also accept `+`. A leading `-` or `_`, and the complete names `.` and `..`, are rejected. These follow the identifier character rules in GitBucket 4.44.0/4.48.0; GitBucket may impose additional length or reserved-name restrictions. Label and branch names use their own segment encoding, so legitimate spaces, Unicode and branch slashes do not become URL syntax.
 
+Low-level Rust POST calls with query parameters use `post_with_query(path, query, body)`.
+The path remains free of query syntax; query keys and values are encoded separately.
+
 Debug output redacts configuration and credentials. API errors report the HTTP status and a standard reason rather than the server's raw error body, which can echo credentials or private content. HTTP diagnostics omit request URLs and JSON decoding diagnostics omit values. Existing MCP error kinds and status fields are preserved.
 
 ### Environment Variables

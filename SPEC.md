@@ -77,6 +77,7 @@ Requirements:
 - All REST/web paths are constructed with segment encoding. Labels and branch names are not subject to the owner/repository grammar; dot-only segments and controls are rejected. Low-level Rust string paths must start with `/` and must not embed queries, fragments or percent escapes; query values use query builders.
 - REST/web redirects are limited to ten hops within the configured origin and context path, without userinfo or encoded traversal/separators. External proxy redirects require configuring the final URL.
 - The API suffix is removed exactly once when defining the web redirect boundary, including contexts ending in `/api/v3`.
+- Rust POST queries use `post_with_query` with separate query pairs; embedded query syntax in paths remains rejected.
 - Authentication uses the `Authorization: token <token>` header.
 - Requests accept JSON responses.
 - Repository listing first tries `/users/{owner}/repos` and falls back to `/orgs/{owner}/repos` on HTTP 404.
