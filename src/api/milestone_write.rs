@@ -128,12 +128,26 @@ pub(super) async fn create(
             .map(MilestoneDate::parse)
             .transpose()?,
     };
+    let route = client.operation_route(
+        if super::compatibility::restricted_milestone_title(&expected.title) {
+            super::compatibility::Operation::MilestoneRestrictedTitle
+        } else {
+            super::compatibility::Operation::MilestoneWrite
+        },
+    );
+    if route == super::compatibility::Route::Web {
+        let result = web_create(client, owner, repo, &expected).await?;
+        verify(&expected, &result, None, CREATE)?;
+        return Ok(result);
+    }
     let result = match client
         .post(&format!("/repos/{owner}/{repo}/milestones"), &expected)
         .await
     {
         Ok(value) => value,
-        Err(original @ GbMcpError::Api { status: 404, .. }) => {
+        Err(original @ GbMcpError::Api { status: 404, .. })
+            if client.compatibility().legacy_404() =>
+        {
             match client.get_repository(owner, repo).await {
                 Ok(_) => web_create(client, owner, repo, &expected).await?,
                 Err(GbMcpError::Api { status: 404, .. }) => return Err(original),
@@ -167,6 +181,18 @@ pub(super) async fn update(
     if mismatched_fields(&expected, &current).is_empty() {
         return Ok(current);
     }
+    let route = client.operation_route(
+        if super::compatibility::restricted_milestone_title(&expected.title) {
+            super::compatibility::Operation::MilestoneRestrictedTitle
+        } else {
+            super::compatibility::Operation::MilestoneWrite
+        },
+    );
+    if route == super::compatibility::Route::Web {
+        let result = web_update(client, owner, repo, number, &before, &expected).await?;
+        verify(&expected, &result, Some(number), UPDATE)?;
+        return Ok(result);
+    }
     let result = match client
         .patch(
             &format!("/repos/{owner}/{repo}/milestones/{number}"),
@@ -175,8 +201,7 @@ pub(super) async fn update(
         .await
     {
         Ok(value) => value,
-        // Retain legacy compatibility; general capability routing is separate.
-        Err(GbMcpError::Api { status: 404, .. }) => {
+        Err(GbMcpError::Api { status: 404, .. }) if client.compatibility().legacy_404() => {
             web_update(client, owner, repo, number, &before, &expected).await?
         }
         Err(err) => return Err(write_error(UPDATE, err)),

@@ -52,12 +52,14 @@ pub(super) async fn update(
         content,
     };
 
+    client.operation_route(super::compatibility::Operation::PullRequestUpdate);
     let path = format!("/repos/{owner}/{repo}/pulls/{number}");
     let pr = match client.patch(&path, &request).await {
         Ok(pr) => pr,
-        Err(original @ GbMcpError::Api { status: 404, .. }) => {
-            // Preserve legacy compatibility for this focused fix. Operation-
-            // specific capability routing replaces this policy separately.
+        Err(original @ GbMcpError::Api { status: 404, .. })
+            if client.compatibility().legacy_404() =>
+        {
+            // Explicit migration mode only; never infer capability from a 404.
             match client.get_pull_request(owner, repo, number).await {
                 Ok(_) => legacy_update(client, owner, repo, number, &request).await?,
                 Err(GbMcpError::Api { status: 404, .. }) => return Err(original),

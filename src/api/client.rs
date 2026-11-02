@@ -13,6 +13,7 @@ use crate::error::{GbMcpError, Result};
 pub struct GitBucketClient {
     client: reqwest::Client,
     write_client: reqwest::Client,
+    compatibility: super::compatibility::Compatibility,
     http_settings: super::http::HttpSettings,
     base_url: String,
     allow_invalid_certs: bool,
@@ -98,10 +99,33 @@ impl GitBucketClient {
             client,
             write_client,
             http_settings,
+            compatibility: super::compatibility::Compatibility::default(),
             base_url: normalized,
             allow_invalid_certs,
             web_credentials,
         })
+    }
+
+    /// Select a verified standard profile or explicitly opt into legacy fallback.
+    pub fn with_compatibility(
+        mut self,
+        compatibility: super::compatibility::Compatibility,
+    ) -> Self {
+        self.compatibility = compatibility;
+        self
+    }
+
+    pub fn compatibility(&self) -> super::compatibility::Compatibility {
+        self.compatibility
+    }
+
+    pub(crate) fn operation_route(
+        &self,
+        operation: super::compatibility::Operation,
+    ) -> super::compatibility::Route {
+        let capability = self.compatibility.capability(operation);
+        debug!(?operation, route=?capability.route, evidence=capability.evidence, "Selected GitBucket operation route");
+        capability.route
     }
 
     pub fn base_url(&self) -> &str {
@@ -559,6 +583,7 @@ impl std::fmt::Debug for GitBucketClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GitBucketClient")
             .field("base_url", &"[REDACTED]")
+            .field("compatibility", &self.compatibility)
             .field("allow_invalid_certs", &self.allow_invalid_certs)
             .field("web_credentials", &self.web_credentials)
             .finish_non_exhaustive()

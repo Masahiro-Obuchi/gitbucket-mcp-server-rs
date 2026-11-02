@@ -639,7 +639,12 @@ async fn definitive_rejection_does_not_mark_later_prewrite_timeout_as_unknown() 
         .await;
     let mut policy = settings();
     policy.request_timeout = Duration::from_secs(2);
-    let peer = protocol(client(&server.uri(), policy), Duration::from_millis(150)).await;
+    let peer = protocol(
+        client(&server.uri(), policy)
+            .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::Legacy404),
+        Duration::from_millis(150),
+    )
+    .await;
     let result = peer
         .call_tool(
             CallToolRequestParams::new("update_issue").with_arguments(
@@ -688,6 +693,7 @@ async fn successful_web_write_then_failed_verification_is_unknown() {
         .mount(&server)
         .await;
     let error = client(&server.uri(), settings())
+        .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::Legacy404)
         .update_issue(
             "owner",
             "repo",

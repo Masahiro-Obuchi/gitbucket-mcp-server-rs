@@ -125,15 +125,46 @@ Debug output redacts configuration and credentials. API errors report the HTTP s
 | `GITBUCKET_TOKEN` | ✅* | Personal Access Token | `abc123...` |
 | `GITBUCKET_USERNAME` | ❌ | GitBucket username for web fallback operations | `alice` |
 | `GITBUCKET_PASSWORD` | ❌ | GitBucket password for web fallback operations | `secret-pass` |
+| `GITBUCKET_COMPATIBILITY` | ❌ | Explicit operation profile; default `rest-only` | `gitbucket-4.48.0` |
 | `GITBUCKET_MCP_CONFIG_DIR` | ❌ | Override config directory | `/custom/path` |
 
 \* Required if not set in config file. Environment variables override config file values. `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be set together when used.
 
 `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are used only when this MCP server
-falls back to GitBucket's web UI for operations that are unavailable through the
-REST API. They are **not** used for Git over HTTP operations such as `git clone`,
+uses a selected web compatibility route. Credentials alone do not enable that route;
+select the matching `GITBUCKET_COMPATIBILITY` profile described below. They are **not** used for Git over HTTP operations such as `git clone`,
 `git fetch`, or `git push`. Configure your Git credential helper separately if
 Git commands prompt for a username or password.
+
+### Compatibility profiles and migration
+
+The default is now **`rest-only`**, including when web credentials are present. Previously, a write's HTTP 404 could trigger another write through the web UI. A 404 can also mean invalid input, a hidden resource or missing permission; it does not prove that an endpoint is absent. Unknown environments now retain the original REST error without speculative web writes.
+
+Set `GITBUCKET_COMPATIBILITY` explicitly when web operations are needed:
+
+| Value | Contract and behavior |
+| --- | --- |
+| `rest-only` (default) | Try REST; do not perform web writes. Use for unknown versions or REST-capable custom instances. |
+| `gitbucket-4.44.0` | Use the operation contracts verified against standard GitBucket 4.44.0. |
+| `gitbucket-4.48.0` | Use the operation contracts verified against standard GitBucket 4.48.0. |
+| `legacy-404` | Explicit migration opt-in to the previous unverified 404 compatibility routes. It does not establish endpoint availability, bypass 401/403/422, or retry uncertain writes. |
+
+For the two standard profiles, routes are chosen before attempting a write:
+
+| Operation | Route |
+| --- | --- |
+| PR update; label rename; milestone delete | REST, with no error-triggered web fallback |
+| Ordinary Issue update | Web; no known-unimplemented Issue PATCH or dummy comment |
+| Label same-name color change | Web; avoids the known REST self-name collision returning 422 |
+| Milestone create/update with REST-valid title | REST |
+| Milestone create/update with a title outside `[a-zA-Z0-9+_.-]+` | Web, subject to existing date/whitespace safeguards |
+| Label description (including empty/combined requests) | Unsupported before HTTP; this server has no supported persistence contract for it |
+
+Web routes require both web credentials. Selecting a profile is an operator assertion, not automatic version detection; plugins/custom builds may differ. Choose `rest-only` when REST extensions should be tried. `legacy-404` is a compatibility option for unverified older/custom instances, not a claim that their API is missing. It does not fix color-only REST 422 responses; select the matching standard profile for that known contract. Existing URL/token precedence is unchanged; the compatibility setting is env-only, not a TOML field. Rust constructors use `rest-only`; call `.with_compatibility(Compatibility::GitBucket448)` (or another enum value) explicitly.
+
+Migration: deployments that used web credentials alone must now select a matching profile, or explicitly opt into `legacy-404`. Unsupported label descriptions must be omitted, even when another field changes. REST and web identities are still separate; verification of their identity and general HTML success detection are follow-up work. Configure the same account for both until that check is implemented.
+
+The known label constraint is visible in the upstream [4.44.0 label controller](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiIssueLabelControllerBase.scala) and [4.48.0 label controller](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiIssueLabelControllerBase.scala); the target-name lookup collides with the label being edited. No fallback is inferred from a generic 422.
 
 ### HTTP and tool limits
 
@@ -269,6 +300,12 @@ input variables and environment entries for web fallback credentials:
     },
     {
       "type": "promptString",
+      "id": "gitbucket_compatibility",
+      "description": "Explicit profile: rest-only, gitbucket-4.44.0, gitbucket-4.48.0 or legacy-404",
+      "default": "rest-only"
+    },
+    {
+      "type": "promptString",
       "id": "gitbucket_username",
       "description": "GitBucket username for web fallback"
     },
@@ -285,6 +322,7 @@ input variables and environment entries for web fallback credentials:
       "env": {
         "GITBUCKET_URL": "${input:gitbucket_url}",
         "GITBUCKET_TOKEN": "${input:gitbucket_token}",
+        "GITBUCKET_COMPATIBILITY": "${input:gitbucket_compatibility}",
         "GITBUCKET_USERNAME": "${input:gitbucket_username}",
         "GITBUCKET_PASSWORD": "${input:gitbucket_password}"
       }
@@ -294,7 +332,7 @@ input variables and environment entries for web fallback credentials:
 ```
 
 Only add `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` when you want web
-fallback enabled. They must be set together; leaving one blank or setting only
+fallback credentials configured. A matching compatibility profile must also be set as described above. The credentials must be set together; leaving one blank or setting only
 one of them causes startup/configuration errors.
 
 ### Codex Skill Sample
@@ -331,7 +369,7 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 | `list_labels` | List labels for a repository |
 | `get_label` | Get label details |
 | `create_label` | Create a new label |
-| `update_label` | Update label name, color, or description; REST-incompatible GitBucket instances fall back for name/color |
+| `update_label` | Update label name/color via the selected operation profile; description writes are rejected |
 | `delete_label` | Delete a label |
 
 ### Milestones
@@ -348,8 +386,8 @@ Milestone updates preserve omitted fields, including the current open/closed
 state. The server reads the current milestone and sends the complete values
 required by GitBucket's replacement-style PATCH. Use `description: ""` or
 `due_on: ""` to clear those fields; omitting them preserves existing values.
-State-only updates on the tested official versions work with PAT authentication
-and do not require web credentials.
+State-only updates with REST-valid titles on the tested official versions work
+with PAT authentication and do not require web credentials.
 
 `due_on` accepts a valid `YYYY-MM-DD` date or RFC3339 timestamp. Dates mean UTC
 midnight; offsets are converted to UTC and fractional seconds are truncated to
@@ -358,9 +396,9 @@ days and Unicode input, return `validation_error` before requests are sent.
 Leap-second timestamps and years outside 0001–9999 are unsupported.
 
 Official GitBucket REST milestone titles have stricter character restrictions
-than the web UI. Japanese or space-containing titles can therefore require the
-existing 404 web compatibility fallback. A 404 alone does not establish that
-the REST endpoint is missing. The date-only web form is used for content changes
+than the web UI. The matching standard profile routes Japanese or
+space-containing titles directly to web compatibility. `rest-only` retains REST
+errors; only explicit `legacy-404` enables the previous 404 fallback. The date-only web form is used for content changes
 only when it can preserve the date as UTC midnight and preserve description
 whitespace; otherwise `unsupported_error` is returned before a web write.
 State-only web updates skip the content form and preserve an existing due time.
@@ -371,7 +409,7 @@ Create/update responses are verified, and a failed post-write read returns
 `outcome_unknown`. Unverified values return `update_not_verified`. A web create
 must identify a new milestone ID instead of returning a pre-existing same-title
 milestone. These are read/modify/write operations, not atomic protection against
-concurrent edits. General operation-specific fallback policy is separate work.
+concurrent edits. Operation routes follow the compatibility profile above.
 
 ### Pull Requests
 
@@ -438,7 +476,7 @@ during retrieval can cause overlapping pages, which are reported as an error;
 not every concurrent change can be detected. MCP response-size limits and
 client-controlled continuation are separate follow-up work.
 
-For GitBucket versions that do not expose the REST label update endpoint, `update_label` uses the web fallback for name/color changes. Standard GitBucket does not support label description updates through that fallback; description-only updates return an unsupported error, while name/color updates can proceed even if a description is included in the request.
+Label creation and updates verify the returned name and color. Web updates read the label again; an ignored change returns `update_not_verified`, and a failed verification read returns `outcome_unknown`. Same-value updates return the current label without writing. Label description is rejected on both create and update before any HTTP request, including an empty description or a request that also changes name/color. No requested field is silently dropped. These operations do not provide atomic protection against concurrent edits.
 
 GitBucket's issue API does not expose `closed_at` on some versions. When a closed issue has no `closed_at` but does have `updated_at`, this server fills `closed_at` with `updated_at` as a best-effort GitHub-compatible value.
 
@@ -555,6 +593,7 @@ You can provision a disposable local GitBucket instance for the E2E suite:
 ```bash
 ./scripts/e2e/bootstrap.sh
 source ./.tmp/e2e/runtime.env
+export GITBUCKET_E2E_COMPATIBILITY=gitbucket-4.44.0
 cargo test --test e2e_test -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```

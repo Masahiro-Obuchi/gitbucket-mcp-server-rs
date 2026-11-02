@@ -54,12 +54,13 @@ impl GitBucketClient {
     /// Delete a milestone.
     pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
         super::url_safety::repository(owner, repo)?;
+        self.operation_route(super::compatibility::Operation::MilestoneDelete);
         match self
             .delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
             .await
         {
             Ok(()) => Ok(()),
-            Err(err @ GbMcpError::Api { status: 404, .. }) => {
+            Err(err @ GbMcpError::Api { status: 404, .. }) if self.compatibility().legacy_404() => {
                 self.delete_milestone_with_404_handling(owner, repo, number, err)
                     .await
             }

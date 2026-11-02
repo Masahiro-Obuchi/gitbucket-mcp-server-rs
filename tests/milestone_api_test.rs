@@ -315,7 +315,7 @@ async fn test_web_content_update_rejects_time_loss_before_signin() {
     let mut update = change();
     update.title = Some("別の日本語".into());
     let err = server
-        .client_with_web_auth("alice", "fake-password")
+        .legacy_client_with_web_auth("alice", "fake-password")
         .update_milestone("owner", "repo", 7, &update)
         .await
         .unwrap_err();
@@ -351,7 +351,7 @@ async fn test_web_state_only_preserves_due_time_and_skips_content_form() {
     let mut update = change();
     update.state = Some("open".into());
     let actual = server
-        .client_with_web_auth("alice", "fake-password")
+        .legacy_client_with_web_auth("alice", "fake-password")
         .update_milestone("owner", "repo", 7, &update)
         .await
         .unwrap();
@@ -373,7 +373,7 @@ async fn test_web_200_validation_page_is_not_success() {
     let mut update = change();
     update.description = Some("Changed notes".into());
     assert!(
-        matches!(server.client_with_web_auth("alice","fake-password").update_milestone("owner","repo",7,&update).await,
+        matches!(server.legacy_client_with_web_auth("alice","fake-password").update_milestone("owner","repo",7,&update).await,
         Err(gitbucket_mcp_server::error::GbMcpError::OperationNotVerified{fields,..}) if fields==["description"])
     );
 }
@@ -419,7 +419,7 @@ async fn test_web_creation_never_returns_an_existing_same_title_milestone() {
     };
     assert!(matches!(
         server
-            .client_with_web_auth("alice", "fake-password")
+            .legacy_client_with_web_auth("alice", "fake-password")
             .create_milestone("owner", "repo", &body)
             .await,
         Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
@@ -501,7 +501,7 @@ async fn test_write_rejections_and_uncertain_errors_do_not_fall_back() {
         let mut update = change();
         update.state = Some("open".into());
         let err = server
-            .client_with_web_auth("alice", "fake-password")
+            .legacy_client_with_web_auth("alice", "fake-password")
             .update_milestone("owner", "repo", 7, &update)
             .await
             .unwrap_err();
@@ -557,7 +557,7 @@ async fn test_web_postwrite_read_failure_is_unknown() {
     update.description = Some("New notes".into());
     assert!(matches!(
         server
-            .client_with_web_auth("alice", "fake-password")
+            .legacy_client_with_web_auth("alice", "fake-password")
             .update_milestone("owner", "repo", 7, &update)
             .await,
         Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })

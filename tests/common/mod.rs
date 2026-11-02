@@ -19,7 +19,14 @@ impl TestServer {
         GitBucketClient::new(&self.mock_server.uri(), &self.token).unwrap()
     }
 
-    pub fn client_with_web_auth(&self, username: &str, password: &str) -> GitBucketClient {
+    #[allow(dead_code)]
+    pub fn legacy_client(&self) -> GitBucketClient {
+        self.client()
+            .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::Legacy404)
+    }
+
+    #[allow(dead_code)]
+    pub fn legacy_client_with_web_auth(&self, username: &str, password: &str) -> GitBucketClient {
         GitBucketClient::new_with_web_auth(
             &self.mock_server.uri(),
             &self.token,
@@ -28,5 +35,6 @@ impl TestServer {
             Some(password),
         )
         .unwrap()
+        .with_compatibility(gitbucket_mcp_server::api::compatibility::Compatibility::Legacy404)
     }
 }

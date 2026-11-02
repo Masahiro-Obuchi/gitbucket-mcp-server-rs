@@ -87,6 +87,17 @@ impl GitBucketClient {
         body: &UpdateIssue,
     ) -> IssueUpdateResult {
         super::url_safety::repository(owner, repo).map_err(IssueUpdateError::BeforeWrite)?;
+        if self.operation_route(super::compatibility::Operation::IssueUpdate)
+            == super::compatibility::Route::Web
+        {
+            let current = self
+                .get_issue(owner, repo, number)
+                .await
+                .map_err(IssueUpdateError::BeforeWrite)?;
+            return self
+                .update_issue_via_web_fallback(owner, repo, number, body, &current)
+                .await;
+        }
         match self
             .patch(
                 &format!("/repos/{}/{}/issues/{}", owner, repo, number),
@@ -95,7 +106,7 @@ impl GitBucketClient {
             .await
         {
             Ok(issue) => Ok(issue_with_closed_at_fallback(issue)),
-            Err(err @ GbMcpError::Api { status: 404, .. }) => {
+            Err(err @ GbMcpError::Api { status: 404, .. }) if self.compatibility().legacy_404() => {
                 self.update_issue_with_404_handling(owner, repo, number, body, err)
                     .await
             }
@@ -199,7 +210,7 @@ impl GitBucketClient {
 
         let credentials = self.web_credentials().ok_or_else(|| {
             IssueUpdateError::BeforeWrite(GbMcpError::Other(
-                "This GitBucket instance does not support REST issue updates. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD to enable web fallback.".to_string(),
+                "The selected Issue update compatibility route requires web credentials. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD; HTTP 404 alone does not prove an absent REST endpoint.".to_string(),
             ))
         })?;
 

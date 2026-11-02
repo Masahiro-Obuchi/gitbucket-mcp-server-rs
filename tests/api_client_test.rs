@@ -296,13 +296,9 @@ async fn test_create_label() {
         .and(path("/api/v3/repos/testuser/myrepo/labels"))
         .and(body_string_contains("\"name\":\"needs-review\""))
         .and(body_string_contains("\"color\":\"a1b2c3\""))
-        .and(body_string_contains(
-            "\"description\":\"Needs extra review\"",
-        ))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "name": "needs-review",
-            "color": "a1b2c3",
-            "description": "Needs extra review"
+            "color": "a1b2c3"
         })))
         .mount(&server.mock_server)
         .await;
@@ -310,7 +306,7 @@ async fn test_create_label() {
     let body = gitbucket_mcp_server::models::label::CreateLabel {
         name: "needs-review".to_string(),
         color: "a1b2c3".to_string(),
-        description: Some("Needs extra review".to_string()),
+        description: None,
     };
     let label = client
         .create_label("testuser", "myrepo", &body)
@@ -338,13 +334,9 @@ async fn test_update_label_url_encodes_name() {
         .and(path("/api/v3/repos/testuser/myrepo/labels/needs%20review"))
         .and(body_string_contains("\"name\":\"needs-review\""))
         .and(body_string_contains("\"color\":\"a1b2c3\""))
-        .and(body_string_contains(
-            "\"description\":\"Needs extra review\"",
-        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "name": "needs-review",
-            "color": "a1b2c3",
-            "description": "Needs extra review"
+            "color": "a1b2c3"
         })))
         .mount(&server.mock_server)
         .await;
@@ -352,7 +344,7 @@ async fn test_update_label_url_encodes_name() {
     let body = gitbucket_mcp_server::models::label::UpdateLabel {
         new_name: Some("needs-review".to_string()),
         color: Some("a1b2c3".to_string()),
-        description: Some("Needs extra review".to_string()),
+        description: None,
     };
     let label = client
         .update_label("testuser", "myrepo", "needs review", &body)
@@ -365,7 +357,7 @@ async fn test_update_label_url_encodes_name() {
 #[tokio::test]
 async fn test_update_label_falls_back_to_web_session_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
     let get_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
@@ -449,7 +441,7 @@ async fn test_update_label_falls_back_to_web_session_on_404() {
     let body = gitbucket_mcp_server::models::label::UpdateLabel {
         new_name: Some("defect".to_string()),
         color: Some("a1b2c3".to_string()),
-        description: Some("Defect reports".to_string()),
+        description: None,
     };
     let label = client
         .update_label("owner", "repo", "bug", &body)
@@ -462,7 +454,7 @@ async fn test_update_label_falls_back_to_web_session_on_404() {
 #[tokio::test]
 async fn test_update_label_fallback_rejects_description_change() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/owner/repo/labels/bug"))
@@ -494,7 +486,7 @@ async fn test_update_label_fallback_rejects_description_change() {
 
     assert!(
         err.to_string()
-            .contains("does not support label description-only updates"),
+            .contains("Label description writes are not supported"),
         "unexpected error: {err}"
     );
 }
@@ -653,7 +645,7 @@ async fn test_delete_milestone() {
 #[tokio::test]
 async fn test_create_milestone_falls_back_to_web_session_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
 
     Mock::given(method("POST"))
         .and(path("/api/v3/repos/owner/repo/milestones"))
@@ -729,7 +721,7 @@ async fn test_create_milestone_falls_back_to_web_session_on_404() {
 #[tokio::test]
 async fn test_update_milestone_falls_back_to_web_session_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
     let get_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
@@ -823,7 +815,7 @@ async fn test_update_milestone_falls_back_to_web_session_on_404() {
 #[tokio::test]
 async fn test_delete_milestone_falls_back_to_web_session_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
 
     Mock::given(method("DELETE"))
         .and(path("/api/v3/repos/owner/repo/milestones/7"))
@@ -1033,7 +1025,7 @@ async fn test_update_issue_close() {
 #[tokio::test]
 async fn test_update_issue_state_falls_back_to_web_session_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
     let get_issue_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
@@ -1115,7 +1107,7 @@ async fn test_update_issue_state_falls_back_to_web_session_on_404() {
 #[tokio::test]
 async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/owner/repo/issues/404"))
@@ -1148,7 +1140,7 @@ async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
 #[tokio::test]
 async fn test_update_issue_title_body_fallback_updates_via_web_session() {
     let server = TestServer::start().await;
-    let client = server.client_with_web_auth("alice", "secret-pass");
+    let client = server.legacy_client_with_web_auth("alice", "secret-pass");
     let get_issue_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
@@ -1248,7 +1240,7 @@ async fn test_update_issue_title_body_fallback_updates_via_web_session() {
 #[tokio::test]
 async fn test_update_issue_state_without_web_credentials_returns_clear_error() {
     let server = TestServer::start().await;
-    let client = server.client();
+    let client = server.legacy_client();
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/owner/repo/issues/1"))
@@ -1784,7 +1776,7 @@ async fn test_update_pull_request_fallback_read_failure_is_unknown() {
     update.state = Some("closed".into());
     assert!(matches!(
         server
-            .client()
+            .legacy_client()
             .update_pull_request("owner", "repo", 7, &update)
             .await,
         Err(gitbucket_mcp_server::error::GbMcpError::WriteOutcomeUnknown { .. })
@@ -1829,7 +1821,7 @@ async fn test_update_pull_request_legacy_fallback_preserves_unspecified_body() {
     let mut update = pull_request_update();
     update.title = Some("New title".into());
     let pr = server
-        .client()
+        .legacy_client()
         .update_pull_request("owner", "repo", 7, &update)
         .await
         .unwrap();
@@ -1911,7 +1903,7 @@ async fn test_update_pull_request_web_write_then_issue_read_failure_is_unknown()
         let mut update = pull_request_update();
         update.state = Some("closed".into());
         let err = server
-            .client_with_web_auth("alice", "secret-pass")
+            .legacy_client_with_web_auth("alice", "secret-pass")
             .update_pull_request("owner", "repo", 7, &update)
             .await
             .unwrap_err();
@@ -1947,7 +1939,7 @@ async fn test_update_pull_request_fallback_pre_write_read_failure_keeps_original
         let mut update = pull_request_update();
         update.state = Some("closed".into());
         let err = server
-            .client_with_web_auth("alice", "secret-pass")
+            .legacy_client_with_web_auth("alice", "secret-pass")
             .update_pull_request("owner", "repo", 7, &update)
             .await
             .unwrap_err();
@@ -1977,7 +1969,7 @@ async fn test_update_pull_request_fallback_without_credentials_is_not_unknown() 
     let mut update = pull_request_update();
     update.state = Some("closed".into());
     let err = server
-        .client()
+        .legacy_client()
         .update_pull_request("owner", "repo", 7, &update)
         .await
         .unwrap_err();
@@ -2010,7 +2002,7 @@ async fn test_update_pull_request_fallback_sign_in_failure_is_not_unknown() {
     let mut update = pull_request_update();
     update.state = Some("closed".into());
     let err = server
-        .client_with_web_auth("alice", "secret-pass")
+        .legacy_client_with_web_auth("alice", "secret-pass")
         .update_pull_request("owner", "repo", 7, &update)
         .await
         .unwrap_err();
@@ -2058,7 +2050,7 @@ async fn test_update_pull_request_partial_web_write_failure_is_unknown() {
     update.body = Some("Updated body".into());
     update.state = Some("closed".into());
     let err = server
-        .client_with_web_auth("alice", "secret-pass")
+        .legacy_client_with_web_auth("alice", "secret-pass")
         .update_pull_request("owner", "repo", 7, &update)
         .await
         .unwrap_err();
@@ -2104,7 +2096,7 @@ async fn test_update_pull_request_write_error_classification_without_retry() {
             let mut update = pull_request_update();
             update.state = Some("closed".into());
             let err = server
-                .client()
+                .legacy_client()
                 .update_pull_request("owner", "repo", 7, &update)
                 .await
                 .unwrap_err();
@@ -2169,7 +2161,7 @@ async fn test_update_pull_request_maps_wrapped_404_to_api_error() {
 #[tokio::test]
 async fn test_update_pull_request_falls_back_to_issue_update_on_404() {
     let server = TestServer::start().await;
-    let client = server.client();
+    let client = server.legacy_client();
     let get_pr_call_count = Arc::new(AtomicUsize::new(0));
 
     Mock::given(method("PATCH"))
@@ -2237,7 +2229,7 @@ async fn test_update_pull_request_falls_back_to_issue_update_on_404() {
 #[tokio::test]
 async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
     let server = TestServer::start().await;
-    let client = server.client();
+    let client = server.legacy_client();
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/owner/repo/pulls/404"))
@@ -2274,7 +2266,7 @@ async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
 #[tokio::test]
 async fn test_update_pull_request_fallback_rejects_base_branch_change() {
     let server = TestServer::start().await;
-    let client = server.client();
+    let client = server.legacy_client();
 
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/branches/develop"))

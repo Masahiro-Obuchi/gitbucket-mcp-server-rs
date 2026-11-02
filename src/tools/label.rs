@@ -39,7 +39,9 @@ pub struct CreateLabelParams {
     pub name: String,
     #[schemars(description = "6-digit label color, with or without #")]
     pub color: String,
-    #[schemars(description = "Optional label description")]
+    #[schemars(
+        description = "Reserved for API extensions; built-in GitBucket contracts reject supplied description before writes"
+    )]
     pub description: Option<String>,
 }
 
@@ -55,7 +57,9 @@ pub struct UpdateLabelParams {
     pub new_name: Option<String>,
     #[schemars(description = "New 6-digit label color, with or without #")]
     pub color: Option<String>,
-    #[schemars(description = "New label description; pass an empty string to clear it")]
+    #[schemars(
+        description = "Reserved for API extensions; built-in GitBucket contracts reject supplied description, including an empty string, before writes"
+    )]
     pub description: Option<String>,
 }
 
@@ -140,7 +144,9 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Update a label in a GitBucket repository")]
+    #[tool(
+        description = "Update a label name or color in a GitBucket repository; description writes are unsupported"
+    )]
     pub async fn update_label(
         &self,
         Parameters(params): Parameters<UpdateLabelParams>,

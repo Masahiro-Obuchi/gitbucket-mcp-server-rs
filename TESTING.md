@@ -31,6 +31,16 @@ cargo test --test e2e_test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+## Operation Routing Regression Tests
+
+```bash
+cargo test --test routing_test
+```
+
+Default clients (with web credentials present) retain unknown 404 errors without signing in or sending secondary writes. Profile tests distinguish REST rename/PR updates from known web Issue/same-name color/restricted-title operations. They cover 401/403/409/422 rejection, 408/5xx unknown outcomes, explicit legacy opt-in, combined/empty description rejection before all HTTP, no-op color normalization, incorrect snapshots, and ignored REST/web responses.
+
+Older fallback regression fixtures now select `legacy-404` explicitly rather than relying on default clients. Label fixtures no longer claim standard description persistence. The label lifecycle E2E verifies a same-name color update and confirms that a rejected combined description/name/color request leaves the stored label unchanged.
+
 ## HTTP Budget Regression Tests
 
 ```bash
@@ -158,6 +168,7 @@ For a disposable local GitBucket:
 ```bash
 ./scripts/e2e/bootstrap.sh
 source ./.tmp/e2e/runtime.env
+export GITBUCKET_E2E_COMPATIBILITY=gitbucket-4.44.0
 cargo test --test e2e_test -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```
@@ -172,6 +183,8 @@ the default runtime directory by `down.sh`. If `GITBUCKET_E2E_ENV_FILE` points
 outside that directory, remove both custom files explicitly. Docker's port is
 bound to `127.0.0.1` by default.
 
+For a fresh disposable 4.48.0 stack, set `GITBUCKET_E2E_IMAGE=ghcr.io/gitbucket/gitbucket:4.48.0` for bootstrap and explicitly set `GITBUCKET_E2E_COMPATIBILITY=gitbucket-4.48.0` for the tests. Stop/remove any previous stack first or use separate Compose project, port and runtime-directory overrides. Image choice does not infer the profile. The E2E client defaults to `rest-only` when no profile is supplied; tests requiring web operations need an appropriate explicit profile. Both standard profiles were tested with the full 22-case suite.
+
 ## GitHub Actions E2E
 
 GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
@@ -179,7 +192,7 @@ GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
 - `.github/workflows/ci.yml` runs `fmt`, `clippy`, `cargo test`, shell syntax checks, and Python runtime-file tests on every push and pull request.
 - `.github/workflows/e2e.yml` runs on `workflow_dispatch` and a nightly schedule.
 
-The `E2E` workflow validates the scripts, runs `./scripts/e2e/bootstrap.sh`, imports `runtime.env.json` with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
+The E2E and release workflows explicitly select the 4.44.0 profile for their default Docker image. The `E2E` workflow validates the scripts, runs `./scripts/e2e/bootstrap.sh`, imports `runtime.env.json` with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
 
 ## Adding Tests
 
