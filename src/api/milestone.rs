@@ -104,11 +104,12 @@ impl GitBucketClient {
             )
         })?;
 
-        GitBucketWebSession::sign_in(
+        GitBucketWebSession::sign_in_with_http_settings(
             self.base_url(),
             &credentials.username,
             &credentials.password,
             self.allow_invalid_certs(),
+            self.http_settings().clone(),
         )
         .await
     }

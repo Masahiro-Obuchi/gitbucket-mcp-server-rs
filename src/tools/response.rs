@@ -46,6 +46,11 @@ pub fn internal_error(message: impl Into<String>) -> ToolResult {
 
 pub fn from_gb_error(error: GbMcpError) -> ToolResult {
     match error {
+        err @ GbMcpError::Timeout { .. } => error_payload("timeout_error", err.to_string(), None),
+        err @ GbMcpError::Cancelled => error_payload("cancelled_error", err.to_string(), None),
+        err @ GbMcpError::ResponseTooLarge { .. } => {
+            error_payload("response_too_large", err.to_string(), None)
+        }
         GbMcpError::InvalidInput(message) => validation_error(message),
         GbMcpError::Unsupported(message) => error_payload("unsupported_error", message, None),
         err @ GbMcpError::OperationNotVerified { .. } => {

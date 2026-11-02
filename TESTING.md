@@ -31,6 +31,18 @@ cargo test --test e2e_test
 cargo clippy --all-targets --all-features -- -D warnings
 ```
 
+## HTTP Budget Regression Tests
+
+```bash
+cargo test --test http_budget_test
+```
+
+Local TCP/HTTP/TLS mocks cover delayed headers, delayed body chunks, TLS handshake stalls, declared/chunked/unframed oversized bodies, exact-size acceptance, and explicit longer merge budgets. Mutating requests that arrive before a disconnect, malformed JSON, timeout or size failure return an unknown outcome without replay. Web sign-in, label HTML and web mutations use the same limits.
+
+MCP protocol tests exercise a whole-call deadline across multiple pages, concurrent read/write isolation, clearing a definitively rejected attempt, cancellation notifications and verification reads after web writes. The server classification is also tested before rmcp's client discards a cancelled response. A delayed custom API verifies conservative write outcomes without transport tracking. Unit tests validate settings, env overrides and secret-free configuration diagnostics.
+
+The default budgets were exercised against official Docker GitBucket 4.44.0 with all 22 existing E2Es, including the two large-list fixtures. This does not establish hard CPU deadlines or compatibility with every production workload; adjust the documented env settings where needed.
+
 ## Safety Regression Tests
 
 ```bash

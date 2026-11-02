@@ -17,7 +17,8 @@ pub(super) enum IssueUpdateError {
 impl IssueUpdateError {
     fn into_cause(self) -> GbMcpError {
         match self {
-            Self::BeforeWrite(cause) | Self::Write(cause) | Self::AfterWrite(cause) => cause,
+            Self::BeforeWrite(cause) | Self::Write(cause) => cause,
+            Self::AfterWrite(cause) => super::http::unknown("Issue web update", cause),
         }
     }
 }
@@ -202,11 +203,12 @@ impl GitBucketClient {
             ))
         })?;
 
-        let session = GitBucketWebSession::sign_in(
+        let session = GitBucketWebSession::sign_in_with_http_settings(
             self.base_url(),
             &credentials.username,
             &credentials.password,
             self.allow_invalid_certs(),
+            self.http_settings().clone(),
         )
         .await
         .map_err(IssueUpdateError::BeforeWrite)?;

@@ -159,7 +159,9 @@ impl GitBucketClient {
             .edit_label(owner, repo, label_id, &next_name, &next_color)
             .await?;
 
-        self.get_label(owner, repo, &next_name).await
+        self.get_label(owner, repo, &next_name)
+            .await
+            .map_err(|error| super::http::unknown("Label web update", error))
     }
 
     async fn label_web_session(&self) -> Result<GitBucketWebSession> {
@@ -170,11 +172,12 @@ impl GitBucketClient {
             )
         })?;
 
-        GitBucketWebSession::sign_in(
+        GitBucketWebSession::sign_in_with_http_settings(
             self.base_url(),
             &credentials.username,
             &credentials.password,
             self.allow_invalid_certs(),
+            self.http_settings().clone(),
         )
         .await
     }

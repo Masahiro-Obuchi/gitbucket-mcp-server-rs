@@ -14,6 +14,7 @@ use crate::models::user::User;
 
 mod adapter;
 pub mod client;
+pub mod http;
 pub mod issue;
 pub mod label;
 pub mod milestone;
@@ -28,6 +29,12 @@ pub mod web;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    /// True only when business writes use `http::mutation` in the calling task.
+    /// The default keeps deadline/cancellation outcomes conservative for custom adapters.
+    fn tracks_write_attempts(&self) -> bool {
+        false
+    }
+
     fn get_authenticated_user(&self) -> ApiFuture<'_, User>;
     fn get_user<'a>(&'a self, username: &'a str) -> ApiFuture<'a, User>;
 

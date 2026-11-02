@@ -177,6 +177,7 @@ pub enum RecordedCall {
 
 #[derive(Debug, Clone)]
 pub struct MockApi {
+    pub response_delay: std::time::Duration,
     calls: Arc<Mutex<Vec<RecordedCall>>>,
     user: User,
     repositories: Vec<Repository>,
@@ -297,6 +298,7 @@ impl Default for MockApi {
         };
 
         Self {
+            response_delay: std::time::Duration::ZERO,
             calls: Arc::new(Mutex::new(vec![])),
             user,
             repositories: vec![repository.clone()],
@@ -331,7 +333,11 @@ impl GitBucketApi for MockApi {
     fn get_authenticated_user(&self) -> ApiFuture<'_, User> {
         self.record(RecordedCall::GetAuthenticatedUser);
         let user = self.user.clone();
-        Box::pin(async move { Ok(user) })
+        let delay = self.response_delay;
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            Ok(user)
+        })
     }
 
     fn get_user<'a>(&'a self, username: &'a str) -> ApiFuture<'a, User> {
@@ -570,7 +576,11 @@ impl GitBucketApi for MockApi {
             body: body.clone(),
         });
         let issue = self.issue.clone();
-        Box::pin(async move { Ok(issue) })
+        let delay = self.response_delay;
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            Ok(issue)
+        })
     }
 
     fn update_issue<'a>(

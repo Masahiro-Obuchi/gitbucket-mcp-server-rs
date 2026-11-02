@@ -161,6 +161,10 @@ async fn legacy_update(
 }
 
 fn after_write_error(error: GbMcpError) -> GbMcpError {
+    let error = match error {
+        GbMcpError::OperationOutcomeUnknown { cause, .. } => *cause,
+        other => other,
+    };
     match error {
         // A rejected request is distinct from losing the response to a write.
         err @ GbMcpError::Api {

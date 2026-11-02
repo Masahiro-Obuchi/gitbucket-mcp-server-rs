@@ -70,7 +70,7 @@ impl GitBucketClient {
         body: &MergePullRequest,
     ) -> Result<MergeResult> {
         super::url_safety::repository(owner, repo)?;
-        self.put(
+        self.put_merge(
             &format!("/repos/{}/{}/pulls/{}/merge", owner, repo, number),
             body,
         )
