@@ -488,6 +488,7 @@ name = "gitbucket-mcp-server"
 version = "0.2.3"
 dependencies = [
  "assert-json-diff",
+ "chrono",
  "dirs",
  "reqwest",
  "rmcp",

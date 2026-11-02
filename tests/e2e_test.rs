@@ -1035,6 +1035,203 @@ async fn test_e2e_milestone_lifecycle() {
 }
 
 #[tokio::test]
+#[ignore = "requires a disposable GitBucket and repository write token"]
+#[serial]
+async fn test_e2e_milestone_partial_updates_use_pat_only() {
+    let mut config = E2eConfig::from_env();
+    config.web_username = None;
+    config.web_password = None;
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+    let title = format!("milestone-p03-{}", unique_suffix());
+    let created = call_tool_json(
+        &client,
+        "create_milestone",
+        json!({
+            "owner":owner,"repo":repo,"title":title,"description":"Keep notes","due_on":"2026-04-01"
+        }),
+    )
+    .await;
+    let number = created["number"].as_u64().unwrap();
+    assert_eq!(created["due_on"], "2026-04-01T00:00:00Z");
+    let closed = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"state":"closed"
+        }),
+    )
+    .await;
+    assert_eq!(closed["state"], "closed");
+    assert_eq!(closed["description"], "Keep notes");
+    assert_eq!(closed["due_on"], created["due_on"]);
+    let renamed_title = format!("{title}-renamed");
+    let renamed = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"title":renamed_title
+        }),
+    )
+    .await;
+    assert_eq!(renamed["state"], "closed");
+    assert_eq!(renamed["description"], closed["description"]);
+    assert_eq!(renamed["due_on"], closed["due_on"]);
+    let dated = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"due_on":"2026-04-01T00:30:00+09:00"
+        }),
+    )
+    .await;
+    assert_eq!(dated["due_on"], "2026-03-31T15:30:00Z");
+    let described = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"description":"Updated notes"
+        }),
+    )
+    .await;
+    assert_eq!(described["due_on"], dated["due_on"]);
+    assert_eq!(described["state"], "closed");
+    let cleared = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"description":"","due_on":""
+        }),
+    )
+    .await;
+    assert!(cleared["due_on"].is_null());
+    assert!(cleared["description"]
+        .as_str()
+        .unwrap_or_default()
+        .is_empty());
+    assert_eq!(cleared["state"], "closed");
+    let reopened = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"state":"open","due_on":"2028-02-29"
+        }),
+    )
+    .await;
+    assert_eq!(reopened["state"], "open");
+    assert_eq!(reopened["title"], renamed_title);
+    assert_eq!(reopened["due_on"], "2028-02-29T00:00:00Z");
+    let fetched = call_tool_json(
+        &client,
+        "get_milestone",
+        json!({"owner":owner,"repo":repo,"milestone_number":number}),
+    )
+    .await;
+    assert_eq!(fetched["due_on"], reopened["due_on"]);
+    let deleted = call_tool_json(
+        &client,
+        "delete_milestone",
+        json!({"owner":owner,"repo":repo,"milestone_number":number}),
+    )
+    .await;
+    assert_eq!(deleted["deleted"], true);
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires disposable GitBucket with explicit web fallback credentials"]
+#[serial]
+async fn test_e2e_milestone_unicode_titles_use_web_without_date_loss() {
+    let config = E2eConfig::from_env();
+    assert!(
+        config.web_username.is_some() && config.web_password.is_some(),
+        "web credentials required"
+    );
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+    let title = format!("日本語 リリース {}", unique_suffix());
+    let created = call_tool_json(
+        &client,
+        "create_milestone",
+        json!({
+            "owner":owner,"repo":repo,"title":title,"description":"説明","due_on":"2026-04-01"
+        }),
+    )
+    .await;
+    let number = created["number"].as_u64().unwrap();
+    assert_eq!(created["title"], title);
+    assert_eq!(created["due_on"], "2026-04-01T00:00:00Z");
+    let closed = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"state":"closed"
+        }),
+    )
+    .await;
+    assert_eq!(closed["due_on"], created["due_on"]);
+    let renamed_title = format!("修正済み {}", unique_suffix());
+    let renamed = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"title":renamed_title
+        }),
+    )
+    .await;
+    assert_eq!(renamed["state"], "closed");
+    assert_eq!(renamed["description"], "説明");
+    assert_eq!(renamed["due_on"], created["due_on"]);
+    let cleared = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"description":"","due_on":""
+        }),
+    )
+    .await;
+    assert!(cleared["due_on"].is_null());
+    assert!(cleared["description"]
+        .as_str()
+        .unwrap_or_default()
+        .is_empty());
+    let dated = call_tool_json(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"due_on":"2028-02-29"
+        }),
+    )
+    .await;
+    assert_eq!(dated["due_on"], "2028-02-29T00:00:00Z");
+    let rejected = call_tool(
+        &client,
+        "update_milestone",
+        json!({
+            "owner":owner,"repo":repo,"milestone_number":number,"due_on":"2028-02-29T12:00:00Z"
+        }),
+    )
+    .await;
+    assert_eq!(parse_error(&rejected).kind, "unsupported_error");
+    let fetched = call_tool_json(
+        &client,
+        "get_milestone",
+        json!({"owner":owner,"repo":repo,"milestone_number":number}),
+    )
+    .await;
+    assert_eq!(fetched["due_on"], dated["due_on"]);
+    assert_eq!(fetched["state"], "closed");
+    let deleted = call_tool_json(
+        &client,
+        "delete_milestone",
+        json!({"owner":owner,"repo":repo,"milestone_number":number}),
+    )
+    .await;
+    assert_eq!(deleted["deleted"], true);
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires GITBUCKET_E2E_URL, GITBUCKET_E2E_TOKEN, GITBUCKET_E2E_OWNER, and GITBUCKET_E2E_REPO"]
 #[serial]
 async fn test_e2e_list_issues() {

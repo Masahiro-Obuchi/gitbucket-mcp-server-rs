@@ -17,6 +17,7 @@ pub mod client;
 pub mod issue;
 pub mod label;
 pub mod milestone;
+mod milestone_write;
 pub mod pull_request;
 mod pull_request_update;
 pub mod repository;

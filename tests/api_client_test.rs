@@ -575,7 +575,9 @@ async fn test_create_milestone() {
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "number": 7,
             "title": "v1.0",
-            "state": "open"
+            "state": "open",
+            "description": "First release",
+            "due_on": "2026-04-01T00:00:00Z"
         })))
         .mount(&server.mock_server)
         .await;
@@ -597,6 +599,14 @@ async fn test_create_milestone() {
 async fn test_update_milestone() {
     let server = TestServer::start().await;
     let client = server.client();
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/myrepo/milestones/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "number":7,"title":"v1.0","state":"open"
+        })))
+        .mount(&server.mock_server)
+        .await;
 
     Mock::given(method("PATCH"))
         .and(path("/api/v3/repos/testuser/myrepo/milestones/7"))
@@ -693,18 +703,16 @@ async fn test_create_milestone_falls_back_to_web_session_on_404() {
         .mount(&server.mock_server)
         .await;
 
+    let list_reads = Arc::new(AtomicUsize::new(0));
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/milestones"))
         .and(query_param("state", "all"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            {
-                "number": 7,
-                "title": "v1.0",
-                "state": "open"
-            }
-        ])))
-        .mount(&server.mock_server)
-        .await;
+        .respond_with(move |_: &wiremock::Request| {
+            let items=if list_reads.fetch_add(1, Ordering::SeqCst)==0 {vec![]} else {
+                vec![serde_json::json!({"number":7,"title":"v1.0","state":"open","description":"first release","due_on":"2026-04-01T00:00:00Z"})]
+            };
+            ResponseTemplate::new(200).set_body_json(items)
+        }).expect(2).mount(&server.mock_server).await;
 
     let body = gitbucket_mcp_server::models::milestone::CreateMilestone {
         title: "v1.0".to_string(),

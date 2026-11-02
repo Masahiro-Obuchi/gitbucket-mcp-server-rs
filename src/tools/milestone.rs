@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::models::milestone::{CreateMilestone, UpdateMilestone};
+use crate::models::milestone_date::MilestoneDate;
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
 use crate::tools::validation::{
@@ -40,7 +41,9 @@ pub struct CreateMilestoneParams {
     pub title: String,
     #[schemars(description = "Milestone description")]
     pub description: Option<String>,
-    #[schemars(description = "Optional due date")]
+    #[schemars(
+        description = "Optional YYYY-MM-DD date or RFC3339 timestamp; normalized to UTC whole seconds"
+    )]
     pub due_on: Option<String>,
 }
 
@@ -56,7 +59,9 @@ pub struct UpdateMilestoneParams {
     pub title: Option<String>,
     #[schemars(description = "New milestone description; pass an empty string to clear it")]
     pub description: Option<String>,
-    #[schemars(description = "New due date; pass an empty string to clear it")]
+    #[schemars(
+        description = "YYYY-MM-DD date or RFC3339 timestamp; pass an empty string to clear it; omit to preserve"
+    )]
     pub due_on: Option<String>,
     #[schemars(description = "New state: open or closed")]
     pub state: Option<String>,
@@ -138,16 +143,22 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
+        let due_on = params
+            .due_on
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if let Some(value) = &due_on {
+            if let Err(err) = MilestoneDate::parse(value) {
+                return from_gb_error(err);
+            }
+        }
         let body = CreateMilestone {
             title,
             description: params
                 .description
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
-            due_on: params
-                .due_on
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty()),
+            due_on,
         };
 
         match self.client.create_milestone(&owner, &repo, &body).await {
@@ -175,6 +186,11 @@ impl GitBucketMcpServer {
         };
         let description = params.description.map(|value| value.trim().to_string());
         let due_on = params.due_on.map(|value| value.trim().to_string());
+        if let Some(value) = due_on.as_deref().filter(|value| !value.is_empty()) {
+            if let Err(err) = MilestoneDate::parse(value) {
+                return from_gb_error(err);
+            }
+        }
 
         if title.is_none() && description.is_none() && due_on.is_none() && state.is_none() {
             return validation_error(error(
@@ -232,6 +248,35 @@ mod tests {
     use crate::server::GitBucketMcpServer;
     use crate::test_support::{error_payload, success_json, MockApi, RecordedCall};
     use crate::tools::response::ToolErrorPayload;
+
+    #[tokio::test]
+    async fn test_invalid_due_dates_are_rejected_without_calling_api() {
+        let mock = MockApi::default();
+        let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
+        let created = server
+            .create_milestone(Parameters(CreateMilestoneParams {
+                owner: "owner".into(),
+                repo: "repo".into(),
+                title: "v1.0".into(),
+                description: None,
+                due_on: Some("2026-あいう".into()),
+            }))
+            .await;
+        assert_eq!(error_payload(created).kind, "validation_error");
+        let updated = server
+            .update_milestone(Parameters(UpdateMilestoneParams {
+                owner: "owner".into(),
+                repo: "repo".into(),
+                milestone_number: 7,
+                title: None,
+                state: None,
+                description: None,
+                due_on: Some("2026-02-29".into()),
+            }))
+            .await;
+        assert_eq!(error_payload(updated).kind, "validation_error");
+        assert!(mock.calls().is_empty());
+    }
 
     #[tokio::test]
     async fn test_list_milestones_rejects_blank_owner() {

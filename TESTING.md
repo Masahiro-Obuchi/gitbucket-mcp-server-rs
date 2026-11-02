@@ -6,6 +6,9 @@ This repository uses layered tests so failures can be isolated quickly:
 - `tests/api_client_test.rs` verifies HTTP request and response handling with `wiremock`.
 - `tests/list_api_test.rs` covers endpoint-specific list contracts, boundary
   counts, duplicate identities, and failure/limit behavior.
+- `tests/milestone_api_test.rs` models GitBucket's replacement-style PATCH and
+  verifies field preservation, date normalization, explicit clears, web date
+  constraints, ignored responses, and operation-stage failures.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label create/read/update/delete lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge coverage.
 
@@ -29,6 +32,21 @@ cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 ## Live E2E Tests
+
+Milestone partial-update regressions have a PAT-only E2E and a separate
+web-compatibility E2E for Japanese titles. Against a disposable instance, run:
+
+```bash
+cargo test --test e2e_test test_e2e_milestone_ -- --ignored --nocapture
+```
+
+The PAT-only test disables web credentials explicitly and verifies closed-state
+and field preservation, independent changes, date offsets, leap days, clearing,
+and deletion. The web test requires credentials and verifies Japanese titles,
+state/content changes, date clearing, and rejection of non-midnight dates
+without changing the stored value. Date round trips assume the disposable
+server's UTC timezone; differing web-server timezone behavior is a documented
+limitation. Both tests remove their milestones after successful verification.
 
 PR update regressions are covered with a stateful mock of GitBucket's coupled
 title/body update behavior. The tests cover independent content updates, empty

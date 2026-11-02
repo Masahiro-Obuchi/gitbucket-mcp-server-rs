@@ -46,6 +46,14 @@ pub fn internal_error(message: impl Into<String>) -> ToolResult {
 
 pub fn from_gb_error(error: GbMcpError) -> ToolResult {
     match error {
+        GbMcpError::InvalidInput(message) => validation_error(message),
+        GbMcpError::Unsupported(message) => error_payload("unsupported_error", message, None),
+        err @ GbMcpError::OperationNotVerified { .. } => {
+            error_payload("update_not_verified", err.to_string(), None)
+        }
+        err @ GbMcpError::OperationOutcomeUnknown { .. } => {
+            error_payload("outcome_unknown", err.to_string(), None)
+        }
         err @ GbMcpError::UpdateNotVerified { .. } => {
             error_payload("update_not_verified", err.to_string(), None)
         }
