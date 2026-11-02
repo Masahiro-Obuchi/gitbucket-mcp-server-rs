@@ -127,6 +127,30 @@ All tools return MCP tool results.
 - `update_milestone(owner, repo, milestone_number, title?, description?, due_on?, state?)`
 - `delete_milestone(owner, repo, milestone_number)`
 
+Milestone creation/update validate due dates before network calls. Inputs accept
+`YYYY-MM-DD` (UTC midnight) or RFC3339, normalize offsets to UTC, and use whole
+seconds to match GitBucket JSON precision. Invalid dates, leap seconds, and UTC
+years outside 0001–9999 are rejected. Fractional seconds are truncated.
+
+Update intent distinguishes omitted values (keep), supplied values (set), and
+empty description/due_on strings (clear). Before PATCH, fetch the current
+milestone and construct complete title/state/description/due_on values. Explicit
+clears are sent as null in the REST payload. Unchanged requests need no write.
+Verify the response against requested and preserved values.
+
+The existing 404 web compatibility path remains available, including for titles
+that violate the official REST character restrictions. It is not evidence that
+the endpoint is absent. Web content forms must preserve UTC-midnight dates and
+description whitespace; reject requests that cannot be represented before a
+web write. State-only web changes do not submit the content form. Round-trip
+date verification also detects differing web-server timezone interpretation.
+
+Failures after a write or during its follow-up read are outcome_unknown;
+mismatching returned values are update_not_verified. Creation results must
+identify a newly observed ID rather than an existing same-title milestone.
+Concurrent-edit atomicity is not guaranteed. HTTP 403/422 rejections do not
+trigger fallback, and uncertain responses do not trigger automatic replay.
+
 ### 6.5 Pull Request Tools
 
 - `list_pull_requests(owner, repo, state?)`

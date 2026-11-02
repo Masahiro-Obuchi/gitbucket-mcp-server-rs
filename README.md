@@ -303,6 +303,35 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 | `update_milestone` | Update milestone fields and state |
 | `delete_milestone` | Delete a milestone |
 
+Milestone updates preserve omitted fields, including the current open/closed
+state. The server reads the current milestone and sends the complete values
+required by GitBucket's replacement-style PATCH. Use `description: ""` or
+`due_on: ""` to clear those fields; omitting them preserves existing values.
+State-only updates on the tested official versions work with PAT authentication
+and do not require web credentials.
+
+`due_on` accepts a valid `YYYY-MM-DD` date or RFC3339 timestamp. Dates mean UTC
+midnight; offsets are converted to UTC and fractional seconds are truncated to
+GitBucket's whole-second JSON precision. Invalid dates, including invalid leap
+days and Unicode input, return `validation_error` before requests are sent.
+Leap-second timestamps and years outside 0001–9999 are unsupported.
+
+Official GitBucket REST milestone titles have stricter character restrictions
+than the web UI. Japanese or space-containing titles can therefore require the
+existing 404 web compatibility fallback. A 404 alone does not establish that
+the REST endpoint is missing. The date-only web form is used for content changes
+only when it can preserve the date as UTC midnight and preserve description
+whitespace; otherwise `unsupported_error` is returned before a web write.
+State-only web updates skip the content form and preserve an existing due time.
+On a server whose web form interprets dates in a non-UTC timezone, round-trip
+verification may fail; inspect the milestone rather than repeating the write.
+
+Create/update responses are verified, and a failed post-write read returns
+`outcome_unknown`. Unverified values return `update_not_verified`. A web create
+must identify a new milestone ID instead of returning a pre-existing same-title
+milestone. These are read/modify/write operations, not atomic protection against
+concurrent edits. General operation-specific fallback policy is separate work.
+
 ### Pull Requests
 
 | Tool | Description |

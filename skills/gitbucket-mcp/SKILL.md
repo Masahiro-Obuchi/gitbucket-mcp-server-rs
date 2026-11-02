@@ -103,6 +103,11 @@ For labels and milestones:
 
 Some GitBucket versions differ from GitHub-compatible REST behavior.
 
+- Milestone updates preserve fields that are omitted. Pass an empty string to clear `description` or `due_on`; do not send placeholder values for fields that should remain unchanged.
+- Milestone dates accept `YYYY-MM-DD` or RFC3339 and normalize to UTC whole seconds. State-only updates use REST when available; web credentials are not generally required for that operation.
+- Japanese or space-containing milestone titles can require web compatibility because of REST validation restrictions. The web content form cannot safely preserve arbitrary timestamps; `unsupported_error` rejects such requests before a web write.
+- For milestone `update_not_verified` or `outcome_unknown` errors, inspect the resource before retrying. A failed response does not mean the write was not applied.
+
 - `update_label` first tries the REST endpoint. If the endpoint is unavailable, the server can use a web UI fallback for name and color changes.
 - The web fallback cannot perform description-only label updates. If a request changes name or color and also includes a description, name and color can still be updated, but the description is not changed by the fallback.
 - Some GitBucket issue responses omit `closed_at`. For closed issues, the server fills missing `closed_at` from `updated_at` as a best-effort GitHub-compatible value.

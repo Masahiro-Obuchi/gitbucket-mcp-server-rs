@@ -17,6 +17,25 @@ pub enum GbMcpError {
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
 
+    #[error("{0}")]
+    InvalidInput(String),
+
+    #[error("{0}")]
+    Unsupported(String),
+
+    #[error("{operation} could not be verified for fields {fields:?}. Changes may already have been applied; inspect the resource before retrying.")]
+    OperationNotVerified {
+        operation: &'static str,
+        fields: Vec<&'static str>,
+    },
+
+    #[error("{operation} outcome is unknown. Changes may already have been applied; inspect the resource before retrying. Cause: {cause}")]
+    OperationOutcomeUnknown {
+        operation: &'static str,
+        #[source]
+        cause: Box<GbMcpError>,
+    },
+
     #[error("Pull request update could not be verified for fields {fields:?}. Changes may already have been applied; inspect the pull request before retrying.")]
     UpdateNotVerified { fields: Vec<&'static str> },
 

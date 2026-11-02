@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::milestone_date::MilestoneDate;
 use super::user::User;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -48,6 +49,22 @@ pub struct UpdateMilestone {
     pub due_on: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
+}
+
+pub(crate) enum FieldChange<T> {
+    Keep,
+    Set(T),
+    Clear,
+}
+
+/// Complete values required by GitBucket's replacement-style PATCH.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct GitBucketMilestoneWrite {
+    pub title: String,
+    pub state: String,
+    // Null is intentional: omitted fields have different caller semantics.
+    pub description: Option<String>,
+    pub due_on: Option<MilestoneDate>,
 }
 
 #[cfg(test)]
