@@ -6,6 +6,7 @@ use crate::error::{GbMcpError, Result};
 pub struct GitBucketWebSession {
     client: Client,
     base_url: String,
+    http_settings: super::http::HttpSettings,
 }
 
 impl GitBucketWebSession {
@@ -15,9 +16,28 @@ impl GitBucketWebSession {
         password: &str,
         allow_invalid_certs: bool,
     ) -> Result<Self> {
+        Self::sign_in_with_http_settings(
+            api_base_url,
+            username,
+            password,
+            allow_invalid_certs,
+            super::http::HttpSettings::default(),
+        )
+        .await
+    }
+
+    pub async fn sign_in_with_http_settings(
+        api_base_url: &str,
+        username: &str,
+        password: &str,
+        allow_invalid_certs: bool,
+        http_settings: super::http::HttpSettings,
+    ) -> Result<Self> {
+        http_settings.validate()?;
         let api_base_url = super::client::normalize_base_url(api_base_url)?;
         let base_url = normalize_web_base_url(&api_base_url);
-        let client = Client::builder()
+        let client = http_settings
+            .configure(Client::builder())
             .cookie_store(true)
             .redirect(super::url_safety::redirect_policy(&api_base_url)?)
             .danger_accept_invalid_certs(allow_invalid_certs)
@@ -50,7 +70,12 @@ impl GitBucketWebSession {
             )));
         }
 
-        Ok(Self { client, base_url })
+        super::http::bounded_text(response, http_settings.html_limit_bytes, "HTML").await?;
+        Ok(Self {
+            client,
+            base_url,
+            http_settings,
+        })
     }
 
     pub async fn update_issue_state(
@@ -170,60 +195,48 @@ impl GitBucketWebSession {
             }
         };
 
-        let response = self
-            .client
-            .get(super::url_safety::append(
-                &self.base_url,
-                &[
-                    owner,
-                    repo,
-                    "issues",
-                    "milestones",
-                    &number.to_string(),
-                    action,
-                ],
-            )?)
-            .send()
+        let builder = self.client.get(super::url_safety::append(
+            &self.base_url,
+            &[
+                owner,
+                repo,
+                "issues",
+                "milestones",
+                &number.to_string(),
+                action,
+            ],
+        )?);
+        self.web_request(builder, "change the milestone state", true)
             .await
-            .map_err(GbMcpError::from)?;
-        self.ensure_success(response, "change the milestone state")
-            .await
+            .map(|_| ())
     }
 
     pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
         super::url_safety::repository(owner, repo)?;
-        let response = self
-            .client
-            .get(super::url_safety::append(
-                &self.base_url,
-                &[
-                    owner,
-                    repo,
-                    "issues",
-                    "milestones",
-                    &number.to_string(),
-                    "delete",
-                ],
-            )?)
-            .send()
+        let builder = self.client.get(super::url_safety::append(
+            &self.base_url,
+            &[
+                owner,
+                repo,
+                "issues",
+                "milestones",
+                &number.to_string(),
+                "delete",
+            ],
+        )?);
+        self.web_request(builder, "delete the milestone", true)
             .await
-            .map_err(GbMcpError::from)?;
-        self.ensure_success(response, "delete the milestone").await
+            .map(|_| ())
     }
 
     pub async fn find_label_id(&self, owner: &str, repo: &str, name: &str) -> Result<u64> {
         super::url_safety::repository(owner, repo)?;
-        let response = self
-            .client
-            .get(super::url_safety::append(
-                &self.base_url,
-                &[owner, repo, "issues", "labels"],
-            )?)
-            .send()
-            .await
-            .map_err(GbMcpError::from)?;
+        let builder = self.client.get(super::url_safety::append(
+            &self.base_url,
+            &[owner, repo, "issues", "labels"],
+        )?);
         let body = self
-            .success_text(response, "load repository labels")
+            .web_request(builder, "load repository labels", false)
             .await?;
         label_id_from_page(&body, name).ok_or_else(|| {
             GbMcpError::Other(format!(
@@ -253,19 +266,39 @@ impl GitBucketWebSession {
         .await
     }
 
-    async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
-        let response = self
+    async fn post_form(
+        &self,
+        path: &str,
+        fields: Vec<(&str, String)>,
+        action: &'static str,
+    ) -> Result<()> {
+        let builder = self
             .client
             .post(super::url_safety::route(&self.base_url, path)?)
-            .form(&fields)
-            .send()
-            .await
-            .map_err(GbMcpError::from)?;
-        self.ensure_success(response, action).await
+            .form(&fields);
+        self.web_request(builder, action, true).await.map(|_| ())
     }
 
-    async fn ensure_success(&self, response: Response, action: &str) -> Result<()> {
-        self.success_text(response, action).await.map(|_| ())
+    async fn web_request(
+        &self,
+        builder: reqwest::RequestBuilder,
+        action: &'static str,
+        mutation: bool,
+    ) -> Result<String> {
+        let request = builder.build().map_err(GbMcpError::from)?;
+        let future = async {
+            let response = self
+                .client
+                .execute(request)
+                .await
+                .map_err(GbMcpError::from)?;
+            self.success_text(response, action).await
+        };
+        if mutation {
+            super::http::mutation(action, future).await
+        } else {
+            future.await
+        }
     }
 
     async fn success_text(&self, response: Response, action: &str) -> Result<String> {
@@ -282,7 +315,12 @@ impl GitBucketWebSession {
         }
 
         if status.is_success() || status.is_redirection() {
-            return response.text().await.map_err(GbMcpError::from);
+            return super::http::bounded_text(
+                response,
+                self.http_settings.html_limit_bytes,
+                "HTML",
+            )
+            .await;
         }
 
         Err(GbMcpError::Other(format!(

@@ -24,12 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Starting GitBucket MCP Server");
 
     // Create API client
-    let client = GitBucketClient::new_with_web_auth(
+    let client = GitBucketClient::new_with_web_auth_and_http_settings(
         &config.gitbucket_url,
         &config.gitbucket_token,
         false,
         config.gitbucket_username.as_deref(),
         config.gitbucket_password.as_deref(),
+        gitbucket_mcp_server::api::http::HttpSettings::from_env()?,
     )?;
 
     // Create and start MCP server via stdio transport

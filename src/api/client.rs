@@ -12,6 +12,8 @@ use crate::error::{GbMcpError, Result};
 #[derive(Clone)]
 pub struct GitBucketClient {
     client: reqwest::Client,
+    write_client: reqwest::Client,
+    http_settings: super::http::HttpSettings,
     base_url: String,
     allow_invalid_certs: bool,
     web_credentials: Option<WebCredentials>,
@@ -46,6 +48,25 @@ impl GitBucketClient {
         web_username: Option<&str>,
         web_password: Option<&str>,
     ) -> Result<Self> {
+        Self::new_with_web_auth_and_http_settings(
+            base_url,
+            token,
+            allow_invalid_certs,
+            web_username,
+            web_password,
+            super::http::HttpSettings::default(),
+        )
+    }
+
+    pub fn new_with_web_auth_and_http_settings(
+        base_url: &str,
+        token: &str,
+        allow_invalid_certs: bool,
+        web_username: Option<&str>,
+        web_password: Option<&str>,
+        http_settings: super::http::HttpSettings,
+    ) -> Result<Self> {
+        http_settings.validate()?;
         let normalized = normalize_base_url(base_url)?;
         let web_credentials = resolve_web_credentials(web_username, web_password)?;
 
@@ -56,15 +77,27 @@ impl GitBucketClient {
         headers.insert(AUTHORIZATION, authorization);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
+        let client_builder = || {
+            http_settings
+                .configure(reqwest::Client::builder())
+                .default_headers(headers.clone())
+                .danger_accept_invalid_certs(allow_invalid_certs)
+        };
+        let client = client_builder()
             .redirect(super::url_safety::redirect_policy(&normalized)?)
-            .danger_accept_invalid_certs(allow_invalid_certs)
+            .build()
+            .map_err(GbMcpError::from)?;
+        // A write may already be saved before a redirect. Following it could
+        // replay the write or mistake a later GET's 4xx for a rejected write.
+        let write_client = client_builder()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(GbMcpError::from)?;
 
         Ok(Self {
             client,
+            write_client,
+            http_settings,
             base_url: normalized,
             allow_invalid_certs,
             web_credentials,
@@ -83,32 +116,48 @@ impl GitBucketClient {
         self.web_credentials.as_ref()
     }
 
+    pub fn http_settings(&self) -> &super::http::HttpSettings {
+        &self.http_settings
+    }
+
+    async fn json_request<T: DeserializeOwned>(
+        &self,
+        builder: reqwest::RequestBuilder,
+        method: &str,
+        path: &str,
+        mutation: bool,
+    ) -> Result<T> {
+        let request = builder.build().map_err(GbMcpError::from)?;
+        let future = async {
+            let client = if mutation {
+                &self.write_client
+            } else {
+                &self.client
+            };
+            let response = client.execute(request).await.map_err(GbMcpError::from)?;
+            self.handle_response(response, method, path).await
+        };
+        if mutation {
+            super::http::mutation("GitBucket REST write", future).await
+        } else {
+            future.await
+        }
+    }
+
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = super::url_safety::route(&self.base_url, path)?;
-        let resp = self
-            .client
-            .get(url)
-            .send()
+        self.get_url(super::url_safety::route(&self.base_url, path)?, path)
             .await
-            .map_err(GbMcpError::from)?;
-        self.handle_response(resp, "GET", path).await
     }
 
     pub(crate) async fn get_url<T: DeserializeOwned>(&self, url: Url, path: &str) -> Result<T> {
-        let resp = self
-            .client
-            .get(url)
-            .send()
+        self.json_request(self.client.get(url), "GET", path, false)
             .await
-            .map_err(GbMcpError::from)?;
-        self.handle_response(resp, "GET", path).await
     }
 
     pub async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         self.post_with_query(path, &[], body).await
     }
 
-    /// POST to a validated path with separately encoded query keys and values.
     pub async fn post_with_query<T: DeserializeOwned, B: Serialize>(
         &self,
         path: &str,
@@ -119,14 +168,8 @@ impl GitBucketClient {
         if !query.is_empty() {
             url.query_pairs_mut().extend_pairs(query.iter().copied());
         }
-        let resp = self
-            .client
-            .post(url)
-            .json(body)
-            .send()
+        self.json_request(self.write_client.post(url).json(body), "POST", path, true)
             .await
-            .map_err(GbMcpError::from)?;
-        self.handle_response(resp, "POST", path).await
     }
 
     pub async fn patch<T: DeserializeOwned, B: Serialize>(
@@ -134,15 +177,8 @@ impl GitBucketClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let url = super::url_safety::route(&self.base_url, path)?;
-        let resp = self
-            .client
-            .patch(url)
-            .json(body)
-            .send()
+        self.patch_url(super::url_safety::route(&self.base_url, path)?, path, body)
             .await
-            .map_err(GbMcpError::from)?;
-        self.handle_response(resp, "PATCH", path).await
     }
 
     pub(crate) async fn patch_url<T: DeserializeOwned, B: Serialize>(
@@ -151,69 +187,66 @@ impl GitBucketClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let resp = self
-            .client
-            .patch(url)
-            .json(body)
-            .send()
+        self.json_request(self.write_client.patch(url).json(body), "PATCH", path, true)
             .await
-            .map_err(GbMcpError::from)?;
-        self.handle_response(resp, "PATCH", path).await
     }
 
     pub async fn put<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T> {
         let url = super::url_safety::route(&self.base_url, path)?;
-        let resp = self
-            .client
-            .put(url)
-            .json(body)
-            .send()
+        self.json_request(self.write_client.put(url).json(body), "PUT", path, true)
             .await
-            .map_err(GbMcpError::from)?;
-        self.handle_response(resp, "PUT", path).await
+    }
+
+    pub(crate) async fn put_merge<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T> {
+        let url = super::url_safety::route(&self.base_url, path)?;
+        self.json_request(
+            self.write_client
+                .put(url)
+                .json(body)
+                .timeout(self.http_settings.merge_timeout),
+            "PUT",
+            path,
+            true,
+        )
+        .await
     }
 
     pub async fn delete(&self, path: &str) -> Result<()> {
-        let url = super::url_safety::route(&self.base_url, path)?;
-        let resp = self
-            .client
-            .delete(url)
-            .send()
+        self.delete_url(super::url_safety::route(&self.base_url, path)?, path)
             .await
-            .map_err(GbMcpError::from)?;
-
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            let status = resp.status().as_u16();
-            let message = safe_status_message(status);
-            warn!(
-                method = "DELETE",
-                path, status, "GitBucket API request failed"
-            );
-            Err(GbMcpError::Api { status, message })
-        }
     }
 
     pub(crate) async fn delete_url(&self, url: Url, path: &str) -> Result<()> {
-        let resp = self
-            .client
+        let request = self
+            .write_client
             .delete(url)
-            .send()
-            .await
+            .build()
             .map_err(GbMcpError::from)?;
-
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            let status = resp.status().as_u16();
-            let message = safe_status_message(status);
-            warn!(
-                method = "DELETE",
-                path, status, "GitBucket API request failed"
-            );
-            Err(GbMcpError::Api { status, message })
-        }
+        super::http::mutation("GitBucket REST delete", async {
+            let response = self
+                .write_client
+                .execute(request)
+                .await
+                .map_err(GbMcpError::from)?;
+            if response.status().is_success() {
+                Ok(())
+            } else {
+                let status = response.status().as_u16();
+                warn!(
+                    method = "DELETE",
+                    path, status, "GitBucket API request failed"
+                );
+                Err(GbMcpError::Api {
+                    status,
+                    message: safe_status_message(status),
+                })
+            }
+        })
+        .await
     }
 
     pub(crate) async fn get_with_query<T: DeserializeOwned>(
@@ -274,13 +307,7 @@ impl GitBucketClient {
 
         for page in 1..=Self::MAX_PAGINATION_PAGES {
             let url = self.paginated_url(path, query, page, page_size)?;
-            let resp = self
-                .client
-                .get(url)
-                .send()
-                .await
-                .map_err(GbMcpError::from)?;
-            let items: Vec<Value> = self.handle_response(resp, "GET", path).await?;
+            let items: Vec<Value> = self.get_url(url, path).await?;
             if items.is_empty() {
                 return Ok(results);
             }
@@ -310,14 +337,16 @@ impl GitBucketClient {
     ) -> Result<T> {
         let status = resp.status();
         if status.is_success() {
-            let text = resp.text().await.map_err(GbMcpError::from)?;
+            let text = super::http::bounded_text(resp, self.http_settings.json_limit_bytes, "JSON")
+                .await?;
+            let value = parse_success_body(&text)?;
             debug!(
                 method,
                 path,
                 status = status.as_u16(),
-                "GitBucket API request succeeded"
+                "GitBucket API response decoded"
             );
-            parse_success_body(&text)
+            Ok(value)
         } else {
             let status_code = status.as_u16();
             let message = safe_status_message(status_code);

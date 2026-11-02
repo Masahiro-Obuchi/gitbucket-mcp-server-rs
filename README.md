@@ -135,6 +135,31 @@ REST API. They are **not** used for Git over HTTP operations such as `git clone`
 `git fetch`, or `git push`. Configure your Git credential helper separately if
 Git commands prompt for a username or password.
 
+### HTTP and tool limits
+
+REST and web sessions share these optional, env-only settings. They are not TOML fields; the URL/token precedence above is unchanged.
+
+| Variable | Default | Applies to |
+| --- | --- | --- |
+| `GITBUCKET_CONNECT_TIMEOUT_SECS` | `10` | Connection establishment, including TLS |
+| `GITBUCKET_REQUEST_TIMEOUT_SECS` | `30` | Each ordinary HTTP request, including body reads and redirects |
+| `GITBUCKET_MERGE_TIMEOUT_SECS` | `120` | The PR merge HTTP request |
+| `GITBUCKET_TOOL_TIMEOUT_SECS` | `180` | A complete MCP tool call, including pagination, sign-in, fallback and verification |
+| `GITBUCKET_JSON_LIMIT_BYTES` | `8388608` (8 MiB) | Each successful REST response before JSON decoding |
+| `GITBUCKET_HTML_LIMIT_BYTES` | `4194304` (4 MiB) | Each successful web response, including sign-in |
+
+Time overrides must be integer seconds from 1 to 86400; response limits must be 1 to 268435456 bytes. Invalid settings fail startup without echoing the supplied value. The earliest applicable timeout wins: a shorter tool budget also limits a long merge or many individually valid requests. Read and write requests are not automatically retried.
+
+Bodies are limited while streaming, even without `Content-Length`. API error bodies remain unread and are summarized by status. An oversized read returns `response_too_large`; a timed-out read returns `timeout_error`. A mutation whose response times out, disconnects, cannot be decoded or exceeds the limit returns `outcome_unknown`, since the server may already have saved it. Definite REST rejections (HTTP 4xx except 408) retain `api_error`. Inspect the target before retrying an unknown outcome.
+
+REST writes stop at HTTP redirects and return `outcome_unknown` with the original 3xx status. This prevents resubmitting a write at a redirect target or treating a redirected read's failure as rejection of an already saved write. REST reads and web sessions follow redirects within the configured GitBucket origin and context path.
+
+MCP cancellation stops further local work but cannot undo a remote write. The server classifies interrupted reads as `cancelled_error` and interrupted writes as `outcome_unknown`; some MCP clients (including rmcp) discard a cancelled request's later response and surface their own cancellation instead. Inspect any possibly submitted write before retrying in that case as well.
+
+These are per-response byte limits and cooperative async time limits, not a total memory cap or a hard CPU deadline. Synchronous decoding/serialization cannot be preempted. Aggregate list/output limits are separate work; no diff endpoint or separate diff limit is introduced here.
+
+Rust callers can pass `api::http::HttpSettings` to `new_with_web_auth_and_http_settings` or `sign_in_with_http_settings`; existing constructors use defaults and do not read env overrides. `GitBucketMcpServer::new(client)` uses the client's tool budget. `with_api` uses the default budget; `with_api_and_timeout` accepts a validated explicit budget. Custom API implementations default to conservative write outcomes on interruption. To provide precise tracking, opt into `GitBucketApi::tracks_write_attempts` and wrap business writes with `http::mutation` in the calling task. Direct Rust API calls have per-request limits; the complete tool budget/cancellation applies at MCP dispatch.
+
 ### Priority
 
 1. **Environment variables** (highest priority)

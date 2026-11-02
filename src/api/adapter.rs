@@ -11,6 +11,10 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn tracks_write_attempts(&self) -> bool {
+        true
+    }
+
     fn get_authenticated_user(&self) -> ApiFuture<'_, User> {
         Box::pin(async move { GitBucketClient::get_authenticated_user(self).await })
     }

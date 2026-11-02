@@ -14,6 +14,15 @@ pub enum GbMcpError {
     #[error("JSON response could not be decoded at line {}, column {}", .0.line(), .0.column())]
     Json(serde_json::Error),
 
+    #[error("Time budget exceeded during {phase}")]
+    Timeout { phase: &'static str },
+
+    #[error("Operation cancelled")]
+    Cancelled,
+
+    #[error("{kind} response exceeds the configured limit of {limit} bytes")]
+    ResponseTooLarge { kind: &'static str, limit: usize },
+
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
 
@@ -53,7 +62,13 @@ pub type Result<T> = std::result::Result<T, GbMcpError>;
 
 impl From<reqwest::Error> for GbMcpError {
     fn from(error: reqwest::Error) -> Self {
-        Self::Http(error.without_url())
+        if error.is_timeout() {
+            Self::Timeout {
+                phase: "HTTP request (connection, response or body)",
+            }
+        } else {
+            Self::Http(error.without_url())
+        }
     }
 }
 
