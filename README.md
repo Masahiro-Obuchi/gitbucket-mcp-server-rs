@@ -213,8 +213,9 @@ gitbucket-mcp-server
 # Option 2: Using environment variables
 export GITBUCKET_URL="https://gitbucket.example.com"
 export GITBUCKET_TOKEN="your-token"
-export GITBUCKET_USERNAME="alice"         # optional, for web fallback operations
-export GITBUCKET_PASSWORD="secret-pass"   # optional, env-only, not used by Git-over-HTTP commands
+export GITBUCKET_API_PROFILE="standard"  # optional, opt into standard web operations
+export GITBUCKET_USERNAME="alice"         # required for standard web operations
+export GITBUCKET_PASSWORD="secret-pass"   # required for standard web operations; env-only
 gitbucket-mcp-server
 ```
 
@@ -477,7 +478,7 @@ client-controlled continuation are separate follow-up work.
 
 Label creation and updates verify the returned name and color. Web updates read the label again; an ignored change returns `update_not_verified`, and a failed verification read returns `outcome_unknown`. Same-value updates return the current label without writing. Label description is not an accepted create/update argument. Any supplied value is rejected by strict input deserialization before HTTP, including an empty or null value or a request that also changes name/color. No requested field is silently dropped. These operations do not provide atomic protection against concurrent edits.
 
-Standard-profile web color changes reject label names containing a comma or leading/trailing whitespace with `unsupported_error` before sign-in. The web form cannot safely preserve those names. REST create/rename operations preserve whitespace-padded names, and unchanged labels need no web write.
+Standard-profile web color changes reject label names containing a comma or leading/trailing whitespace with `unsupported_error` before sign-in. The web form cannot safely preserve those names. The Rust API retains support for whitespace-padded names on REST create/rename operations, and unchanged labels need no web write.
 
 GitBucket's issue API does not expose `closed_at` on some versions. When a closed issue has no `closed_at` but does have `updated_at`, this server fills `closed_at` with `updated_at` as a best-effort GitHub-compatible value.
 
@@ -574,6 +575,7 @@ export GITBUCKET_E2E_GIT_USERNAME="git-http-username"
 export GITBUCKET_E2E_GIT_PASSWORD="git-http-password"
 export GITBUCKET_E2E_WEB_USERNAME="gitbucket-username"
 export GITBUCKET_E2E_WEB_PASSWORD="gitbucket-password"
+export GITBUCKET_E2E_API_PROFILE="standard"
 cargo test --test e2e_test -- --ignored --nocapture
 ```
 
@@ -583,6 +585,7 @@ Optional variables:
 - `GITBUCKET_E2E_REPO`: required for milestone, issue, and pull request E2E against an existing repository
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD`: required for pull request write-path E2E because the tests create and push temporary branches over HTTP
 - `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD`: optional explicit credentials for web fallback tests; if omitted, E2E reuses the git credentials
+- `GITBUCKET_E2E_API_PROFILE`: defaults to `rest-only`; select `standard` with web credentials for the full suite against official GitBucket
 - `GITBUCKET_E2E_INSECURE_TLS=true`: allow self-signed or locally trusted HTTPS certificates during E2E runs
 - Write-path E2E tests leave created repositories, Issues, comments, pull requests, and merged branches in place; they use unique repo names, branch names, titles, and bodies to avoid collisions across reruns
 - Milestone E2E creates, updates, and deletes a unique milestone within the same test so reruns do not accumulate milestone fixtures

@@ -124,8 +124,8 @@ All tools return MCP tool results.
 
 - `list_labels(owner, repo)`
 - `get_label(owner, repo, name)`
-- `create_label(owner, repo, name, color, description?)`
-- `update_label(owner, repo, name, new_name?, color?, description?)`
+- `create_label(owner, repo, name, color)`
+- `update_label(owner, repo, name, new_name?, color?)`
 - `delete_label(owner, repo, name)`
 
 ### 6.3 Issue Tools
@@ -204,9 +204,10 @@ web writes also returns `outcome_unknown` because earlier changes may persist.
 - `list_issues.state`, `list_milestones.state`, and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` and `update_milestone.state` must be one of `open` or `closed`.
 - `update_issue` must receive at least one of `state`, `title`, or `body`.
-- `update_label` must receive at least one of `new_name`, `color`, or `description`.
+- `update_label` must receive at least one of `new_name` or `color`.
+- Standard web label updates reject comma-containing names and leading/trailing whitespace before sign-in, preserving the stored name. REST label writes and no-op updates retain their supported names.
 - `update_milestone` must receive at least one of `title`, `description`, `due_on`, or `state`.
-- On GitBucket instances without REST issue update support, `update_issue` may fall back through the web UI for `state`, `title`, and `body` changes when web credentials are configured.
+- `update_issue` uses Web directly only under the `standard` profile with web credentials; `rest-only` uses REST. A failed REST write never activates another route.
 - Optional string fields may be trimmed before sending to GitBucket, except that
   `update_pull_request.body` preserves the supplied text exactly.
 - Validation failures must be returned without issuing an outbound API request.

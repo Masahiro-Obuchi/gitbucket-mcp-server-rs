@@ -124,18 +124,20 @@ read. It leaves its uniquely named branch and PR in the disposable repository.
 - `GITBUCKET_E2E_REPO` for milestone, issue, and pull request tests against an existing repository
 - `GITBUCKET_E2E_GIT_USERNAME` / `GITBUCKET_E2E_GIT_PASSWORD` for pull request write-path tests that create and push temporary branches
 - `GITBUCKET_E2E_WEB_USERNAME` / `GITBUCKET_E2E_WEB_PASSWORD` for explicit issue web-fallback credentials; when omitted, the E2E suite reuses git credentials
+- `GITBUCKET_E2E_API_PROFILE=standard` with web credentials for the full suite against official GitBucket; defaults to `rest-only`
 - `GITBUCKET_E2E_INSECURE_TLS=true` only when testing against local/self-signed HTTPS
 
 Run the ignored suite explicitly:
 
 ```bash
+export GITBUCKET_E2E_API_PROFILE=standard
 cargo test --test e2e_test -- --ignored --nocapture
 ```
 
 The write-path tests intentionally keep created repositories, Issues, comments, pull requests, and merged branches. Each run uses unique repo names, branch names, titles, file names, and comment bodies so reruns do not depend on cleanup.
 Label E2E creates, reads, updates, and deletes a unique label within the test itself so it does not leave label fixtures behind.
 Milestone E2E creates, updates, and deletes a unique milestone within the test itself so it does not leave milestone fixtures behind.
-Current GitBucket Docker coverage verifies that `update_issue(state/title/body)` and `update_label(new_name/color)` fall back through the web UI on the official `4.44.0` image when web credentials are available.
+The standard profile selects Web directly for Issue updates and same-name label color changes on the tested official `4.44.0` and `4.48.0` images. Label renames use REST; failed REST writes never activate a secondary route. Web credentials alone do not select the standard profile.
 Issue/PR fixtures use GitBucket's fixed 25-item pages, followed by an empty page.
 Repository, branch, label, milestone, and issue comment fixtures return the full
 response in one request and must not expect pagination parameters. The list
