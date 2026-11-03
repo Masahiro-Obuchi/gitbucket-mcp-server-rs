@@ -121,7 +121,12 @@ fn first_text(result: &rmcp::model::CallToolResult) -> &str {
 }
 
 fn parse_json(result: &rmcp::model::CallToolResult) -> Value {
-    assert_eq!(result.is_error, Some(false), "expected success tool result");
+    assert_eq!(
+        result.is_error,
+        Some(false),
+        "expected success tool result: {:?}",
+        result.structured_content
+    );
     result.structured_content.clone().unwrap_or_else(|| {
         serde_json::from_str(first_text(result)).expect("tool result should be valid JSON")
     })

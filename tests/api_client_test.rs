@@ -666,6 +666,7 @@ async fn test_update_issue_close() {
 #[tokio::test]
 async fn test_standard_issue_state_uses_web() {
     let server = TestServer::start().await;
+    common::web_identity(&server.mock_server, "", "alice").await;
     let client = server.standard_client_with_web_auth("alice", "secret-pass");
     let get_issue_call_count = Arc::new(AtomicUsize::new(0));
 
@@ -719,10 +720,23 @@ async fn test_standard_issue_state_uses_web() {
         .and(header("cookie", "JSESSIONID=session123"))
         .and(body_string_contains("issueId=1"))
         .and(body_string_contains("action=close"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
+        .respond_with(ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/1"))
         .mount(&server.mock_server)
         .await;
 
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("<html>issue page</html>"))
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/_data/1"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"title":"New title","content":"body"})),
+        )
+        .mount(&server.mock_server)
+        .await;
     let body = gitbucket_mcp_server::models::issue::UpdateIssue {
         state: Some("closed".to_string()),
         title: None,
@@ -767,6 +781,7 @@ async fn test_update_issue_missing_issue_does_not_fallback_on_404() {
 #[tokio::test]
 async fn test_standard_issue_title_body_updates_via_web_session() {
     let server = TestServer::start().await;
+    common::web_identity(&server.mock_server, "", "alice").await;
     let client = server.standard_client_with_web_auth("alice", "secret-pass");
     let get_issue_call_count = Arc::new(AtomicUsize::new(0));
 
@@ -819,16 +834,19 @@ async fn test_standard_issue_title_body_updates_via_web_session() {
         .and(path("/owner/repo/issues/edit_title/1"))
         .and(header("cookie", "JSESSIONID=session123"))
         .and(body_string_contains("title=New+title"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("title updated"))
+        .respond_with(
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/_data/1"),
+        )
         .mount(&server.mock_server)
         .await;
 
     Mock::given(method("POST"))
         .and(path("/owner/repo/issues/edit/1"))
         .and(header("cookie", "JSESSIONID=session123"))
-        .and(body_string_contains("title=New+title"))
         .and(body_string_contains("content=updated+body"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("body updated"))
+        .respond_with(
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/_data/1"),
+        )
         .mount(&server.mock_server)
         .await;
 
@@ -837,10 +855,23 @@ async fn test_standard_issue_title_body_updates_via_web_session() {
         .and(header("cookie", "JSESSIONID=session123"))
         .and(body_string_contains("issueId=1"))
         .and(body_string_contains("action=close"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("updated"))
+        .respond_with(ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/1"))
         .mount(&server.mock_server)
         .await;
 
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("<html>issue page</html>"))
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/_data/1"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"title":"New title","content":"body"})),
+        )
+        .mount(&server.mock_server)
+        .await;
     let body = gitbucket_mcp_server::models::issue::UpdateIssue {
         state: Some("closed".to_string()),
         title: Some("New title".to_string()),
@@ -883,7 +914,7 @@ async fn test_update_issue_state_without_web_credentials_returns_clear_error() {
 
     assert!(err
         .to_string()
-        .contains("Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD"));
+        .contains("GITBUCKET_USERNAME and GITBUCKET_PASSWORD"));
 }
 
 #[tokio::test]

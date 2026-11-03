@@ -271,6 +271,7 @@ async fn test_ignored_and_unreadable_rest_responses_do_not_trigger_retries() {
 }
 
 async fn web_signin(server: &TestServer) {
+    common::web_identity(&server.mock_server, "", "alice").await;
     Mock::given(method("POST"))
         .and(path("/signin"))
         .respond_with(
@@ -328,10 +329,18 @@ async fn test_web_state_only_preserves_due_time_and_skips_content_form() {
     let current = web_current(&server, "2026-04-01T12:00:00Z").await;
     web_signin(&server).await;
     Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/milestones"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(r#"<a href="/owner/repo/issues/milestones/new">New</a>"#),
+        )
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
         .and(path("/owner/repo/issues/milestones/7/open"))
         .respond_with(move |_: &wiremock::Request| {
             current.lock().unwrap()["state"] = json!("open");
-            ResponseTemplate::new(200)
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/milestones")
         })
         .expect(1)
         .mount(&server.mock_server)
@@ -366,10 +375,13 @@ async fn test_web_200_validation_page_is_not_success() {
         .await;
     let mut update = change();
     update.description = Some("Changed notes".into());
-    assert!(
-        matches!(server.standard_client_with_web_auth("alice","fake-password").update_milestone("owner","repo",7,&update).await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationNotVerified{fields,..}) if fields==["description"])
-    );
+    assert!(matches!(
+        server
+            .standard_client_with_web_auth("alice", "fake-password")
+            .update_milestone("owner", "repo", 7, &update)
+            .await,
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
+    ));
 }
 
 #[tokio::test]
@@ -396,8 +408,18 @@ async fn test_web_creation_never_returns_an_existing_same_title_milestone() {
     web_signin(&server).await;
     Mock::given(method("POST"))
         .and(path("/owner/repo/issues/milestones/new"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("Milestone already exists"))
+        .respond_with(
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/milestones"),
+        )
         .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/milestones"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<a href='/owner/repo/issues/milestones/new'>New milestone</a>"),
+        )
         .mount(&server.mock_server)
         .await;
     let body = CreateMilestone {
@@ -529,9 +551,19 @@ async fn test_web_postwrite_read_failure_is_unknown() {
         .mount(&server.mock_server)
         .await;
     web_signin(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/milestones"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(r#"<a href="/owner/repo/issues/milestones/new">New</a>"#),
+        )
+        .mount(&server.mock_server)
+        .await;
     Mock::given(method("POST"))
         .and(path("/owner/repo/issues/milestones/7/edit"))
-        .respond_with(ResponseTemplate::new(200))
+        .respond_with(
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/milestones"),
+        )
         .expect(1)
         .mount(&server.mock_server)
         .await;

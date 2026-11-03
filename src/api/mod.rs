@@ -27,6 +27,7 @@ pub mod repository;
 pub(crate) mod url_safety;
 pub mod user;
 pub mod web;
+mod web_html;
 
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 

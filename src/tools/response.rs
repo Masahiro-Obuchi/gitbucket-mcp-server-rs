@@ -59,6 +59,9 @@ pub fn from_gb_error(error: GbMcpError) -> ToolResult {
         err @ GbMcpError::OperationOutcomeUnknown { .. } => {
             error_payload("outcome_unknown", err.to_string(), None)
         }
+        err @ GbMcpError::Authentication(_) => {
+            error_payload("authentication_error", err.to_string(), None)
+        }
         GbMcpError::Config(message) => error_payload("config_error", message, None),
         GbMcpError::Api { status, message } => error_payload(
             "api_error",

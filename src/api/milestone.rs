@@ -2,7 +2,6 @@ use crate::error::{GbMcpError, Result};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 
 use super::client::GitBucketClient;
-use super::web::GitBucketWebSession;
 
 impl GitBucketClient {
     /// List milestones for a repository.
@@ -56,24 +55,14 @@ impl GitBucketClient {
         super::url_safety::repository(owner, repo)?;
         self.operation_route(super::profile::Operation::MilestoneDelete);
         self.delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
-            .await
-    }
-
-    pub(super) async fn milestone_web_session(&self) -> Result<GitBucketWebSession> {
-        let credentials = self.web_credentials().ok_or_else(|| {
-            GbMcpError::Other(
-                "The selected standard milestone route requires GITBUCKET_USERNAME and GITBUCKET_PASSWORD."
-                    .to_string(),
-            )
-        })?;
-
-        GitBucketWebSession::sign_in_with_http_settings(
-            self.base_url(),
-            &credentials.username,
-            &credentials.password,
-            self.allow_invalid_certs(),
-            self.http_settings().clone(),
-        )
-        .await
+            .await?;
+        match self.get_milestone(owner, repo, number).await {
+            Err(GbMcpError::Api { status: 404, .. }) => Ok(()),
+            Ok(_) => Err(GbMcpError::OperationNotVerified {
+                operation: "Milestone deletion",
+                fields: vec!["existence"],
+            }),
+            Err(error) => Err(super::http::unknown("Milestone deletion", error)),
+        }
     }
 }
