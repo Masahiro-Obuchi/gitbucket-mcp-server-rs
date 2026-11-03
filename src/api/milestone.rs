@@ -1,7 +1,8 @@
 use crate::error::{GbMcpError, Result};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 
-use super::client::GitBucketClient;
+use super::{client::GitBucketClient, outcome::Operation};
+use crate::models::operation::{OperationTarget, ResourceKind};
 
 impl GitBucketClient {
     /// List milestones for a repository.
@@ -53,16 +54,25 @@ impl GitBucketClient {
     /// Delete a milestone.
     pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
         super::url_safety::repository(owner, repo)?;
-        self.operation_route(super::profile::Operation::MilestoneDelete);
-        self.delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
-            .await?;
-        match self.get_milestone(owner, repo, number).await {
-            Err(GbMcpError::Api { status: 404, .. }) => Ok(()),
-            Ok(_) => Err(GbMcpError::OperationNotVerified {
-                operation: "Milestone deletion",
-                fields: vec!["existence"],
-            }),
-            Err(error) => Err(super::http::unknown("Milestone deletion", error)),
-        }
+        let route = self.operation_route(super::profile::Operation::MilestoneDelete);
+        let operation = Operation::new(
+            "delete_milestone",
+            OperationTarget::new(ResourceKind::Milestone, owner, repo).numbered(number),
+            route,
+            &[("existence", true)],
+        );
+        operation
+            .run(async {
+                self.delete(&format!("/repos/{owner}/{repo}/milestones/{number}"))
+                    .await?;
+                match self.get_milestone(owner, repo, number).await {
+                    Err(GbMcpError::Api { status: 404, .. }) => {
+                        operation.verify(&[("existence", true)])
+                    }
+                    Ok(_) => operation.verify(&[("existence", false)]),
+                    Err(error) => Err(error),
+                }
+            })
+            .await
     }
 }

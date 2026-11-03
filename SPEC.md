@@ -77,9 +77,9 @@ Requirements:
 - Both profiles return REST errors without attempting a secondary write. There are no legacy modes, version-specific aliases, PR-to-Issue write paths or 404-triggered web writes.
 - The standard profile selects REST for PR updates, label rename, ordinary milestone writes and deletion. Ordinary Issue updates use Web directly. Same-name label color changes use Web to avoid the verified REST self-name collision; restricted milestone titles select Web directly.
 - Label create/update request types and MCP schemas omit description and reject unknown fields. A description argument, including null, empty strings or combined changes, is an invalid-parameters error before HTTP. Direct JSON deserialization of the Rust request models also rejects it.
-- Label writes verify response name/color. No-op updates avoid writes, failed verification reads are unknown outcomes, and mismatches return `update_not_verified`. Reads/writes are not atomic.
-- All operations use the shared `OperationNotVerified` / `OperationOutcomeUnknown` errors. PR-only error variants and internal Issue stages used solely by the old PR fallback have been removed.
-- Web sessions verify the PAT, configured username and cookie-only `/api/v3/user` login agree, including a cookie identity recheck before each resource write. There is no bypass/impersonation setting. Richer partial-application data remains separate work.
+- Label writes verify response name/color. No-op updates avoid writes, failed verification reads are unknown outcomes, and mismatches return `operation_not_verified`. Reads/writes are not atomic.
+- Write failures use `OperationFailed` with shared operation/field/target outcome models. The old `OperationNotVerified` / `OperationOutcomeUnknown` variants and their MCP kinds are removed without aliases.
+- Web sessions verify the PAT, configured username and cookie-only `/api/v3/user` login agree, including a cookie identity recheck before each resource write. There is no bypass/impersonation setting. Operation services record field observations independently of transport errors.
 
 ### Verified Web sessions and responses
 
@@ -89,8 +89,21 @@ Requirements:
 - HTML interpretation lives in `src/api/web_html.rs` using an HTML5 parser. Label IDs must come from a unique numeric `label-row-*` table row with an exact decoded `labels` query on the same repository's issues URL. Unicode, HTML entities and URL encoding are decoded structurally. Missing, ambiguous and foreign rows fail before label mutation.
 - Authentication form actions are resolved against the actual response URL and matched to authentication endpoints at the configured web root; authentication-related words in repository names, context paths or query values do not classify ordinary forms as sign-in forms. Repository targets are validated before cookie identity requests.
 - Issue title/body forms require the expected `_data/{number}` redirect and a JSON object with string `title` and `content`. Milestone writes require their list redirect and recognized list structure. Label writes require the expected row ID/name. Login forms, nonempty validation markers and unexpected pages are never successful write responses.
-- Web Issue updates verify the issue number and requested content via REST after each content write, then all requested fields at completion. A mismatch stops later writes with `update_not_verified`. Label/milestone write verification remains in their service modules.
-- Label and milestone deletion use REST and verify a subsequent GET returns 404. A remaining object is `update_not_verified`; an unreadable result is `outcome_unknown`. The observation is account-relative, and concurrent changes are possible; no atomicity or rollback is guaranteed.
+- Web Issue updates verify the issue number and requested content via REST after each content write, then all requested fields at completion. Web milestone content is verified before attempting its subsequent state change. A mismatch stops later writes with `operation_not_verified` or `operation_partial`. Label/milestone write verification remains in their service modules.
+- Label and milestone deletion use REST and verify a subsequent GET returns 404. A remaining object is `operation_not_verified`; an unreadable result is `operation_unknown`, with target and `existence` field information. The observation is account-relative, and concurrent changes are possible; no atomicity or rollback is guaranteed.
+
+### Structured operation outcomes
+
+`src/models/operation.rs` owns the shared `OperationOutcome`, `OperationTarget` and field types. `src/api/outcome.rs` records service progress; the transport only marks actual mutation attempts and definite rejections. MCP conversion belongs to `src/tools/response.rs`. API services do not return rmcp types.
+
+- Error payloads contain `kind`, `message`, optional HTTP `status`, `operation` and `cause`. The cause retains its own safe kind/message/status. Only successful tool results have `is_error=false`.
+- `operation_partial` means a requested field was verified and remaining observations are incomplete. `operation_unknown` means write/completion could not be established. `operation_not_verified` means observed values mismatched without verified partial progress. `operation_not_applied` means a definite REST rejection. An unchanged preserved value alone is not partial application; mismatches are not proof of no mutation or concurrent-edit conflicts.
+- Operation fields contain `field`, `intent` (`requested`/`preserved`) and `status` (`not_attempted`/`unknown`/`rejected`/`verified`/`unchanged`/`mismatched`). Verified observations may precede later reads/writes and are not an atomic snapshot or causal proof. A later observation supersedes a previous one. An unexpected resource number invalidates field verification instead of matching fields from another object.
+- Operation status also has internal `verified`; it is never exposed as a successful error. Original resource payloads are preserved on successful tool calls. Definite REST rejection means HTTP 4xx except 408; a rejected later attempt does not erase earlier verified fields.
+- Locators carry resource kind, owner/repository, available number or label name/requested name, optional comment parent number, creation candidates or unexpected observed number. They omit secrets, URL credentials, titles and bodies. Unknown owner/creation IDs remain absent. Candidate IDs do not assert which resource was created.
+- Pre-write validation, preparation and authentication errors retain their original kinds. After a mutation begins, the operation service packages failures with all available progress. The MCP per-call write tracker retains the same progress handle when it drops the service future on timeout/cancellation; no background writes, automatic rollback or retries are started.
+- Built-in writes have operation/target context. Detailed field evidence covers Issue/PR updates, label/milestone writes and deletion. Remaining create/comment/merge operations and low-level/custom adapters may have no field evidence. Custom adapters without tracking retain conservative unknown outcomes with no invented target, route or verified field.
+- The old two operation error variants and `outcome_unknown`/`update_not_verified` kinds are removed. Consumers must use the new outcome model; no compatibility aliases are supported.
 
 ## 5. GitBucket API Contract
 
@@ -172,8 +185,8 @@ description whitespace; reject requests that cannot be represented before a
 web write. State-only web changes do not submit the content form. Round-trip
 date verification also detects differing web-server timezone interpretation.
 
-Failures after a write or during its follow-up read are outcome_unknown;
-mismatching returned values are update_not_verified. Creation results must
+Failures after a write or during its follow-up read return `operation_unknown` or `operation_partial`;
+mismatching observations return `operation_not_verified` or `operation_partial`. Creation results must
 identify a newly observed ID rather than an existing same-title milestone.
 Concurrent-edit atomicity is not guaranteed. HTTP 403/422 rejections do not
 trigger fallback, and uncertain responses do not trigger automatic replay.
@@ -194,14 +207,14 @@ preserved. State/base-only changes do not resend content. Base branches are
 validated before the PATCH. Successful responses must match requested fields
 and any content sent to preserve an omitted field.
 
-`update_not_verified` and `outcome_unknown` are structured tool errors with
-`is_error=true`. They do not imply that no change was applied, and must not cause
-an automatic retry. This workflow does not provide atomic concurrent-edit
+`operation_not_verified`, `operation_partial`, `operation_not_applied` and `operation_unknown` are structured tool errors with
+`is_error=true`. Partial, unknown and unverified outcomes do not imply that no change was applied;
+not-applied outcomes identify definite REST rejection. None of these errors triggers an automatic retry. This workflow does not provide atomic concurrent-edit
 protection. PR writes use only their dedicated REST endpoint.
 Web errors retain the operation context: preparation and authentication
 failures retain their original error; failed reads after a web write return
-`outcome_unknown` regardless of HTTP status. A later failure in a sequence of
-web writes also returns `outcome_unknown` because earlier changes may persist.
+`operation_unknown` or `operation_partial` regardless of HTTP status. A later failure in a sequence of
+web writes retains verified field observations and can return `operation_partial`.
 
 ### 6.6 User Tools
 
@@ -238,8 +251,8 @@ Behavior:
 
 - Startup configuration failures stop the process.
 - Non-success GitBucket responses, including status wrappers, use the HTTP status and a standard reason. Raw error bodies are not returned or read for HTTP failures. Web failures also omit error bodies. HTTP diagnostics expose a failure category without URLs; JSON diagnostics expose line/column without values and do not expose the raw decoder error through the standard source chain. Requests use shared REST/web connection (10 s), request including body (30 s), explicit PR merge (120 s), and MCP tool (180 s) budgets. Success bodies are streamed with JSON 8 MiB / HTML 4 MiB limits; headers alone do not determine safety. Env-only overrides and allowed ranges are specified in README. No retries are enabled.
-- `timeout_error`, `cancelled_error`, and `response_too_large` are additional read/pre-write error kinds. After a mutation starts, transport/decoding/size failures and HTTP 408/5xx are `outcome_unknown`; REST 4xx other than 408 remain definite API rejections. Prior successful writes remain potentially applied even when a later read fails.
-- REST writes do not follow redirects: HTTP 3xx responses are `outcome_unknown`, preserving the original status without replaying a write or classifying a redirected GET's 4xx as a definite write rejection. Web writes follow only the verified operation-specific read redirect contract above. REST reads and web sign-in redirects remain constrained to the configured origin and context path.
+- `timeout_error`, `cancelled_error`, and `response_too_large` are additional read/pre-write error kinds. After a mutation starts, transport/decoding/size failures and HTTP 408/5xx are `operation_unknown` or `operation_partial`; REST 4xx other than 408 remain definite API rejections, reported by built-in write services as `operation_not_applied` with an `api_error` cause. Prior successful writes remain potentially applied even when a later read fails.
+- REST writes do not follow redirects: HTTP 3xx responses are `operation_unknown`, preserving the original status without replaying a write or classifying a redirected GET's 4xx as a definite write rejection. Web writes follow only the verified operation-specific read redirect contract above. REST reads and web sign-in redirects remain constrained to the configured origin and context path.
 - The MCP dispatcher scopes write tracking per call and drops work on deadline/cancellation. A completed REST rejection clears only that attempt's marker; previous applied/unknown writes remain recorded. Custom APIs that do not opt into tracking are conservatively treated as potentially writing for non-read tools.
 - Cancellation cannot roll back remote writes, and the MCP client may discard the classified response after sending cancellation. Async deadlines are cooperative, including bounded synchronous decoding/serialization. Limits apply to each response, not aggregate lists or final MCP output; diff-specific limits wait for a diff endpoint.
 - Tool handlers convert internal errors to structured MCP error payloads.

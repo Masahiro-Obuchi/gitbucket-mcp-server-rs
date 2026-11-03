@@ -1,3 +1,4 @@
+use gitbucket_mcp_server::models::operation::OutcomeStatus;
 use gitbucket_mcp_server::{
     api::{client::GitBucketClient, profile::ApiProfile},
     error::GbMcpError,
@@ -212,7 +213,7 @@ async fn authentication_forms_on_resource_responses_remain_errors() {
             assert!(matches!(error, GbMcpError::Authentication(_)));
         } else {
             assert!(
-                matches!(error, GbMcpError::OperationOutcomeUnknown { cause, .. } if matches!(*cause, GbMcpError::Authentication(_)))
+                matches!(error, GbMcpError::OperationFailed { cause, .. } if matches!(*cause, GbMcpError::Authentication(_)))
             );
         }
     }
@@ -351,7 +352,7 @@ async fn credentials_and_form_bodies_are_never_replayed_on_307_or_308() {
             .await;
         assert!(matches!(
             session.edit_issue_title("owner", "repo", 1, "title").await,
-            Err(GbMcpError::OperationOutcomeUnknown { .. })
+            Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
         ));
         assert!(!server
             .received_requests()
@@ -380,7 +381,7 @@ async fn unrelated_or_mutating_redirect_destinations_are_not_fetched() {
             .await;
         assert!(matches!(
             session.edit_issue_title("owner", "repo", 1, "title").await,
-            Err(GbMcpError::OperationOutcomeUnknown { .. })
+            Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
         ));
         let requests = server.received_requests().await.unwrap();
         assert!(requests.iter().all(|r| matches!(
@@ -429,7 +430,9 @@ async fn ignored_issue_write_stops_before_subsequent_fields_and_reports_unverifi
         )
         .await
         .unwrap_err();
-    assert!(matches!(error,GbMcpError::OperationNotVerified{fields,..} if fields==["title"]));
+    assert!(
+        matches!(error,GbMcpError::OperationFailed{outcome,..} if outcome.fields.iter().any(|f| f.field == "title" && f.status == gitbucket_mcp_server::models::operation::FieldStatus::Mismatched))
+    );
     assert!(!server
         .received_requests()
         .await
@@ -490,7 +493,7 @@ async fn session_actor_change_after_title_write_preserves_partial_unknown_withou
                 }
             )
             .await,
-        Err(GbMcpError::OperationOutcomeUnknown { .. })
+        Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Partial
     ));
     assert!(!server
         .received_requests()
@@ -539,11 +542,11 @@ async fn delete_success_is_verified_and_read_failures_are_unknown() {
                 404 => assert!(result.is_ok()),
                 200 => assert!(matches!(
                     result,
-                    Err(GbMcpError::OperationNotVerified { .. })
+                    Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::NotVerified
                 )),
                 _ => assert!(matches!(
                     result,
-                    Err(GbMcpError::OperationOutcomeUnknown { .. })
+                    Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
                 )),
             }
             assert_eq!(server.received_requests().await.unwrap().len(), 2);

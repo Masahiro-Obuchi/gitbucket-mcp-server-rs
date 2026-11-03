@@ -35,15 +35,9 @@ pub enum GbMcpError {
     #[error("{0}")]
     Unsupported(String),
 
-    #[error("{operation} could not be verified for fields {fields:?}. Changes may already have been applied; inspect the resource before retrying.")]
-    OperationNotVerified {
-        operation: &'static str,
-        fields: Vec<&'static str>,
-    },
-
-    #[error("{operation} outcome is unknown. Changes may already have been applied; inspect the resource before retrying. Cause: {cause}")]
-    OperationOutcomeUnknown {
-        operation: &'static str,
+    #[error("{outcome}. Cause: {cause}")]
+    OperationFailed {
+        outcome: Box<crate::models::operation::OperationOutcome>,
         #[source]
         cause: Box<GbMcpError>,
     },

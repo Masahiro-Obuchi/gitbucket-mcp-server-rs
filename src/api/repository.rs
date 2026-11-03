@@ -1,7 +1,8 @@
 use crate::error::Result;
 use crate::models::repository::{Branch, CreateRepository, Repository};
 
-use super::client::GitBucketClient;
+use super::{client::GitBucketClient, outcome::Operation, profile::Route};
+use crate::models::operation::{OperationTarget, ResourceKind};
 
 impl GitBucketClient {
     /// List repositories for a user. Falls back to org endpoint on 404.
@@ -28,17 +29,30 @@ impl GitBucketClient {
 
     /// Create a new repository for the authenticated user.
     pub async fn create_repository(&self, body: &CreateRepository) -> Result<Repository> {
-        self.post("/user/repos", body).await
+        let operation = Operation::new(
+            "create_repository",
+            OperationTarget::new(ResourceKind::Repository, "", &body.name),
+            Route::Rest,
+            &[],
+        );
+        operation.run(self.post("/user/repos", body)).await
     }
 
     /// Fork a repository.
     pub async fn fork_repository(&self, owner: &str, repo: &str) -> Result<Repository> {
         super::url_safety::repository(owner, repo)?;
-        self.post::<Repository, serde_json::Value>(
-            &format!("/repos/{}/{}/forks", owner, repo),
-            &serde_json::json!({}),
-        )
-        .await
+        let operation = Operation::new(
+            "fork_repository",
+            OperationTarget::new(ResourceKind::Repository, "", repo),
+            Route::Rest,
+            &[],
+        );
+        operation
+            .run(self.post::<Repository, serde_json::Value>(
+                &format!("/repos/{owner}/{repo}/forks"),
+                &serde_json::json!({}),
+            ))
+            .await
     }
 
     /// List branches for a repository.

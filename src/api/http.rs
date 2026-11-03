@@ -5,7 +5,7 @@ use std::{
     future::Future,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -137,12 +137,25 @@ pub(crate) async fn bounded_text(
 pub(crate) struct WriteTracker {
     possible: AtomicBool,
     in_flight: AtomicUsize,
+    operation: Mutex<Option<super::outcome::Operation>>,
 }
 impl WriteTracker {
     pub(crate) fn new(untracked_write: bool) -> Self {
         Self {
             possible: AtomicBool::new(untracked_write),
             in_flight: AtomicUsize::new(0),
+            operation: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn attach(&self, operation: super::outcome::Operation) {
+        *self.operation.lock().expect("call progress") = Some(operation);
+    }
+
+    pub(crate) fn failure(&self, error: GbMcpError) -> GbMcpError {
+        match self.operation.lock().expect("call progress").clone() {
+            Some(operation) => operation.failure(error),
+            None => unknown("tool_execution", error),
         }
     }
 }
@@ -179,6 +192,7 @@ pub async fn mutation<T>(
     operation: &'static str,
     future: impl Future<Output = Result<T>>,
 ) -> Result<T> {
+    let mut step = super::outcome::attempt();
     let tracker = WRITE_POSSIBLE.try_with(Arc::clone).ok();
     if let Some(state) = &tracker {
         state.in_flight.fetch_add(1, Ordering::Relaxed);
@@ -191,6 +205,9 @@ pub async fn mutation<T>(
     let rejected = matches!(&result, Err(GbMcpError::Api {status:400..=499, ..}) if !matches!(&result, Err(GbMcpError::Api {status:408, ..})));
     guard.rejected = rejected;
     if rejected {
+        if let Some(step) = step.as_mut() {
+            step.rejected();
+        }
         result
     } else {
         result.map_err(|error| unknown(operation, error))
@@ -198,13 +215,7 @@ pub async fn mutation<T>(
 }
 
 pub(crate) fn unknown(operation: &'static str, error: GbMcpError) -> GbMcpError {
-    match error {
-        err @ GbMcpError::OperationOutcomeUnknown { .. } => err,
-        cause => GbMcpError::OperationOutcomeUnknown {
-            operation,
-            cause: Box::new(cause),
-        },
-    }
+    super::outcome::unknown(operation, error)
 }
 
 #[cfg(test)]

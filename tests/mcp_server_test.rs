@@ -1184,6 +1184,8 @@ async fn test_mcp_call_tool_update_milestone_rejects_empty_change_set() {
             message: "at least one of title, description, due_on, or state must be provided"
                 .to_string(),
             status: None,
+            operation: None,
+            cause: None,
         }
     );
     assert!(api.calls().is_empty());
@@ -1419,6 +1421,8 @@ async fn test_mcp_call_tool_returns_validation_error_for_blank_username() {
             kind: "validation_error".to_string(),
             message: "username must not be empty".to_string(),
             status: None,
+            operation: None,
+            cause: None,
         }
     );
     assert!(api.calls().is_empty());
@@ -1453,6 +1457,8 @@ async fn test_mcp_call_tool_rejects_invalid_label_color_before_api_call() {
             kind: "validation_error".to_string(),
             message: "color must be a 6-digit hex value like ff0000".to_string(),
             status: None,
+            operation: None,
+            cause: None,
         }
     );
     assert!(api.calls().is_empty());
@@ -1486,6 +1492,8 @@ async fn test_mcp_call_tool_returns_validation_error_for_empty_issue_update() {
             kind: "validation_error".to_string(),
             message: "at least one of state, title, or body must be provided".to_string(),
             status: None,
+            operation: None,
+            cause: None,
         }
     );
     assert!(api.calls().is_empty());
@@ -1519,6 +1527,8 @@ async fn test_mcp_call_tool_returns_validation_error_for_empty_pull_request_upda
             kind: "validation_error".to_string(),
             message: "at least one of state, title, body, or base must be provided".to_string(),
             status: None,
+            operation: None,
+            cause: None,
         }
     );
     assert!(api.calls().is_empty());
@@ -1552,6 +1562,8 @@ async fn test_mcp_call_tool_rejects_invalid_state_before_api_call() {
             kind: "validation_error".to_string(),
             message: "state must be one of: open, closed, all".to_string(),
             status: None,
+            operation: None,
+            cause: None,
         }
     );
     assert!(api.calls().is_empty());

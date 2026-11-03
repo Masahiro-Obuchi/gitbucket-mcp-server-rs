@@ -9,6 +9,7 @@ This repository uses layered tests so failures can be isolated quickly:
 - `tests/milestone_api_test.rs` models GitBucket's replacement-style PATCH and
   verifies field preservation, date normalization, explicit clears, web date
   constraints, ignored responses, and operation-stage failures.
+- `tests/operation_outcome_test.rs` verifies partial progress, target/route/cause information and cancellation/deadline preservation over actual HTTP mocks and MCP dispatch.
 - `tests/web_session_test.rs` covers verified PAT/cookie identities, expired sessions, strict redirects, partial updates and deletion verification.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label create/read/update/delete lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge coverage.
@@ -44,13 +45,23 @@ Whitespace-padded label regressions model the web form trimming a name during a 
 
 Regression tests for deleted legacy write paths have been removed. The remaining standard web tests select the supported contract directly, without rejected REST-write fixtures. Label fixtures no longer claim standard description persistence. The label lifecycle E2E verifies a same-name color update and confirms that a rejected combined description/name/color request leaves the stored label unchanged.
 
+## Operation Outcome Regression Tests
+
+```bash
+cargo test --test operation_outcome_test
+```
+
+Stateful HTTP fixtures verify Issue title success followed by body failure, PR partial HTTP 200 responses, wrong response identity, preserved-field intent, milestone content validation before state changes, and ambiguous creation candidate IDs. MCP dispatch tests interrupt a later Issue field with both a deadline and cancellation and verify that earlier field evidence survives while later writes stop. REST 400/401/403/404/409/422 rejections remain distinct from 408/5xx uncertainty, with safe nested causes and no replay. Error payloads must not contain form secrets, changed titles/bodies or raw server error text.
+
+Existing transport/service regressions assert the new operation status explicitly, including unverified responses, expired authentication before the first write, verification read failures and deletion checks. Successful tool payloads are checked by the existing MCP suite. Live verification passed all 22 E2Es on each official GitBucket 4.44.0 and 4.48.0 image using the standard profile.
+
 ## Web Session Regression Tests
 
 ```bash
 cargo test --test web_session_test
 ```
 
-Mocks assert that a configured account mismatch prevents password submission, cookie-only identity checks receive no PAT header, and differing/expired sessions prevent resource writes. They cover anonymous/SSO HTTP 200 pages, Jetty URL session stripping, 307/308 without credential/form replay, rejection of unrelated or mutating redirect destinations, ignored Issue writes stopping later fields, and account changes after a first applied field. Authentication expiry before the first write remains `authentication_error` across Issue and milestone services, with a structured MCP error; a prior write preserves `outcome_unknown`.
+Mocks assert that a configured account mismatch prevents password submission, cookie-only identity checks receive no PAT header, and differing/expired sessions prevent resource writes. They cover anonymous/SSO HTTP 200 pages, Jetty URL session stripping, 307/308 without credential/form replay, rejection of unrelated or mutating redirect destinations, ignored Issue writes stopping later fields, and account changes after a first applied field. Authentication expiry before the first write remains `authentication_error` across Issue and milestone services, with a structured MCP error; a prior verified field preserves `operation_partial` when a later field is not attempted.
 
 HTML parser unit tests cover Unicode, encoded query values, HTML entities, full-name matching, numeric row boundaries, duplicate/foreign label rows, sign-in forms and nonempty validation markers. Deletion regressions check a successful DELETE followed by present, absent, forbidden or failed GET results without replay. Existing service tests cover HTTP 200 validation pages and ambiguity with existing same-title milestones.
 

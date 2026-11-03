@@ -1,3 +1,4 @@
+use gitbucket_mcp_server::models::operation::OutcomeStatus;
 #[allow(dead_code)]
 mod common;
 use gitbucket_mcp_server::{
@@ -40,7 +41,7 @@ fn client(base: &str, settings: HttpSettings) -> GitBucketClient {
 }
 fn cause(error: &GbMcpError) -> &GbMcpError {
     match error {
-        GbMcpError::OperationOutcomeUnknown { cause, .. } => cause.as_ref(),
+        GbMcpError::OperationFailed { cause, .. } => cause.as_ref(),
         error => error,
     }
 }
@@ -191,7 +192,9 @@ async fn mutations_with_timeout_disconnect_invalid_json_or_oversize_are_unknown_
             .post::<Value, _>(&format!("/{name}"), &json!({"saved":true}))
             .await
             .unwrap_err();
-        assert!(matches!(error, GbMcpError::OperationOutcomeUnknown { .. }));
+        assert!(
+            matches!(error, GbMcpError::OperationFailed { ref outcome, .. } if outcome.status == OutcomeStatus::Unknown)
+        );
         match name {
             "timeout" => assert!(matches!(cause(&error), GbMcpError::Timeout { .. })),
             "json" => assert!(matches!(cause(&error), GbMcpError::Json(_))),
@@ -208,7 +211,9 @@ async fn mutations_with_timeout_disconnect_invalid_json_or_oversize_are_unknown_
         .post::<Value, _>("/saved", &json!({"saved":true}))
         .await
         .unwrap_err();
-    assert!(matches!(error, GbMcpError::OperationOutcomeUnknown { .. }));
+    assert!(
+        matches!(error, GbMcpError::OperationFailed { ref outcome, .. } if outcome.status == OutcomeStatus::Unknown)
+    );
     task.await.unwrap();
     assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
@@ -249,7 +254,7 @@ async fn rest_mutations_do_not_follow_redirects_or_replay_writes() {
             };
             let error = result.unwrap_err();
             assert!(
-                matches!(error, GbMcpError::OperationOutcomeUnknown { .. }),
+                matches!(error, GbMcpError::OperationFailed { ref outcome, .. } if outcome.status == OutcomeStatus::Unknown),
                 "{verb} {status}: {error:?}"
             );
             assert!(
@@ -314,7 +319,7 @@ async fn redirected_rest_write_does_not_enter_issue_fallback() {
     assert_eq!(result.is_error, Some(true));
     assert_eq!(
         result.structured_content.unwrap()["kind"],
-        "outcome_unknown"
+        "operation_unknown"
     );
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
     peer.cancel().await.unwrap();
@@ -418,7 +423,7 @@ async fn web_uses_the_same_deadlines_and_bounded_html_for_login_reads_and_writes
         .await;
     assert!(matches!(
         session.edit_issue_title("owner", "repo", 1, "title").await,
-        Err(GbMcpError::OperationOutcomeUnknown { .. })
+        Err(GbMcpError::OperationFailed { ref outcome, .. }) if outcome.status == OutcomeStatus::Unknown
     ));
     Mock::given(method("GET"))
         .and(path("/owner/repo/issues/milestones/1/open"))
@@ -430,7 +435,7 @@ async fn web_uses_the_same_deadlines_and_bounded_html_for_login_reads_and_writes
         session
             .update_milestone_state("owner", "repo", 1, "open")
             .await,
-        Err(GbMcpError::OperationOutcomeUnknown { .. })
+        Err(GbMcpError::OperationFailed { ref outcome, .. }) if outcome.status == OutcomeStatus::Unknown
     ));
     let server = MockServer::start().await;
     common::web_identity(&server, "", "user").await;
@@ -545,7 +550,7 @@ async fn whole_tool_write_timeout_is_unknown_and_request_tracking_is_isolated() 
     let (write, read) = tokio::join!(protocol.call_tool(write), protocol.call_tool(read));
     assert_eq!(
         write.unwrap().structured_content.unwrap()["kind"],
-        "outcome_unknown"
+        "operation_unknown"
     );
     assert_eq!(
         read.unwrap().structured_content.unwrap()["kind"],
@@ -700,7 +705,9 @@ async fn successful_web_write_then_failed_verification_is_unknown() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(error, GbMcpError::OperationOutcomeUnknown { .. }));
+    assert!(
+        matches!(error, GbMcpError::OperationFailed { ref outcome, .. } if outcome.status == OutcomeStatus::Unknown)
+    );
     assert!(matches!(cause(&error), GbMcpError::Timeout { .. }));
 }
 
@@ -749,7 +756,7 @@ async fn server_classifies_cancelled_write_as_unknown_before_client_discards_res
         .unwrap();
     assert_eq!(
         result.structured_content.unwrap()["kind"],
-        "outcome_unknown"
+        "operation_unknown"
     );
     assert_eq!(http.received_requests().await.unwrap().len(), 1);
     client.cancel().await.unwrap();

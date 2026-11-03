@@ -115,7 +115,7 @@ Owner/user names accept ASCII letters, digits, `-`, `_` and `.`; repository name
 Low-level Rust POST calls with query parameters use `post_with_query(path, query, body)`.
 The path remains free of query syntax; query keys and values are encoded separately.
 
-Debug output redacts configuration and credentials. API errors report the HTTP status and a standard reason rather than the server's raw error body, which can echo credentials or private content. HTTP diagnostics omit request URLs and JSON decoding diagnostics omit values, including when traversing the standard error source chain. Existing MCP error kinds and status fields are preserved.
+Debug output redacts configuration and credentials. API errors report the HTTP status and a standard reason rather than the server's raw error body, which can echo credentials or private content. HTTP diagnostics omit request URLs and JSON decoding diagnostics omit values, including when traversing the standard error source chain. Read/preparation error kinds are retained. Write failures include operation outcomes and a structured cause as described below.
 
 ### Environment Variables
 
@@ -167,9 +167,49 @@ Web requests do not automatically follow redirects. Sign-in follows recognized l
 
 Authentication form actions are resolved against the response URL and matched at the configured web root. Repository names such as `oauth-tools` and context paths such as `/oidc-context` remain valid. Invalid repository targets are rejected before web identity requests.
 
-Web Issue updates verify requested fields through REST after content writes and at completion, stopping before subsequent fields when verification fails. Label and milestone writes also verify their results; deletion verifies a follow-up REST 404. These reads observe the configured account's view and do not provide atomic concurrency protection. `authentication_error` before the first resource write means authentication could not be established; failures after a write can return `outcome_unknown`, and mismatched fields return `update_not_verified`. Inspect the resource before retrying either uncertain result.
+Web Issue updates verify requested fields through REST after content writes and at completion, stopping before subsequent fields when verification fails. Label and milestone writes also verify their results; deletion verifies a follow-up REST 404. These reads observe the configured account's view and do not provide atomic concurrency protection. `authentication_error` before the first resource write means authentication could not be established; failures after a write carry a structured operation outcome, including partial progress. Inspect that outcome and the resource before retrying.
 
 The label constraint is visible in the upstream [4.44.0 label controller](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiIssueLabelControllerBase.scala) and [4.48.0 label controller](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiIssueLabelControllerBase.scala); target-name lookup collides with the label being edited. It is handled as a known contract, without inferring a route from an arbitrary 422.
+
+### Write outcomes
+
+A failed write returns `is_error=true` with one of these kinds:
+
+| Kind | Meaning |
+| --- | --- |
+| `operation_partial` | At least one requested field was verified, while other fields are mismatched, uncertain, rejected or not attempted. |
+| `operation_unknown` | An attempted write or its verification could not be completed. |
+| `operation_not_verified` | A response/read was available but did not match the requested values, without a verified partial result. This does not prove the write never happened. |
+| `operation_not_applied` | The attempted REST write was definitively rejected. The original API error is in `cause`. |
+
+The `operation` object gives the name, REST/Web route, target locators and per-field results. Fields have an `intent` of `requested` or `preserved` and a `status` of `verified`, `unchanged`, `mismatched`, `unknown`, `rejected` or `not_attempted`. `verified` means the value matched an observation during this call; `unchanged` means it matched without a write to that field. Neither proves that this operation caused the value or protects against concurrent edits. Preserved fields matching alone do not make a partial result.
+
+For example, an Issue title verified before a body timeout returns:
+
+```json
+{
+  "kind": "operation_partial",
+  "message": "update_issue Partial; inspect the resource before retrying. Cause: Time budget exceeded during MCP tool execution",
+  "operation": {
+    "name": "update_issue",
+    "status": "partial",
+    "route": "web",
+    "target": {"resource": "issue", "owner": "owner", "repo": "repo", "number": 1},
+    "fields": [
+      {"field": "title", "intent": "requested", "status": "verified"},
+      {"field": "body", "intent": "requested", "status": "unknown"},
+      {"field": "state", "intent": "requested", "status": "not_attempted"}
+    ]
+  },
+  "cause": {"kind": "timeout_error", "message": "Time budget exceeded during MCP tool execution"}
+}
+```
+
+Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover Issue/PR updates, label/milestone writes and verified deletion. Other creates, comments and merges can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment targets use `parent_number`; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target.
+
+Pre-write preparation/authentication errors retain their normal error kinds. Low-level Rust helpers and custom adapters without service progress can omit target/route/fields; they remain conservative about uncertain writes. There are no automatic retries or rollbacks. Inspect partial/unknown/unverified results before deciding what to send next, and correct rejected input/permissions before retrying.
+
+This changes the protocol: `outcome_unknown` and `update_not_verified` are removed, with no aliases. Rust callers use `GbMcpError::OperationFailed { outcome, cause }`; the previous two operation error variants are removed. Successful tool payloads and configuration are unchanged.
 
 ### HTTP and tool limits
 
@@ -186,11 +226,11 @@ REST and web sessions share these optional, env-only settings. They are not TOML
 
 Time overrides must be integer seconds from 1 to 86400; response limits must be 1 to 268435456 bytes. Invalid settings fail startup without echoing the supplied value. The earliest applicable timeout wins: a shorter tool budget also limits a long merge or many individually valid requests. Read and write requests are not automatically retried.
 
-Bodies are limited while streaming, even without `Content-Length`. API error bodies remain unread and are summarized by status. An oversized read returns `response_too_large`; a timed-out read returns `timeout_error`. A mutation whose response times out, disconnects, cannot be decoded or exceeds the limit returns `outcome_unknown`, since the server may already have saved it. Definite REST rejections (HTTP 4xx except 408) retain `api_error`. Inspect the target before retrying an unknown outcome.
+Bodies are limited while streaming, even without `Content-Length`. API error bodies remain unread and are summarized by status. An oversized read returns `response_too_large`; a timed-out read returns `timeout_error`. A mutation whose response times out, disconnects, cannot be decoded or exceeds the limit returns `operation_unknown` or `operation_partial`, since the server may already have saved it. Definite REST rejections (HTTP 4xx except 408) return `operation_not_applied` with an `api_error` cause and the original status. Low-level Rust HTTP helpers retain API rejections as `GbMcpError::Api`. Inspect the target before retrying an unknown outcome.
 
-REST writes stop at HTTP redirects and return `outcome_unknown` with the original 3xx status. This prevents resubmitting a write at a redirect target or treating a redirected read's failure as rejection of an already saved write. REST reads and web sessions follow redirects within the configured GitBucket origin and context path.
+REST writes stop at HTTP redirects and return `operation_unknown` with the original 3xx status. This prevents resubmitting a write at a redirect target or treating a redirected read's failure as rejection of an already saved write. REST reads follow safe redirects within the configured GitBucket origin and context path; web writes follow only their known read destinations described above.
 
-MCP cancellation stops further local work but cannot undo a remote write. The server classifies interrupted reads as `cancelled_error` and interrupted writes as `outcome_unknown`; some MCP clients (including rmcp) discard a cancelled request's later response and surface their own cancellation instead. Inspect any possibly submitted write before retrying in that case as well.
+MCP cancellation stops further local work but cannot undo a remote write. The server classifies interrupted reads as `cancelled_error` and interrupted writes as `operation_unknown` or `operation_partial`; some MCP clients (including rmcp) discard a cancelled request's later response and surface their own cancellation instead. Inspect any possibly submitted write before retrying in that case as well.
 
 These are per-response byte limits and cooperative async time limits, not a total memory cap or a hard CPU deadline. Synchronous decoding/serialization cannot be preempted. Aggregate list/output limits are separate work; no diff endpoint or separate diff limit is introduced here.
 
@@ -411,8 +451,8 @@ State-only web updates skip the content form and preserve an existing due time.
 On a server whose web form interprets dates in a non-UTC timezone, round-trip
 verification may fail; inspect the milestone rather than repeating the write.
 
-Create/update responses are verified, and a failed post-write read returns
-`outcome_unknown`. Unverified values return `update_not_verified`. A web create
+Create/update responses are verified, and failed post-write reads or mismatched values return
+`operation_unknown`, `operation_not_verified` or `operation_partial` with field observations. A web create
 must identify a new milestone ID instead of returning a pre-existing same-title
 milestone. These are read/modify/write operations, not atomic protection against
 concurrent edits. Operation routes follow the API profile above.
@@ -435,14 +475,14 @@ sent unchanged; use `body: ""` to clear it. State-only and base-only updates do
 not resend title/body. A supplied base branch is checked before updating.
 
 The response is checked against the requested fields and any preserved content.
-An unverified update returns a structured `update_not_verified` error. A failed
-response after a write may return `outcome_unknown`: inspect the PR before
+An unverified update returns `operation_not_verified` or `operation_partial`, with field observations. A failed
+response after a write may return `operation_unknown`: inspect the PR before
 retrying, because changes may already have been applied. Writes are not
 automatically retried. Fetching and updating are separate requests, so this does
 not guarantee protection against concurrent edits by other users.
 
 For standard Issue web updates, failures while reading the issue after a write also
-return `outcome_unknown`, including HTTP 403/404 responses. Failures before a
+return `operation_unknown` or `operation_partial`, including HTTP 403/404 responses. Failures before a
 fallback write, such as missing web credentials or sign-in failure, retain their
 original error.
 
@@ -482,7 +522,7 @@ during retrieval can cause overlapping pages, which are reported as an error;
 not every concurrent change can be detected. MCP response-size limits and
 client-controlled continuation are separate follow-up work.
 
-Label creation and updates verify the returned name and color. Web updates read the label again; an ignored change returns `update_not_verified`, and a failed verification read returns `outcome_unknown`. Same-value updates return the current label without writing. Label description is not an accepted create/update argument. Any supplied value is rejected by strict input deserialization before HTTP, including an empty or null value or a request that also changes name/color. No requested field is silently dropped. These operations do not provide atomic protection against concurrent edits.
+Label creation and updates verify the returned name and color. Web updates read the label again; ignored or partly matched changes return `operation_not_verified` or `operation_partial`, and a failed verification read returns an uncertain outcome. Same-value updates return the current label without writing. Label description is not an accepted create/update argument. Any supplied value is rejected by strict input deserialization before HTTP, including an empty or null value or a request that also changes name/color. No requested field is silently dropped. These operations do not provide atomic protection against concurrent edits.
 
 Standard-profile web color changes reject label names containing a comma or leading/trailing whitespace with `unsupported_error` before sign-in. The web form cannot safely preserve those names. The Rust API retains support for whitespace-padded names on REST create/rename operations, and unchanged labels need no web write.
 
