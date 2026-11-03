@@ -54,6 +54,8 @@ Mocks assert that a configured account mismatch prevents password submission, co
 
 HTML parser unit tests cover Unicode, encoded query values, HTML entities, full-name matching, numeric row boundaries, duplicate/foreign label rows, sign-in forms and nonempty validation markers. Deletion regressions check a successful DELETE followed by present, absent, forbidden or failed GET results without replay. Existing service tests cover HTTP 200 validation pages and ambiguity with existing same-title milestones.
 
+Form-action regressions distinguish real authentication endpoints from ordinary forms in repositories such as `oauth-tools` and contexts such as `/oidc-context`, including absolute/relative actions and contexts ending in `/api/v3`. They cover label lookup, label write responses and milestone redirects, while actual sign-in forms still fail for resource reads and writes. Invalid label lookup targets return local input errors without checking even an expired session over HTTP.
+
 The verified web-session implementation passed all 22 E2Es on each official Docker image, GitBucket 4.44.0 and 4.48.0, including Issue title/body/state, same-name label color, restricted milestone titles and verified REST deletion. These runs use disposable password-based accounts. SSO/MFA-only deployments require a supported password session for web routes; they are not covered by those runs.
 
 ## HTTP Budget Regression Tests

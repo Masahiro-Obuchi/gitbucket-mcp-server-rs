@@ -8,10 +8,43 @@ fn selector(value: &str) -> Selector {
     Selector::parse(value).expect("static HTML selector")
 }
 
-pub(super) fn check_page(body: &str) -> Result<()> {
+pub(super) fn check_page(body: &str, page_url: &Url, api_base: &Url) -> Result<()> {
     let html = Html::parse_document(body);
-    if html.select(&selector("input[type=password], form[action*='/signin'], form[action*='/saml'], form[action*='/oauth'], form[action*='/oidc']")).next().is_some() {
-        return Err(GbMcpError::Authentication("GitBucket returned an authentication form instead of the requested response"));
+    let web_path = api_base
+        .path()
+        .strip_suffix("/api/v3")
+        .unwrap_or(api_base.path())
+        .trim_end_matches('/');
+    let prefix = format!("{web_path}/");
+    let authentication_form = html.select(&selector("form[action]")).any(|form| {
+        let Some(target) = form
+            .value()
+            .attr("action")
+            .and_then(|action| page_url.join(action).ok())
+        else {
+            return false;
+        };
+        if target.origin() != api_base.origin() {
+            return false;
+        }
+        let Some(path) = target.path().strip_prefix(&prefix) else {
+            return false;
+        };
+        // Authentication routes belong to the web root. Repository names,
+        // owners and context prefixes may also contain these words.
+        path == "signin"
+            || path.starts_with("signin/")
+            || matches!(path.trim_end_matches('/'), "saml" | "oauth" | "oidc")
+    });
+    if html
+        .select(&selector("input[type=password]"))
+        .next()
+        .is_some()
+        || authentication_form
+    {
+        return Err(GbMcpError::Authentication(
+            "GitBucket returned an authentication form instead of the requested response",
+        ));
     }
     if html
         .select(&selector(
@@ -28,7 +61,6 @@ pub(super) fn check_page(body: &str) -> Result<()> {
 
 /// Parse actual row boundaries and decoded query values, never nearby text.
 pub(super) fn label_id(body: &str, issues_url: &Url, name: &str) -> Result<u64> {
-    check_page(body)?;
     let mut ids = HashSet::new();
     // HTML fragments containing <tr> need a table context in the HTML5 parser.
     for html in [
@@ -80,7 +112,6 @@ pub(super) fn label_id(body: &str, issues_url: &Url, name: &str) -> Result<u64> 
 }
 
 pub(super) fn milestone_list(body: &str, new_url: &Url) -> Result<()> {
-    check_page(body)?;
     let html = Html::parse_document(body);
     if html.select(&selector("a[href]")).any(|e| {
         e.value()
@@ -133,14 +164,65 @@ mod tests {
     }
     #[test]
     fn auth_and_validation_forms_are_not_success_and_errors_do_not_echo_contents() {
+        let api_base = Url::parse("https://example.test/api/v3").unwrap();
+        let page_url = Url::parse("https://example.test/").unwrap();
         for html in [
             r#"<form action='/signin'><input type='password' value='fake-secret'></form>"#,
             r#"<form action='/signin/oidc'><button>SSO</button></form>"#,
             r#"<span id='error-title' class='error'>fake-secret</span>"#,
         ] {
-            let error = check_page(html).unwrap_err();
+            let error = check_page(html, &page_url, &api_base).unwrap_err();
             assert!(!format!("{error:?}").contains("fake-secret"));
         }
-        assert!(check_page("<span id='error-title' class='error'></span>").is_ok());
+        assert!(check_page(
+            "<span id='error-title' class='error'></span>",
+            &page_url,
+            &api_base
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn form_actions_are_resolved_against_the_page_and_matched_at_the_web_root() {
+        for context in ["", "/oidc-context", "/team/api/v3"] {
+            let api_base = Url::parse(&format!("https://example.test{context}/api/v3")).unwrap();
+            let page_url = Url::parse(&format!(
+                "https://example.test{context}/owner/repo/issues/labels"
+            ))
+            .unwrap();
+            for action in [
+                format!("{context}/signin"),
+                format!("{context}/signin/oidc"),
+                format!("{context}/saml"),
+                format!("{context}/oauth"),
+                format!("{context}/oidc/"),
+                format!("https://example.test{context}/signin?redirect=/owner/repo"),
+                "../../../signin".into(),
+            ] {
+                let html = format!("<form action='{action}'>Authenticate</form>");
+                assert!(
+                    matches!(
+                        check_page(&html, &page_url, &api_base),
+                        Err(GbMcpError::Authentication(_))
+                    ),
+                    "{context}: {action}"
+                );
+            }
+            for action in [
+                format!("{context}/owner/oauth-tools/issues/milestones/new"),
+                format!("{context}/oauth/repo/issues/milestones/new"),
+                format!("{context}/saml/repo/issues/new"),
+                format!("{context}/oidc/repo/issues/new"),
+                format!("{context}/signin-tools/repo/issues/new"),
+                format!("{context}/owner/repo/issues/new?next=/signin"),
+                "../milestones/new".into(),
+            ] {
+                let html = format!("<form action='{action}'>Ordinary form</form>");
+                assert!(
+                    check_page(&html, &page_url, &api_base).is_ok(),
+                    "{context}: {action}"
+                );
+            }
+        }
     }
 }

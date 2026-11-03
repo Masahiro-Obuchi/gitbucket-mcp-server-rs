@@ -110,9 +110,10 @@ impl GitBucketWebSession {
                     "GitBucket web sign-in failed or requested an unsupported authentication flow",
                 ));
             }
+            let page_url = response.url().clone();
             let body = http::bounded_text(response, session.http_settings.html_limit_bytes, "HTML")
                 .await?;
-            web_html::check_page(&body)?;
+            web_html::check_page(&body, &page_url, &session.api_base)?;
             session.check_identity().await?;
             return Ok(session);
         }
@@ -211,7 +212,11 @@ impl GitBucketWebSession {
         } else {
             (self.http_settings.html_limit_bytes, "HTML")
         };
+        let page_url = response.url().clone();
         let body = http::bounded_text(response, limit, kind).await?;
+        if !matches!(reply, Reply::IssueData { .. }) {
+            web_html::check_page(&body, &page_url, &self.api_base)?;
+        }
         match reply {
             Reply::IssueData { .. } => {
                 if !redirected {
@@ -253,7 +258,6 @@ impl GitBucketWebSession {
                         "GitBucket did not return the expected issue state redirect".into(),
                     ));
                 }
-                web_html::check_page(&body)?;
             }
         }
         Ok(body)
@@ -449,8 +453,8 @@ impl GitBucketWebSession {
         .await
     }
     pub async fn find_label_id(&self, owner: &str, repo: &str, name: &str) -> Result<u64> {
-        self.check_identity().await?;
         let url = self.repo_url(owner, repo, &["issues", "labels"])?;
+        self.check_identity().await?;
         let response = self
             .client
             .get(url)
@@ -462,8 +466,10 @@ impl GitBucketWebSession {
                 "Could not read authenticated GitBucket label page",
             ));
         }
+        let page_url = response.url().clone();
         let body =
             http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML").await?;
+        web_html::check_page(&body, &page_url, &self.api_base)?;
         web_html::label_id(&body, &self.repo_url(owner, repo, &["issues"])?, name)
     }
     pub async fn edit_label(

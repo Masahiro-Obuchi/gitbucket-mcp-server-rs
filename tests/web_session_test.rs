@@ -17,8 +17,11 @@ use wiremock::{
 };
 
 fn client(server: &MockServer, username: &str) -> GitBucketClient {
+    client_at(server, "", username)
+}
+fn client_at(server: &MockServer, prefix: &str, username: &str) -> GitBucketClient {
     GitBucketClient::new_with_web_auth(
-        &server.uri(),
+        &format!("{}{prefix}/api/v3", server.uri()),
         "fake-pat",
         false,
         Some(username),
@@ -28,9 +31,12 @@ fn client(server: &MockServer, username: &str) -> GitBucketClient {
     .with_api_profile(ApiProfile::Standard)
 }
 async fn auth(server: &MockServer, pat: &str, cookie: &str) {
+    auth_at(server, "", pat, cookie).await;
+}
+async fn auth_at(server: &MockServer, prefix: &str, pat: &str, cookie: &str) {
     let (pat, cookie) = (pat.to_string(), cookie.to_string());
     Mock::given(method("GET"))
-        .and(path("/api/v3/user"))
+        .and(path(format!("{prefix}/api/v3/user")))
         .respond_with(move |request: &wiremock::Request| {
             if request.headers.contains_key("authorization") {
                 ResponseTemplate::new(200).set_body_json(json!({"login":pat}))
@@ -47,21 +53,191 @@ async fn auth(server: &MockServer, pat: &str, cookie: &str) {
         .mount(server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/signin"))
+        .and(path(format!("{prefix}/signin")))
         .respond_with(
             ResponseTemplate::new(303)
-                .insert_header("Location", "/;jsessionid=fake-url-session")
+                .insert_header("Location", format!("{prefix}/;jsessionid=fake-url-session"))
                 .insert_header("Set-Cookie", "JSESSIONID=fake-cookie; Path=/"),
         )
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/"))
+        .and(path(format!("{prefix}/")))
         .respond_with(
             ResponseTemplate::new(200).set_body_string("<html>Authenticated landing</html>"),
         )
         .mount(server)
         .await;
+}
+
+#[tokio::test]
+async fn ordinary_forms_in_auth_named_repositories_and_contexts_are_accepted() {
+    for (prefix, owner, repo) in [
+        ("", "owner", "oauth-tools"),
+        ("/oidc-context", "owner", "repo"),
+        ("/oauth-context", "owner", "repo"),
+        ("/saml-context", "owner", "repo"),
+        ("/team/api/v3", "oauth", "repo"),
+    ] {
+        let server = MockServer::start().await;
+        auth_at(&server, prefix, "alice", "alice").await;
+        let session = client_at(&server, prefix, "alice")
+            .web_session()
+            .await
+            .unwrap();
+        let issues = format!("{prefix}/{owner}/{repo}/issues");
+        let form = format!(
+            "<form action='{}{issues}/milestones/new'>New milestone</form>",
+            server.uri()
+        );
+        let label_page = format!(
+            "{form}<table><tr id='label-row-12'><td><a href='{issues}?labels=bug'>bug</a></td></tr></table>"
+        );
+        Mock::given(method("GET"))
+            .and(path(format!("{issues}/labels")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(label_page.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert_eq!(
+            session.find_label_id(owner, repo, "bug").await.unwrap(),
+            12,
+            "{prefix}/{owner}/{repo}"
+        );
+        Mock::given(method("POST"))
+            .and(path(format!("{issues}/labels/12/edit")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(label_page))
+            .expect(1)
+            .mount(&server)
+            .await;
+        session
+            .edit_label(owner, repo, 12, "bug", "abcdef")
+            .await
+            .unwrap();
+        Mock::given(method("POST"))
+            .and(path(format!("{issues}/milestones/new")))
+            .respond_with(
+                ResponseTemplate::new(303)
+                    .insert_header("Location", format!("{issues}/milestones")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("{issues}/milestones")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{form}<a href='{issues}/milestones/new'>New milestone</a>"
+            )))
+            .expect(1)
+            .mount(&server)
+            .await;
+        session
+            .create_milestone(owner, repo, "日本語", None, None)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn authentication_forms_on_resource_responses_remain_errors() {
+    for operation in ["label-read", "label-write", "milestone", "issue-state"] {
+        let server = MockServer::start().await;
+        auth(&server, "alice", "alice").await;
+        let session = client(&server, "alice").web_session().await.unwrap();
+        let auth_form = "<form action='/signin/oidc'>Sign in with SSO</form>";
+        let label_page = format!(
+            "{auth_form}<table><tr id='label-row-12'><td><a href='/owner/repo/issues?labels=bug'>bug</a></td></tr></table>"
+        );
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/labels"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(label_page.clone()))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/owner/repo/issues/labels/12/edit"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(label_page))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/owner/repo/issues/milestones/new"))
+            .respond_with(
+                ResponseTemplate::new(303)
+                    .insert_header("Location", "/owner/repo/issues/milestones"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/milestones"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                "{auth_form}<a href='/owner/repo/issues/milestones/new'>New</a>"
+            )))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/owner/repo/issue_comments/state"))
+            .respond_with(
+                ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/1"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(auth_form))
+            .mount(&server)
+            .await;
+        let error = match operation {
+            "label-read" => session
+                .find_label_id("owner", "repo", "bug")
+                .await
+                .map(|_| ()),
+            "label-write" => {
+                session
+                    .edit_label("owner", "repo", 12, "bug", "abcdef")
+                    .await
+            }
+            "milestone" => {
+                session
+                    .create_milestone("owner", "repo", "日本語", None, None)
+                    .await
+            }
+            "issue-state" => {
+                session
+                    .update_issue_state("owner", "repo", 1, "close")
+                    .await
+            }
+            _ => unreachable!(),
+        }
+        .unwrap_err();
+        if operation == "label-read" {
+            assert!(matches!(error, GbMcpError::Authentication(_)));
+        } else {
+            assert!(
+                matches!(error, GbMcpError::OperationOutcomeUnknown { cause, .. } if matches!(*cause, GbMcpError::Authentication(_)))
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn invalid_label_lookup_targets_are_rejected_before_identity_requests() {
+    let server = MockServer::start().await;
+    auth(&server, "alice", "alice").await;
+    let session = client(&server, "alice").web_session().await.unwrap();
+    // A stale session must not mask the local target-validation failure.
+    Mock::given(method("GET"))
+        .and(path("/api/v3/user"))
+        .respond_with(ResponseTemplate::new(401))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let before = server.received_requests().await.unwrap().len();
+    for (owner, repo) in [("owner", "repo#other"), ("../owner", "repo"), ("owner", "")] {
+        assert!(matches!(
+            session.find_label_id(owner, repo, "bug").await,
+            Err(GbMcpError::InvalidInput(_))
+        ));
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), before);
 }
 #[tokio::test]
 async fn configured_account_mismatch_is_rejected_before_password_submission() {
