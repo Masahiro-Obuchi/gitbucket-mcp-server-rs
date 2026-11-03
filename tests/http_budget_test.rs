@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+mod common;
 use gitbucket_mcp_server::{
     api::{client::GitBucketClient, http::HttpSettings, web::GitBucketWebSession},
     error::GbMcpError,
@@ -377,25 +379,22 @@ async fn merge_has_a_longer_explicit_request_budget() {
 }
 
 async fn web(server: &MockServer, policy: HttpSettings) -> GitBucketWebSession {
+    common::web_identity(server, "", "user").await;
     Mock::given(method("POST"))
         .and(path("/signin"))
-        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/home"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", "/")
+                .insert_header("Set-Cookie", "JSESSIONID=test; Path=/"),
+        )
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/home"))
+        .and(path("/"))
         .respond_with(ResponseTemplate::new(200).set_body_string("signed in"))
         .mount(server)
         .await;
-    GitBucketWebSession::sign_in_with_http_settings(
-        &format!("{}/api/v3", server.uri()),
-        "user",
-        "fake-password",
-        false,
-        policy,
-    )
-    .await
-    .unwrap()
+    client(&server.uri(), policy).web_session().await.unwrap()
 }
 
 #[tokio::test]
@@ -422,35 +421,35 @@ async fn web_uses_the_same_deadlines_and_bounded_html_for_login_reads_and_writes
         Err(GbMcpError::OperationOutcomeUnknown { .. })
     ));
     Mock::given(method("GET"))
-        .and(path("/owner/repo/issues/milestones/1/delete"))
+        .and(path("/owner/repo/issues/milestones/1/open"))
         .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(1)))
         .expect(1)
         .mount(&server)
         .await;
     assert!(matches!(
-        session.delete_milestone("owner", "repo", 1).await,
+        session
+            .update_milestone_state("owner", "repo", 1, "open")
+            .await,
         Err(GbMcpError::OperationOutcomeUnknown { .. })
     ));
     let server = MockServer::start().await;
+    common::web_identity(&server, "", "user").await;
     Mock::given(method("POST"))
         .and(path("/signin"))
-        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/large"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", "/")
+                .insert_header("Set-Cookie", "JSESSIONID=test; Path=/"),
+        )
         .mount(&server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/large"))
+        .and(path("/"))
         .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(1025)))
         .mount(&server)
         .await;
     assert!(matches!(
-        GitBucketWebSession::sign_in_with_http_settings(
-            &server.uri(),
-            "user",
-            "fake-password",
-            false,
-            settings()
-        )
-        .await,
+        client(&server.uri(), settings()).web_session().await,
         Err(GbMcpError::ResponseTooLarge { .. })
     ));
 }
@@ -674,9 +673,16 @@ async fn successful_web_write_then_failed_verification_is_unknown() {
         .mount(&server)
         .await;
     let _ = web(&server, settings()).await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/_data/1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"title":"new","content":""})))
+        .mount(&server)
+        .await;
     Mock::given(method("POST"))
         .and(path("/owner/repo/issues/edit_title/1"))
-        .respond_with(ResponseTemplate::new(200))
+        .respond_with(
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/_data/1"),
+        )
         .expect(1)
         .mount(&server)
         .await;

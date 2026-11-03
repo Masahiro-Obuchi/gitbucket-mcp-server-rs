@@ -3,7 +3,6 @@ use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 
 use super::client::GitBucketClient;
-use super::web::GitBucketWebSession;
 use crate::error::GbMcpError;
 
 impl GitBucketClient {
@@ -108,6 +107,11 @@ impl GitBucketClient {
         current_issue: &Issue,
     ) -> Result<Issue> {
         super::url_safety::repository(owner, repo)?;
+        if current_issue.number != number {
+            return Err(GbMcpError::Other(
+                "GitBucket returned a different issue; no write was sent".into(),
+            ));
+        }
         let current_body = current_issue.body.as_deref().unwrap_or_default();
         let next_title = body
             .title
@@ -141,47 +145,100 @@ impl GitBucketClient {
             return Ok(current_issue.clone());
         }
 
-        let credentials = self.web_credentials().ok_or_else(|| {
-            GbMcpError::Other(
-                "The standard Issue update route requires web credentials. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD.".to_string(),
-            )
-        })?;
-
-        let session = GitBucketWebSession::sign_in_with_http_settings(
-            self.base_url(),
-            &credentials.username,
-            &credentials.password,
-            self.allow_invalid_certs(),
-            self.http_settings().clone(),
-        )
-        .await?;
+        let session = self.web_session().await?;
 
         // Once a web mutation is attempted, a failure can leave a partial
         // update. Keep that context through later writes and the final read.
         if needs_title_update {
             session
                 .edit_issue_title(owner, repo, number, next_title)
+                .await?;
+            let actual = self
+                .get_issue(owner, repo, number)
                 .await
                 .map_err(|error| super::http::unknown("Issue update", error))?;
+            verify_web_issue(&actual, number, Some(next_title), None, None)?;
         }
 
         if needs_body_update {
             session
-                .edit_issue_content(owner, repo, number, next_title, next_body)
+                .edit_issue_content(owner, repo, number, next_body)
+                .await
+                .map_err(|error| {
+                    if needs_title_update {
+                        super::http::unknown("Issue update", error)
+                    } else {
+                        error
+                    }
+                })?;
+            let actual = self
+                .get_issue(owner, repo, number)
                 .await
                 .map_err(|error| super::http::unknown("Issue update", error))?;
+            verify_web_issue(
+                &actual,
+                number,
+                body.title.as_deref(),
+                Some(next_body),
+                None,
+            )?;
         }
 
         if let Some(action) = state_action {
             session
                 .update_issue_state(owner, repo, number, action)
                 .await
-                .map_err(|error| super::http::unknown("Issue update", error))?;
+                .map_err(|error| {
+                    if needs_title_update || needs_body_update {
+                        super::http::unknown("Issue update", error)
+                    } else {
+                        error
+                    }
+                })?;
         }
 
-        self.get_issue(owner, repo, number)
+        let actual = self
+            .get_issue(owner, repo, number)
             .await
-            .map_err(|error| super::http::unknown("Issue update", error))
+            .map_err(|error| super::http::unknown("Issue update", error))?;
+        verify_web_issue(
+            &actual,
+            number,
+            body.title.as_deref(),
+            body.body.as_deref(),
+            body.state.as_deref(),
+        )?;
+        Ok(actual)
+    }
+}
+
+fn verify_web_issue(
+    actual: &Issue,
+    number: u64,
+    title: Option<&str>,
+    body: Option<&str>,
+    state: Option<&str>,
+) -> Result<()> {
+    let mut fields = Vec::new();
+    if actual.number != number {
+        fields.push("number");
+    }
+    if title.is_some_and(|v| v != actual.title) {
+        fields.push("title");
+    }
+    if body.is_some_and(|v| v != actual.body.as_deref().unwrap_or_default()) {
+        fields.push("body");
+    }
+    if state.is_some_and(|v| v != actual.state) {
+        fields.push("state");
+    }
+    if fields.is_empty() {
+        Ok(())
+    } else {
+        Err(GbMcpError::OperationNotVerified {
+            operation: "Issue update",
+            fields,
+        })
     }
 }
 

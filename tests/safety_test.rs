@@ -1,8 +1,7 @@
+#[allow(dead_code)]
+mod common;
 use gitbucket_mcp_server::{
-    api::{
-        client::{normalize_base_url, GitBucketClient},
-        web::GitBucketWebSession,
-    },
+    api::client::{normalize_base_url, GitBucketClient},
     config::{Config, ConfigFile},
     error::GbMcpError,
     models::{issue::CreateIssue, milestone::UpdateMilestone},
@@ -157,7 +156,7 @@ async fn valid_identifiers_and_special_label_names_preserve_exact_targets() {
     for bad in [".", ".."] {
         assert!(client.delete_label("owner", "repo", bad).await.is_err());
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -279,6 +278,7 @@ async fn redirects_cannot_send_credentials_outside_origin_or_context() {
         ))
         .mount(&source)
         .await;
+    common::web_identity(&source, "/context", "test-user").await;
     let client = GitBucketClient::new(&format!("{}/context", source.uri()), SECRET).unwrap();
     assert_redacted(client.get::<Value>("/redirect").await.unwrap_err());
     Mock::given(method("GET"))
@@ -296,12 +296,15 @@ async fn redirects_cannot_send_credentials_outside_origin_or_context() {
         .mount(&source)
         .await;
     assert_redacted(
-        GitBucketWebSession::sign_in(
+        GitBucketClient::new_with_web_auth(
             &format!("{}/context/api/v3", source.uri()),
-            "test-user",
             SECRET,
             false,
+            Some("test-user"),
+            Some(SECRET),
         )
+        .unwrap()
+        .web_session()
         .await
         .unwrap_err(),
     );
@@ -314,15 +317,20 @@ async fn redirects_cannot_send_credentials_outside_origin_or_context() {
         .mount(&source)
         .await;
     assert!(client.get::<Value>("/encoded-escape").await.is_err());
-    assert_eq!(source.received_requests().await.unwrap().len(), 4);
+    assert_eq!(source.received_requests().await.unwrap().len(), 5);
 }
 
 #[tokio::test]
 async fn web_errors_do_not_echo_payloads_and_invalid_targets_are_rejected() {
     let server = MockServer::start().await;
+    common::web_identity(&server, "/ctx", "user").await;
     Mock::given(method("POST"))
         .and(path("/ctx/signin"))
-        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/ctx/"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", "/ctx/")
+                .insert_header("Set-Cookie", "JSESSIONID=test; Path=/"),
+        )
         .mount(&server)
         .await;
     Mock::given(method("GET"))
@@ -330,12 +338,15 @@ async fn web_errors_do_not_echo_payloads_and_invalid_targets_are_rejected() {
         .respond_with(ResponseTemplate::new(200))
         .mount(&server)
         .await;
-    let web = GitBucketWebSession::sign_in(
+    let web = GitBucketClient::new_with_web_auth(
         &format!("{}/ctx/api/v3", server.uri()),
-        "user",
         SECRET,
         false,
+        Some("user"),
+        Some(SECRET),
     )
+    .unwrap()
+    .web_session()
     .await
     .unwrap();
     assert!(!format!("{web:?}").contains(SECRET));
@@ -351,7 +362,7 @@ async fn web_errors_do_not_echo_payloads_and_invalid_targets_are_rejected() {
     );
     let count = server.received_requests().await.unwrap().len();
     assert!(web
-        .delete_milestone("owner", "repo#other", 1)
+        .update_milestone_state("owner", "repo#other", 1, "open")
         .await
         .is_err());
     assert!(web
@@ -365,6 +376,7 @@ async fn web_errors_do_not_echo_payloads_and_invalid_targets_are_rejected() {
 async fn web_redirects_cannot_escape_a_context_ending_in_the_api_suffix() {
     for status in [307, 308] {
         let server = MockServer::start().await;
+        common::web_identity(&server, "/team/api/v3", "test-user").await;
         Mock::given(method("POST"))
             .and(path("/team/api/v3/signin"))
             .respond_with(
@@ -378,15 +390,18 @@ async fn web_redirects_cannot_escape_a_context_ending_in_the_api_suffix() {
             .expect(0)
             .mount(&server)
             .await;
-        let result = GitBucketWebSession::sign_in(
+        let result = GitBucketClient::new_with_web_auth(
             &format!("{}/team/api/v3/api/v3", server.uri()),
-            "test-user",
             SECRET,
             false,
+            Some("test-user"),
+            Some(SECRET),
         )
+        .unwrap()
+        .web_session()
         .await;
         assert!(result.is_err(), "out-of-context HTTP {status} was followed");
-        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        assert_eq!(server.received_requests().await.unwrap().len(), 2);
     }
 }
 
@@ -394,6 +409,14 @@ async fn web_redirects_cannot_escape_a_context_ending_in_the_api_suffix() {
 async fn web_redirects_preserve_contexts_ending_in_the_api_suffix() {
     for context in ["/team/api/v3", "/team/api/v3/api/v3"] {
         let server = MockServer::start().await;
+        common::web_identity(&server, context, "test-user").await;
+        Mock::given(method("GET"))
+            .and(path(format!("{context}/owner/repo/issues/_data/1")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"title":"title","content":"body"})),
+            )
+            .mount(&server)
+            .await;
         Mock::given(method("POST"))
             .and(path(format!("{context}/signin")))
             .respond_with(
@@ -416,22 +439,28 @@ async fn web_redirects_preserve_contexts_ending_in_the_api_suffix() {
             .await;
         Mock::given(method("POST"))
             .and(path(format!("{context}/owner/repo/issues/edit_title/1")))
-            .respond_with(ResponseTemplate::new(200))
+            .respond_with(
+                ResponseTemplate::new(303)
+                    .insert_header("Location", format!("{context}/owner/repo/issues/_data/1")),
+            )
             .expect(1)
             .mount(&server)
             .await;
-        let web = GitBucketWebSession::sign_in(
+        let web = GitBucketClient::new_with_web_auth(
             &format!("{}{context}/api/v3", server.uri()),
-            "test-user",
             SECRET,
             false,
+            Some("test-user"),
+            Some(SECRET),
         )
+        .unwrap()
+        .web_session()
         .await
         .unwrap();
         web.edit_issue_title("owner", "repo", 1, "title")
             .await
             .unwrap();
-        assert_eq!(server.received_requests().await.unwrap().len(), 3);
+        assert_eq!(server.received_requests().await.unwrap().len(), 7);
     }
 }
 

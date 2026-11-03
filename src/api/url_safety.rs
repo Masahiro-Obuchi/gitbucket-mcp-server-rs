@@ -47,27 +47,34 @@ pub(crate) fn route(base: &str, path: &str) -> Result<Url> {
     append(base, &path.split('/').collect::<Vec<_>>())
 }
 
-pub(crate) fn redirect_policy(base: &str) -> Result<reqwest::redirect::Policy> {
-    let base = Url::parse(base)?;
+pub(crate) fn validate_redirect(base: &Url, target: &Url) -> Result<()> {
     let prefix = base
         .path()
         .strip_suffix("/api/v3")
         .unwrap_or(base.path())
-        .trim_end_matches('/')
-        .to_owned();
+        .trim_end_matches('/');
+    let path = target.path().to_ascii_lowercase();
+    if target.origin() != base.origin()
+        || !(target.path() == prefix || target.path().starts_with(&format!("{prefix}/")))
+        || ["%2f", "%5c", "%2e", "%25"]
+            .iter()
+            .any(|escape| path.contains(escape))
+        || !target.username().is_empty()
+        || target.password().is_some()
+    {
+        return Err(GbMcpError::Other(
+            "Redirect outside configured GitBucket origin or context path".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn redirect_policy(base: &str) -> Result<reqwest::redirect::Policy> {
+    let base = Url::parse(base)?;
     Ok(reqwest::redirect::Policy::custom(move |attempt| {
-        let target = attempt.url();
-        let target_path = target.path().to_ascii_lowercase();
         if attempt.previous().len() >= 10 {
             attempt.error("Too many redirects")
-        } else if target.origin() != base.origin()
-            || !(target.path() == prefix || target.path().starts_with(&format!("{prefix}/")))
-            || ["%2f", "%5c", "%2e", "%25"]
-                .iter()
-                .any(|escape| target_path.contains(escape))
-            || !target.username().is_empty()
-            || target.password().is_some()
-        {
+        } else if validate_redirect(&base, attempt.url()).is_err() {
             attempt.error("Redirect outside configured GitBucket origin or context path")
         } else {
             attempt.follow()

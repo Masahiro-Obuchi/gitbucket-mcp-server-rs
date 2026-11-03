@@ -16,6 +16,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+#[allow(dead_code)]
+mod common;
+
 use wiremock::{
     matchers::{body_json, method, path},
     Mock, MockServer, ResponseTemplate,
@@ -69,13 +72,18 @@ async fn current_label(server: &MockServer) {
         .await;
 }
 async fn sign_in(server: &MockServer) {
+    common::web_identity(server, "", "user").await;
     Mock::given(method("POST"))
         .and(path("/signin"))
-        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/home"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", "/")
+                .insert_header("Set-Cookie", "JSESSIONID=test; Path=/"),
+        )
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/home"))
+        .and(path("/"))
         .respond_with(ResponseTemplate::new(200))
         .mount(server)
         .await;
@@ -278,12 +286,12 @@ async fn same_name_color_uses_web_only_for_selected_contract_and_verifies_result
                 .respond_with(move |_:&wiremock::Request|ResponseTemplate::new(200).set_body_json(json!({"name":"old-name","color":if read.load(Ordering::SeqCst){"abcdef"}else{"123456"}}))).mount(&server).await;
             sign_in(&server).await;
             Mock::given(method("GET")).and(path("/owner/repo/issues/labels"))
-                .respond_with(ResponseTemplate::new(200).set_body_string(r#"<tr id="label-row-12"><a href="/owner/repo/issues?labels=old-name">old-name</a></tr>"#)).mount(&server).await;
+                .respond_with(ResponseTemplate::new(200).set_body_string(r#"<tr id="label-row-12"><td><a href="/owner/repo/issues?labels=old-name">old-name</a></td></tr>"#)).mount(&server).await;
             Mock::given(method("POST"))
                 .and(path("/owner/repo/issues/labels/12/edit"))
                 .respond_with(move |_: &wiremock::Request| {
                     changed.store(applies, Ordering::SeqCst);
-                    ResponseTemplate::new(200).set_body_string("form page")
+                    ResponseTemplate::new(200).set_body_string(r#"<tr id="label-row-12"><td><a href="/owner/repo/issues?labels=old-name">old-name</a></td></tr>"#)
                 })
                 .expect(1)
                 .mount(&server)
@@ -562,9 +570,16 @@ async fn known_issue_updates_use_web_directly_without_patch_or_dummy_comment() {
         .and(path("/owner/repo/issues/edit_title/1"))
         .respond_with(move |_: &wiremock::Request| {
             changed.store(true, Ordering::SeqCst);
-            ResponseTemplate::new(200)
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/_data/1")
         })
         .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/_data/1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"title":"new title","content":""})),
+        )
         .mount(&server)
         .await;
     assert_eq!(
@@ -598,11 +613,19 @@ async fn known_restricted_milestone_titles_select_web_before_rest_write() {
         .mount(&server)
         .await;
     sign_in(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/owner/repo/issues/milestones"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(r#"<a href="/owner/repo/issues/milestones/new">New</a>"#),
+        )
+        .mount(&server)
+        .await;
     Mock::given(method("POST"))
         .and(path("/owner/repo/issues/milestones/new"))
         .respond_with(move |_: &wiremock::Request| {
             changed.store(true, Ordering::SeqCst);
-            ResponseTemplate::new(200)
+            ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/milestones")
         })
         .expect(1)
         .mount(&server)

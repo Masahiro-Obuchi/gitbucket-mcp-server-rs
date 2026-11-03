@@ -253,7 +253,7 @@ async fn web_create(
         .into_iter()
         .map(|m| m.number)
         .collect();
-    let session = client.milestone_web_session().await?;
+    let session = client.web_session().await?;
     session
         .create_milestone(
             owner,
@@ -262,8 +262,7 @@ async fn web_create(
             expected.description.as_deref(),
             date.as_deref(),
         )
-        .await
-        .map_err(|err| unknown(CREATE, err))?;
+        .await?;
     let candidates: Vec<_> = client
         .list_milestones(owner, repo, Some("all"))
         .await
@@ -299,7 +298,7 @@ async fn web_update(
     } else {
         None
     };
-    let session = client.milestone_web_session().await?;
+    let session = client.web_session().await?;
     if content_changed {
         session
             .edit_milestone(
@@ -310,8 +309,7 @@ async fn web_update(
                 expected.description.as_deref(),
                 date.as_deref(),
             )
-            .await
-            .map_err(|err| unknown(UPDATE, err))?;
+            .await?;
     }
     if before.state != expected.state {
         let action = if expected.state == "closed" {
@@ -322,7 +320,13 @@ async fn web_update(
         session
             .update_milestone_state(owner, repo, number, action)
             .await
-            .map_err(|err| unknown(UPDATE, err))?;
+            .map_err(|err| {
+                if content_changed {
+                    unknown(UPDATE, err)
+                } else {
+                    err
+                }
+            })?;
     }
     client
         .get_milestone(owner, repo, number)

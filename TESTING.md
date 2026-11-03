@@ -9,6 +9,7 @@ This repository uses layered tests so failures can be isolated quickly:
 - `tests/milestone_api_test.rs` models GitBucket's replacement-style PATCH and
   verifies field preservation, date normalization, explicit clears, web date
   constraints, ignored responses, and operation-stage failures.
+- `tests/web_session_test.rs` covers verified PAT/cookie identities, expired sessions, strict redirects, partial updates and deletion verification.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label create/read/update/delete lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge coverage.
 
@@ -43,6 +44,18 @@ Whitespace-padded label regressions model the web form trimming a name during a 
 
 Regression tests for deleted legacy write paths have been removed. The remaining standard web tests select the supported contract directly, without rejected REST-write fixtures. Label fixtures no longer claim standard description persistence. The label lifecycle E2E verifies a same-name color update and confirms that a rejected combined description/name/color request leaves the stored label unchanged.
 
+## Web Session Regression Tests
+
+```bash
+cargo test --test web_session_test
+```
+
+Mocks assert that a configured account mismatch prevents password submission, cookie-only identity checks receive no PAT header, and differing/expired sessions prevent resource writes. They cover anonymous/SSO HTTP 200 pages, Jetty URL session stripping, 307/308 without credential/form replay, rejection of unrelated or mutating redirect destinations, ignored Issue writes stopping later fields, and account changes after a first applied field. Authentication expiry before the first write remains `authentication_error` across Issue and milestone services, with a structured MCP error; a prior write preserves `outcome_unknown`.
+
+HTML parser unit tests cover Unicode, encoded query values, HTML entities, full-name matching, numeric row boundaries, duplicate/foreign label rows, sign-in forms and nonempty validation markers. Deletion regressions check a successful DELETE followed by present, absent, forbidden or failed GET results without replay. Existing service tests cover HTTP 200 validation pages and ambiguity with existing same-title milestones.
+
+The verified web-session implementation passed all 22 E2Es on each official Docker image, GitBucket 4.44.0 and 4.48.0, including Issue title/body/state, same-name label color, restricted milestone titles and verified REST deletion. These runs use disposable password-based accounts. SSO/MFA-only deployments require a supported password session for web routes; they are not covered by those runs.
+
 ## HTTP Budget Regression Tests
 
 ```bash
@@ -67,8 +80,7 @@ bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
 
 HTTP mocks cover invalid identifiers without requests, exact label targets, IPv6/context URLs, redirect boundaries, and secret-free API/web/tool diagnostics. Process tests check startup stderr with malformed TOML and credential-bearing URLs. Unix config tests cover private creation, replacement of permissive files, inode replacement, symlinks, and preservation after failed saves.
 
-Redirect regressions include contexts ending in `/api/v3`, blocking out-of-context
-307/308 password replays while allowing sign-in and writes inside that context.
+Redirect regressions include contexts ending in `/api/v3`, preserving valid sign-in and read redirects inside that context while blocking escapes. Web 307/308 are rejected without any password/form replay, including same-origin destinations.
 
 POST query tests verify the Issue `action=close` fixture call and separately
 encoded query values; the large-list E2E uses the same `post_with_query` API.

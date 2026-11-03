@@ -2,6 +2,9 @@ use thiserror::Error;
 
 #[derive(Error)]
 pub enum GbMcpError {
+    #[error("Authentication error: {0}")]
+    Authentication(&'static str),
+
     #[error("Configuration error: {0}")]
     Config(String),
 

@@ -79,14 +79,24 @@ Requirements:
 - Label create/update request types and MCP schemas omit description and reject unknown fields. A description argument, including null, empty strings or combined changes, is an invalid-parameters error before HTTP. Direct JSON deserialization of the Rust request models also rejects it.
 - Label writes verify response name/color. No-op updates avoid writes, failed verification reads are unknown outcomes, and mismatches return `update_not_verified`. Reads/writes are not atomic.
 - All operations use the shared `OperationNotVerified` / `OperationOutcomeUnknown` errors. PR-only error variants and internal Issue stages used solely by the old PR fallback have been removed.
-- REST/Web identity agreement, general HTML parsing/verification and richer partial-application data remain separate work.
+- Web sessions verify the PAT, configured username and cookie-only `/api/v3/user` login agree, including a cookie identity recheck before each resource write. There is no bypass/impersonation setting. Richer partial-application data remains separate work.
+
+### Verified Web sessions and responses
+
+- `GitBucketClient::web_session()` is the only public session constructor. Missing web credentials or differing PAT/configured logins fail before password submission. The web HTTP client has cookies, shared budgets and no PAT header or automatic redirects.
+- The password sign-in flow accepts only recognized root/dashboard landing redirects and verifies the cookie-only authenticated user. Authentication forms, public/anonymous pages and SSO/MFA/setup flows cannot establish a session without that identity proof. Jetty `;jsessionid=` URL parameters are removed after strict syntax checks; only cookie sessions are used.
+- Every resource write repeats cookie identity verification before marking a mutation. Identity/transport failures before the first write retain their original error; after an earlier write they are uncertain outcomes. No automatic retries or form replays are performed, including 307/308.
+- HTML interpretation lives in `src/api/web_html.rs` using an HTML5 parser. Label IDs must come from a unique numeric `label-row-*` table row with an exact decoded `labels` query on the same repository's issues URL. Unicode, HTML entities and URL encoding are decoded structurally. Missing, ambiguous and foreign rows fail before label mutation.
+- Issue title/body forms require the expected `_data/{number}` redirect and a JSON object with string `title` and `content`. Milestone writes require their list redirect and recognized list structure. Label writes require the expected row ID/name. Login forms, nonempty validation markers and unexpected pages are never successful write responses.
+- Web Issue updates verify the issue number and requested content via REST after each content write, then all requested fields at completion. A mismatch stops later writes with `update_not_verified`. Label/milestone write verification remains in their service modules.
+- Label and milestone deletion use REST and verify a subsequent GET returns 404. A remaining object is `update_not_verified`; an unreadable result is `outcome_unknown`. The observation is account-relative, and concurrent changes are possible; no atomicity or rollback is guaranteed.
 
 ## 5. GitBucket API Contract
 
 - Base URLs are normalized to include scheme and `/api/v3`, preserving IPv6 and context paths. Only HTTP(S) hosts are accepted; userinfo, query, fragment, backslashes, dot segments, invalid percent escapes, escaped controls and escaped separators are rejected.
 - Owner/username identifiers accept ASCII alphanumeric characters and `-_.`; repository identifiers also accept `+`. Leading hyphens/underscores and dot segments are rejected before HTTP. Length/reserved-name validation remains with GitBucket.
 - All REST/web paths are constructed with segment encoding. Labels and branch names are not subject to the owner/repository grammar; dot-only segments and controls are rejected. Low-level Rust string paths must start with `/` and must not embed queries, fragments or percent escapes; query values use query builders.
-- REST/web redirects are limited to ten hops within the configured origin and context path, without userinfo or encoded traversal/separators. External proxy redirects require configuring the final URL.
+- Redirect targets must stay within the configured origin and context path, without userinfo or encoded traversal/separators. REST reads and recognized web sign-in landing pages permit at most ten hops. Web writes accept only their known read destinations after 301/302/303 and follow them once using GET. External proxy redirects require configuring the final URL.
 - The API suffix is removed exactly once when defining the web redirect boundary, including contexts ending in `/api/v3`.
 - Rust POST queries use `post_with_query` with separate query pairs; embedded query syntax in paths remains rejected.
 - Authentication uses the `Authorization: token <token>` header.
@@ -217,6 +227,7 @@ web writes also returns `outcome_unknown` because earlier changes may persist.
 Expected error classes:
 
 - Configuration errors
+- Web authentication errors (`authentication_error`)
 - HTTP transport errors
 - GitBucket API errors
 - JSON serialization or deserialization errors
@@ -227,7 +238,7 @@ Behavior:
 - Startup configuration failures stop the process.
 - Non-success GitBucket responses, including status wrappers, use the HTTP status and a standard reason. Raw error bodies are not returned or read for HTTP failures. Web failures also omit error bodies. HTTP diagnostics expose a failure category without URLs; JSON diagnostics expose line/column without values and do not expose the raw decoder error through the standard source chain. Requests use shared REST/web connection (10 s), request including body (30 s), explicit PR merge (120 s), and MCP tool (180 s) budgets. Success bodies are streamed with JSON 8 MiB / HTML 4 MiB limits; headers alone do not determine safety. Env-only overrides and allowed ranges are specified in README. No retries are enabled.
 - `timeout_error`, `cancelled_error`, and `response_too_large` are additional read/pre-write error kinds. After a mutation starts, transport/decoding/size failures and HTTP 408/5xx are `outcome_unknown`; REST 4xx other than 408 remain definite API rejections. Prior successful writes remain potentially applied even when a later read fails.
-- REST writes do not follow redirects: HTTP 3xx responses are `outcome_unknown`, preserving the original status without replaying a write or classifying a redirected GET's 4xx as a definite write rejection. REST reads and web sessions retain redirects constrained to the configured origin and context path.
+- REST writes do not follow redirects: HTTP 3xx responses are `outcome_unknown`, preserving the original status without replaying a write or classifying a redirected GET's 4xx as a definite write rejection. Web writes follow only the verified operation-specific read redirect contract above. REST reads and web sign-in redirects remain constrained to the configured origin and context path.
 - The MCP dispatcher scopes write tracking per call and drops work on deadline/cancellation. A completed REST rejection clears only that attempt's marker; previous applied/unknown writes remain recorded. Custom APIs that do not opt into tracking are conservatively treated as potentially writing for non-read tools.
 - Cancellation cannot roll back remote writes, and the MCP client may discard the classified response after sending cancellation. Async deadlines are cooperative, including bounded synchronous decoding/serialization. Limits apply to each response, not aggregate lists or final MCP output; diff-specific limits wait for a diff endpoint.
 - Tool handlers convert internal errors to structured MCP error payloads.

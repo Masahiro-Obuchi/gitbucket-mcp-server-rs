@@ -4,7 +4,6 @@ use crate::error::{GbMcpError, Result};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 
 use super::client::GitBucketClient;
-use super::web::GitBucketWebSession;
 
 impl GitBucketClient {
     pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<Label>> {
@@ -49,25 +48,15 @@ impl GitBucketClient {
         super::url_safety::repository(owner, repo)?;
         let path = format!("/repos/{owner}/{repo}/labels/{name}");
         let url = label_url(self, owner, repo, name)?;
-        self.delete_url(url, &path).await
-    }
-
-    pub(super) async fn label_web_session(&self) -> Result<GitBucketWebSession> {
-        let credentials = self.web_credentials().ok_or_else(|| {
-            GbMcpError::Other(
-                "The standard label color update route requires GITBUCKET_USERNAME and GITBUCKET_PASSWORD."
-                    .to_string(),
-            )
-        })?;
-
-        GitBucketWebSession::sign_in_with_http_settings(
-            self.base_url(),
-            &credentials.username,
-            &credentials.password,
-            self.allow_invalid_certs(),
-            self.http_settings().clone(),
-        )
-        .await
+        self.delete_url(url, &path).await?;
+        match self.get_label(owner, repo, name).await {
+            Err(GbMcpError::Api { status: 404, .. }) => Ok(()),
+            Ok(_) => Err(GbMcpError::OperationNotVerified {
+                operation: "Label deletion",
+                fields: vec!["existence"],
+            }),
+            Err(error) => Err(super::http::unknown("Label deletion", error)),
+        }
     }
 }
 
