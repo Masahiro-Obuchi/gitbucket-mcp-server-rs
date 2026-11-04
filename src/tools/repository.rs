@@ -5,16 +5,20 @@ use serde::Deserialize;
 
 use crate::models::repository::CreateRepository;
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
+use crate::tools::response::{
+    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+};
 use crate::tools::validation::{repository_fields, required_trimmed};
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListRepositoriesParams {
     #[schemars(description = "Repository owner (username or organization name)")]
     pub owner: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetRepositoryParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -23,6 +27,7 @@ pub struct GetRepositoryParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateRepositoryParams {
     #[schemars(description = "Name of the new repository")]
     pub name: String,
@@ -35,6 +40,7 @@ pub struct CreateRepositoryParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ForkRepositoryParams {
     #[schemars(description = "Owner of the repository to fork")]
     pub owner: String,
@@ -43,6 +49,7 @@ pub struct ForkRepositoryParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListBranchesParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -52,7 +59,15 @@ pub struct ListBranchesParams {
 
 #[tool_router(router = tool_router_repository, vis = "pub")]
 impl GitBucketMcpServer {
-    #[tool(description = "List repositories for a user or organization in GitBucket")]
+    #[tool(
+        description = "List repositories for a user or organization in GitBucket",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_repositories(
         &self,
         Parameters(params): Parameters<ListRepositoriesParams>,
@@ -68,7 +83,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Get details of a GitBucket repository")]
+    #[tool(
+        description = "Get details of a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_repository(
         &self,
         Parameters(params): Parameters<GetRepositoryParams>,
@@ -84,11 +107,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Create a new repository in GitBucket for the authenticated user")]
+    #[tool(
+        description = "Create a new repository in GitBucket for the authenticated user",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn create_repository(
         &self,
         Parameters(params): Parameters<CreateRepositoryParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let name = match required_trimmed(&params.name, "name") {
             Ok(name) => name,
             Err(err) => return validation_error(err),
@@ -106,11 +140,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Fork a GitBucket repository")]
+    #[tool(
+        description = "Fork a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn fork_repository(
         &self,
         Parameters(params): Parameters<ForkRepositoryParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -122,7 +167,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "List branches for a GitBucket repository")]
+    #[tool(
+        description = "List branches for a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_branches(
         &self,
         Parameters(params): Parameters<ListBranchesParams>,

@@ -2,6 +2,31 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P07 input and model changes
+
+- All MCP tools reject unknown arguments before HTTP. Clients must remove
+  unsupported fields, including inline locations on ordinary comment tools.
+- Bodies/comments, descriptions and merge messages retain original whitespace.
+  Empty text still clears optional update content; whitespace is not a substitute
+  for an empty string. Standard web Issue updates that cannot preserve a changed
+  body return `unsupported_error` before writes, including accompanying changes.
+- Missing Issue `closed_at` now returns null, replacing the old updated_at-based
+  estimate. Consumers must treat it as unknown and avoid closure-time calculations
+  from updated_at.
+- Issue and PR labels/assignees and repository fork are optional Rust fields and
+  serialize as null when absent. Explicit empty arrays and false remain explicit.
+  PR draft/merged_by/assignee/URLs/branch users and Issue milestone/assignee/URLs/PR
+  links are retained. Do not interpret null mergeable or draft as false.
+- `GITBUCKET_READ_ONLY=true` is an env-only MCP-server setting, default false.
+  It hides mutations and rejects write calls with `read_only_error`, including
+  public Rust tool handlers. Rust servers use `with_access_mode(AccessMode::ReadOnly)`.
+- Every tool now carries behavioral annotations. They are advisory; read-only
+  enforcement is independent, and writes are never automatically retried.
+
+These changes intentionally correct the protocol and public response models;
+there are no legacy aliases or synthetic timestamp/boolean fallbacks. Include
+these migration notes in the next release. No version tag is created by this work.
+
 ## Versioning
 
 Use semantic versions in `Cargo.toml`.

@@ -6,13 +6,16 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::issue::{CreateIssue, UpdateIssue};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
+use crate::tools::response::{
+    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+};
 use crate::tools::validation::{
-    error, issue_state, list_state, optional_trimmed, repository_fields, required_optional_trimmed,
+    error, issue_state, list_state, repository_fields, required_optional_trimmed, required_text,
     required_trimmed,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListIssuesParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -23,6 +26,7 @@ pub struct ListIssuesParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetIssueParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -33,6 +37,7 @@ pub struct GetIssueParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateIssueParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -49,6 +54,7 @@ pub struct CreateIssueParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateIssueParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -65,6 +71,7 @@ pub struct UpdateIssueParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListIssueCommentsParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -75,6 +82,7 @@ pub struct ListIssueCommentsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddIssueCommentParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -88,7 +96,15 @@ pub struct AddIssueCommentParams {
 
 #[tool_router(router = tool_router_issue, vis = "pub")]
 impl GitBucketMcpServer {
-    #[tool(description = "List issues in a GitBucket repository")]
+    #[tool(
+        description = "List issues in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_issues(
         &self,
         Parameters(params): Parameters<ListIssuesParams>,
@@ -112,7 +128,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Get details of a specific issue in a GitBucket repository")]
+    #[tool(
+        description = "Get details of a specific issue in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_issue(&self, Parameters(params): Parameters<GetIssueParams>) -> ToolResult {
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
@@ -129,11 +153,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Create a new issue in a GitBucket repository")]
+    #[tool(
+        description = "Create a new issue in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn create_issue(
         &self,
         Parameters(params): Parameters<CreateIssueParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -145,7 +180,7 @@ impl GitBucketMcpServer {
 
         let body = CreateIssue {
             title,
-            body: optional_trimmed(params.body),
+            body: params.body,
             labels: params.labels,
             assignees: params.assignees,
         };
@@ -156,12 +191,21 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "Update an issue in a GitBucket repository (change state, title, or body)"
+        description = "Update an issue in a GitBucket repository (change state, title, or body)",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
     )]
     pub async fn update_issue(
         &self,
         Parameters(params): Parameters<UpdateIssueParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -174,7 +218,7 @@ impl GitBucketMcpServer {
             Ok(title) => title,
             Err(err) => return validation_error(err),
         };
-        let body = optional_trimmed(params.body);
+        let body = params.body;
 
         if state.is_none() && title.is_none() && body.is_none() {
             return validation_error(error(
@@ -193,7 +237,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "List comments on an issue in a GitBucket repository")]
+    #[tool(
+        description = "List comments on an issue in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_issue_comments(
         &self,
         Parameters(params): Parameters<ListIssueCommentsParams>,
@@ -213,16 +265,27 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Add a comment to an issue in a GitBucket repository")]
+    #[tool(
+        description = "Add a comment to an issue in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn add_issue_comment(
         &self,
         Parameters(params): Parameters<AddIssueCommentParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
-        let comment = match required_trimmed(&params.body, "body") {
+        let comment = match required_text(&params.body, "body") {
             Ok(comment) => comment,
             Err(err) => return validation_error(err),
         };
@@ -331,7 +394,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_issue_passes_trimmed_body_to_api_and_serializes_response() {
+    async fn test_update_issue_preserves_body_and_normalizes_identifiers() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -360,7 +423,7 @@ mod tests {
                 assert_eq!(*number, 42);
                 assert_eq!(body.state.as_deref(), Some("closed"));
                 assert_eq!(body.title.as_deref(), Some("New title"));
-                assert_eq!(body.body.as_deref(), Some("Updated body"));
+                assert_eq!(body.body.as_deref(), Some("  Updated body  "));
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }
@@ -443,7 +506,7 @@ mod tests {
                 assert_eq!(owner, "owner");
                 assert_eq!(repo, "repo");
                 assert_eq!(body.title, "New issue");
-                assert_eq!(body.body.as_deref(), Some("body text"));
+                assert_eq!(body.body.as_deref(), Some("  body text  "));
                 assert_eq!(body.labels.as_deref(), Some(&["bug".to_string()][..]));
                 assert_eq!(body.assignees.as_deref(), Some(&["alice".to_string()][..]));
             }
@@ -481,7 +544,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_add_issue_comment_passes_trimmed_fields_and_serializes_response() {
+    async fn test_add_issue_comment_preserves_body_and_normalizes_identifiers() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -506,7 +569,7 @@ mod tests {
                 assert_eq!(owner, "owner");
                 assert_eq!(repo, "repo");
                 assert_eq!(*number, 42);
-                assert_eq!(body.body, "Nice work");
+                assert_eq!(body.body, "  Nice work  ");
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }

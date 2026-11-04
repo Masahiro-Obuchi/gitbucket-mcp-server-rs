@@ -11,8 +11,7 @@ pub struct Repository {
     pub clone_url: Option<String>,
     #[serde(rename = "private")]
     pub is_private: bool,
-    #[serde(default)]
-    pub fork: bool,
+    pub fork: Option<bool>,
     pub default_branch: Option<String>,
     pub owner: Option<User>,
     pub watchers_count: Option<u64>,
@@ -67,7 +66,7 @@ mod tests {
         assert_eq!(repo.name, "my-repo");
         assert_eq!(repo.full_name, "testuser/my-repo");
         assert!(!repo.is_private);
-        assert!(!repo.fork);
+        assert_eq!(repo.fork, Some(false));
         assert_eq!(repo.default_branch, Some("main".to_string()));
         assert_eq!(repo.owner.unwrap().login, "testuser");
     }

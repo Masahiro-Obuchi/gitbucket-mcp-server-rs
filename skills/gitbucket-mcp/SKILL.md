@@ -112,7 +112,12 @@ Some GitBucket versions differ from GitHub-compatible REST behavior.
 
 - `update_label` uses REST for rename and Web for same-name color changes under a selected standard profile. The default `rest-only` does not write through Web; unknown 404/422 errors do not enable it.
 - Label create/update tools do not accept description. Do not send the field, including null or an empty string; unknown arguments are rejected before HTTP, so a combined request cannot partially apply name/color.
-- Some GitBucket issue responses omit `closed_at`. For closed issues, the server fills missing `closed_at` from `updated_at` as a best-effort GitHub-compatible value.
+- All tools reject unknown arguments before HTTP. Do not send inline `path`, `line` or `commit_id` to ordinary PR comment tools.
+- Bodies/comments, descriptions and merge messages preserve their original whitespace. Required comments reject whitespace-only text. Empty optional content clears it; spaces are content, not a clear.
+- A standard web Issue update cannot preserve leading/trailing whitespace in a changed body. `unsupported_error` stops before any accompanying writes; an unchanged body can be preserved without a content form.
+- PR results retain draft, labels/assignees, merged_by and API URLs; Issue results retain milestone and related links. Treat null flags/collections as unknown rather than false/empty. Linked URL metadata does not establish endpoint support.
+- Missing Issue `closed_at` remains null. Never substitute `updated_at` or infer a closure time from it.
+- `GITBUCKET_READ_ONLY=true` exposes only read tools and rejects writes with `read_only_error`. Tool annotations describe behavior as hints; the server separately enforces this setting.
 
 ## Safety
 

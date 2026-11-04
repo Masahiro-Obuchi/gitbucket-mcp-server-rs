@@ -57,7 +57,7 @@ pub(super) async fn update(
                     change.body.as_deref(),
                     change.state.as_deref(),
                 )?;
-                return Ok(super::issue::issue_with_closed_at_fallback(actual));
+                return Ok(actual);
             }
             let current = client.get_issue(owner, repo, number).await?;
             if current.number != number {
@@ -88,6 +88,13 @@ pub(super) async fn update(
                 .as_deref()
                 .filter(|v| *v != current.state)
                 .map(|state| if state == "closed" { "close" } else { "reopen" });
+            // An unchanged raw body needs no content form. Reject a lossy
+            // content change before applying even an independent title/state.
+            if body.is_some_and(|value| value != value.trim()) {
+                return Err(GbMcpError::Unsupported(
+                    "The GitBucket Issue web form cannot preserve leading or trailing body whitespace. No write was sent; use a REST-capable Issue update endpoint for this content.".into(),
+                ));
+            }
             if title.is_none() && body.is_none() && action.is_none() {
                 return Ok(current);
             }

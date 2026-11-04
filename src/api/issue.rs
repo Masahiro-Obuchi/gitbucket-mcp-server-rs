@@ -15,27 +15,20 @@ impl GitBucketClient {
     ) -> Result<Vec<Issue>> {
         super::url_safety::repository(owner, repo)?;
         let state_param = state.unwrap_or("open");
-        let issues = self
-            .get_paginated_with_identity(
-                &format!("/repos/{}/{}/issues", owner, repo),
-                &[("state", state_param)],
-                25,
-                |issue: &Issue| issue.number,
-            )
-            .await?;
-        Ok(issues
-            .into_iter()
-            .map(issue_with_closed_at_fallback)
-            .collect())
+        self.get_paginated_with_identity(
+            &format!("/repos/{}/{}/issues", owner, repo),
+            &[("state", state_param)],
+            25,
+            |issue: &Issue| issue.number,
+        )
+        .await
     }
 
     /// Get a single issue.
     pub async fn get_issue(&self, owner: &str, repo: &str, number: u64) -> Result<Issue> {
         super::url_safety::repository(owner, repo)?;
-        let issue = self
-            .get(&format!("/repos/{}/{}/issues/{}", owner, repo, number))
-            .await?;
-        Ok(issue_with_closed_at_fallback(issue))
+        self.get(&format!("/repos/{}/{}/issues/{}", owner, repo, number))
+            .await
     }
 
     /// Create a new issue.
@@ -101,11 +94,4 @@ impl GitBucketClient {
             ))
             .await
     }
-}
-
-pub(super) fn issue_with_closed_at_fallback(mut issue: Issue) -> Issue {
-    if issue.state == "closed" && issue.closed_at.is_none() {
-        issue.closed_at = issue.updated_at.clone();
-    }
-    issue
 }

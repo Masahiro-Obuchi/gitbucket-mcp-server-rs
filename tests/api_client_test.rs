@@ -539,7 +539,7 @@ async fn test_list_issues() {
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].number, 1);
     assert_eq!(issues[0].title, "Bug");
-    assert_eq!(issues[0].labels[0].name, "bug");
+    assert_eq!(issues[0].labels.as_ref().unwrap()[0].name, "bug");
 }
 
 #[tokio::test]
@@ -588,7 +588,7 @@ async fn test_get_issue() {
 }
 
 #[tokio::test]
-async fn test_get_closed_issue_fills_closed_at_from_updated_at_when_missing() {
+async fn test_get_closed_issue_keeps_closed_at_unknown_when_missing() {
     let server = TestServer::start().await;
     let client = server.client();
 
@@ -606,7 +606,7 @@ async fn test_get_closed_issue_fills_closed_at_from_updated_at_when_missing() {
 
     let issue = client.get_issue("owner", "repo", 42).await.unwrap();
     assert_eq!(issue.state, "closed");
-    assert_eq!(issue.closed_at.as_deref(), Some("2024-01-02T03:04:05Z"));
+    assert!(issue.closed_at.is_none());
 }
 
 #[tokio::test]
@@ -661,7 +661,7 @@ async fn test_update_issue_close() {
         .await
         .unwrap();
     assert_eq!(issue.state, "closed");
-    assert_eq!(issue.closed_at.as_deref(), Some("2024-01-02T03:04:05Z"));
+    assert!(issue.closed_at.is_none());
 }
 
 #[tokio::test]
@@ -1605,5 +1605,5 @@ async fn test_fork_repository() {
 
     let repo = client.fork_repository("owner", "repo").await.unwrap();
     assert_eq!(repo.full_name, "testuser/repo");
-    assert!(repo.fork);
+    assert_eq!(repo.fork, Some(true));
 }

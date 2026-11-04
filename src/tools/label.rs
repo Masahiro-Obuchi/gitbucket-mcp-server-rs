@@ -5,12 +5,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::label::{CreateLabel, UpdateLabel};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
+use crate::tools::response::{
+    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+};
 use crate::tools::validation::{
     error, label_color, repository_fields, required_optional_trimmed, required_trimmed,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListLabelsParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -19,6 +22,7 @@ pub struct ListLabelsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetLabelParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -57,6 +61,7 @@ pub struct UpdateLabelParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DeleteLabelParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -74,7 +79,15 @@ struct DeleteLabelResult {
 
 #[tool_router(router = tool_router_label, vis = "pub")]
 impl GitBucketMcpServer {
-    #[tool(description = "List labels for a GitBucket repository")]
+    #[tool(
+        description = "List labels for a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_labels(
         &self,
         Parameters(params): Parameters<ListLabelsParams>,
@@ -90,7 +103,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Get details of a label in a GitBucket repository")]
+    #[tool(
+        description = "Get details of a label in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_label(&self, Parameters(params): Parameters<GetLabelParams>) -> ToolResult {
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
@@ -107,11 +128,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Create a new label in a GitBucket repository")]
+    #[tool(
+        description = "Create a new label in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn create_label(
         &self,
         Parameters(params): Parameters<CreateLabelParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -133,11 +165,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Update a label name or color in a GitBucket repository")]
+    #[tool(
+        description = "Update a label name or color in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn update_label(
         &self,
         Parameters(params): Parameters<UpdateLabelParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -170,11 +213,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Delete a label from a GitBucket repository")]
+    #[tool(
+        description = "Delete a label from a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn delete_label(
         &self,
         Parameters(params): Parameters<DeleteLabelParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),

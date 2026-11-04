@@ -12,6 +12,10 @@ This repository uses layered tests so failures can be isolated quickly:
 - `tests/operation_outcome_test.rs` verifies partial progress, target/route/cause information and cancellation/deadline preservation over actual HTTP mocks and MCP dispatch.
 - `tests/web_session_test.rs` covers verified PAT/cookie identities, expired sessions, strict redirects, partial updates and deletion verification.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
+- `tests/tool_semantics_test.rs` checks all tool schemas and unknown-argument
+  rejection before HTTP, inline-argument refusal, original Markdown/commit text,
+  response metadata, unknown vs empty/false values, closure dates, annotations,
+  and every write blocked through both MCP and direct Rust handlers in read-only mode.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label create/read/update/delete lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge coverage.
 
 ## Common Commands
@@ -32,6 +36,38 @@ cargo test --test e2e_test
 # Lint with the same strictness as CI
 cargo clippy --all-targets --all-features -- -D warnings
 ```
+
+## MCP input and model semantics
+
+```bash
+cargo test --test tool_semantics_test
+```
+
+Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact official
+4.44.0/4.48.0 model sources. Tests check that those fields survive both get and
+list calls, while missing metadata stays null and explicit empty arrays/false
+remain distinguishable. Closed Issue updates do not synthesize closure dates.
+
+All 29 tool schemas reject additional properties. MCP tests send otherwise-valid
+arguments plus an unknown field and require invalid-parameters errors without
+HTTP. Inline-location arguments cannot silently create a normal PR comment.
+Whitespace tests cover required blank comments, optional content, code blocks,
+hard line breaks and trailing newlines. Standard web Issue updates reject a
+lossy body change before other fields are written, while an unchanged raw body
+skips the content form. Read-only tests hide all 15 writes, call each through MCP
+and the public Rust handler, and verify that only the permitted read reached HTTP.
+
+Against a disposable standard-profile GitBucket with Git and web credentials:
+
+```bash
+cargo test --test e2e_test test_e2e_input_content_metadata_and_read_only -- --ignored --nocapture
+```
+
+The test preserves Markdown through Issue creation, comments and PR updates;
+checks a real draft PR, null mergeability, metadata URLs and missing closed_at;
+rejects lossy standard web content and inline arguments; and verifies read-only
+listing/reads and blocked comments without changing conversation contents. It
+leaves its unique Issue/PR/branch fixtures in the disposable repository.
 
 ## Operation Routing Regression Tests
 
