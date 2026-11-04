@@ -297,6 +297,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "owner must not be empty".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }
@@ -325,6 +327,8 @@ mod tests {
                 message: "at least one of title, description, due_on, or state must be provided"
                     .to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }

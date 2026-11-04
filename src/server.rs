@@ -95,7 +95,9 @@ impl ServerHandler for GitBucketMcpServer {
                 }
             };
             // The dropped future cannot undo a remote mutation. Never replay it.
-            from_gb_error(if http::write_possible() { http::unknown("Tool execution", error) } else { error })
+            from_gb_error(if http::write_possible() {
+                http::WRITE_POSSIBLE.with(|tracker| tracker.failure(error))
+            } else { error })
         }).await
     }
 
@@ -168,7 +170,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             result.structured_content.unwrap()["kind"],
-            "outcome_unknown"
+            "operation_unknown"
         );
         let result = client
             .call_tool(CallToolRequestParams::new("get_authenticated_user"))

@@ -4,7 +4,8 @@ use crate::models::pull_request::{
     CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
 };
 
-use super::client::GitBucketClient;
+use super::{client::GitBucketClient, outcome::Operation, profile::Route};
+use crate::models::operation::{OperationTarget, ResourceKind};
 
 impl GitBucketClient {
     /// List pull requests for a repository.
@@ -45,7 +46,14 @@ impl GitBucketClient {
         body: &CreatePullRequest,
     ) -> Result<PullRequest> {
         super::url_safety::repository(owner, repo)?;
-        self.post(&format!("/repos/{}/{}/pulls", owner, repo), body)
+        let operation = Operation::new(
+            "create_pull_request",
+            OperationTarget::new(ResourceKind::PullRequest, owner, repo),
+            Route::Rest,
+            &[],
+        );
+        operation
+            .run(self.post(&format!("/repos/{owner}/{repo}/pulls"), body))
             .await
     }
 
@@ -70,11 +78,15 @@ impl GitBucketClient {
         body: &MergePullRequest,
     ) -> Result<MergeResult> {
         super::url_safety::repository(owner, repo)?;
-        self.put_merge(
-            &format!("/repos/{}/{}/pulls/{}/merge", owner, repo, number),
-            body,
-        )
-        .await
+        let operation = Operation::new(
+            "merge_pull_request",
+            OperationTarget::new(ResourceKind::PullRequest, owner, repo).numbered(number),
+            Route::Rest,
+            &[],
+        );
+        operation
+            .run(self.put_merge(&format!("/repos/{owner}/{repo}/pulls/{number}/merge"), body))
+            .await
     }
 
     /// Add a comment to a pull request (uses the issues comments endpoint).
@@ -86,10 +98,17 @@ impl GitBucketClient {
         body: &CreateComment,
     ) -> Result<Comment> {
         super::url_safety::repository(owner, repo)?;
-        self.post(
-            &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
-            body,
-        )
-        .await
+        let operation = Operation::new(
+            "add_pull_request_comment",
+            OperationTarget::new(ResourceKind::PullRequestComment, owner, repo).parented(number),
+            Route::Rest,
+            &[],
+        );
+        operation
+            .run(self.post(
+                &format!("/repos/{owner}/{repo}/issues/{number}/comments"),
+                body,
+            ))
+            .await
     }
 }

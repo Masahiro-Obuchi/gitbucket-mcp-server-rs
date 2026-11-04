@@ -1,15 +1,13 @@
 //! Translate caller changes into GitBucket's complete milestone write contract.
 use std::collections::HashSet;
 
-use super::client::GitBucketClient;
+use super::{client::GitBucketClient, outcome::Operation};
 use crate::error::{GbMcpError, Result};
 use crate::models::milestone::{
     CreateMilestone, FieldChange, GitBucketMilestoneWrite, Milestone, UpdateMilestone,
 };
 use crate::models::milestone_date::MilestoneDate;
-
-const CREATE: &str = "Milestone creation";
-const UPDATE: &str = "Milestone update";
+use crate::models::operation::{OperationTarget, ResourceKind};
 
 struct Changes {
     title: Option<String>,
@@ -135,16 +133,31 @@ pub(super) async fn create(
             super::profile::Operation::MilestoneWrite
         },
     );
-    if route == super::profile::Route::Web {
-        let result = web_create(client, owner, repo, &expected).await?;
-        verify(&expected, &result, None, CREATE)?;
-        return Ok(result);
-    }
-    let result = client
-        .post(&format!("/repos/{owner}/{repo}/milestones"), &expected)
-        .await?;
-    verify(&expected, &result, None, CREATE)?;
-    Ok(result)
+    let operation = Operation::new(
+        "create_milestone",
+        OperationTarget::new(ResourceKind::Milestone, owner, repo),
+        route,
+        &[
+            ("title", true),
+            ("state", false),
+            ("description", change.description.is_some()),
+            ("due_on", change.due_on.is_some()),
+        ],
+    );
+    operation
+        .run(async {
+            let result = if route == super::profile::Route::Web {
+                web_create(client, &operation, owner, repo, &expected).await?
+            } else {
+                client
+                    .post(&format!("/repos/{owner}/{repo}/milestones"), &expected)
+                    .await?
+            };
+            operation.identity(result.number)?;
+            verify(&operation, &expected, &result)?;
+            Ok(result)
+        })
+        .await
 }
 
 pub(super) async fn update(
@@ -165,7 +178,8 @@ pub(super) async fn update(
     let before = existing(&current)?;
     let expected = changes.apply(before.clone());
     valid_state(&expected.state)?;
-    if mismatched_fields(&expected, &current).is_empty() {
+    let mismatches = mismatched_fields(&expected, &current);
+    if mismatches.is_empty() {
         return Ok(current);
     }
     let route = client.operation_route(
@@ -175,19 +189,43 @@ pub(super) async fn update(
             super::profile::Operation::MilestoneWrite
         },
     );
-    if route == super::profile::Route::Web {
-        let result = web_update(client, owner, repo, number, &before, &expected).await?;
-        verify(&expected, &result, Some(number), UPDATE)?;
-        return Ok(result);
-    }
-    let result = client
-        .patch(
-            &format!("/repos/{owner}/{repo}/milestones/{number}"),
-            &expected,
-        )
-        .await?;
-    verify(&expected, &result, Some(number), UPDATE)?;
-    Ok(result)
+    let operation = Operation::new(
+        "update_milestone",
+        OperationTarget::new(ResourceKind::Milestone, owner, repo).numbered(number),
+        route,
+        &[
+            ("title", change.title.is_some()),
+            ("state", change.state.is_some()),
+            ("description", change.description.is_some()),
+            ("due_on", change.due_on.is_some()),
+        ],
+    );
+    // State-only web changes do not attempt the content fields. Retain the
+    // matching preflight values; a real content attempt will mark them unknown.
+    operation.verify(
+        &["title", "state", "description", "due_on"]
+            .into_iter()
+            .filter(|field| !mismatches.contains(field))
+            .map(|field| (field, true))
+            .collect::<Vec<_>>(),
+    )?;
+    operation
+        .run(async {
+            let result = if route == super::profile::Route::Web {
+                web_update(client, &operation, owner, repo, number, &before, &expected).await?
+            } else {
+                client
+                    .patch(
+                        &format!("/repos/{owner}/{repo}/milestones/{number}"),
+                        &expected,
+                    )
+                    .await?
+            };
+            operation.identity(result.number)?;
+            verify(&operation, &expected, &result)?;
+            Ok(result)
+        })
+        .await
 }
 
 fn mismatched_fields(expected: &GitBucketMilestoneWrite, actual: &Milestone) -> Vec<&'static str> {
@@ -216,20 +254,15 @@ fn mismatched_fields(expected: &GitBucketMilestoneWrite, actual: &Milestone) -> 
 }
 
 fn verify(
+    operation: &Operation,
     expected: &GitBucketMilestoneWrite,
     actual: &Milestone,
-    number: Option<u64>,
-    operation: &'static str,
 ) -> Result<()> {
-    let mut fields = mismatched_fields(expected, actual);
-    if number.is_some_and(|n| n != actual.number) {
-        fields.push("number");
-    }
-    if fields.is_empty() {
-        Ok(())
-    } else {
-        Err(GbMcpError::OperationNotVerified { operation, fields })
-    }
+    let mismatches = mismatched_fields(expected, actual);
+    operation.verify(
+        &["title", "state", "description", "due_on"]
+            .map(|field| (field, !mismatches.contains(&field))),
+    )
 }
 
 fn web_content(expected: &GitBucketMilestoneWrite) -> Result<Option<String>> {
@@ -242,6 +275,7 @@ fn web_content(expected: &GitBucketMilestoneWrite) -> Result<Option<String>> {
 
 async fn web_create(
     client: &GitBucketClient,
+    operation: &Operation,
     owner: &str,
     repo: &str,
     expected: &GitBucketMilestoneWrite,
@@ -265,24 +299,28 @@ async fn web_create(
         .await?;
     let candidates: Vec<_> = client
         .list_milestones(owner, repo, Some("all"))
-        .await
-        .map_err(|err| unknown(CREATE, err))?
+        .await?
         .into_iter()
         .filter(|m| !before.contains(&m.number) && m.title == expected.title)
         .collect();
+    operation.candidates(
+        candidates
+            .iter()
+            .map(|milestone| milestone.number)
+            .collect(),
+    );
     if candidates.len() != 1 {
-        return Err(unknown(CREATE, GbMcpError::Other("Could not uniquely identify a newly created milestone; an existing same-title milestone is not a creation result".into())));
+        return Err(GbMcpError::Other("Could not uniquely identify a newly created milestone; an existing same-title milestone is not a creation result".into()));
     }
-    candidates.into_iter().next().ok_or_else(|| {
-        unknown(
-            CREATE,
-            GbMcpError::Other("Created milestone was not found".into()),
-        )
-    })
+    Ok(candidates
+        .into_iter()
+        .next()
+        .expect("one creation candidate"))
 }
 
 async fn web_update(
     client: &GitBucketClient,
+    operation: &Operation,
     owner: &str,
     repo: &str,
     number: u64,
@@ -293,6 +331,7 @@ async fn web_update(
         || before.description.as_deref().unwrap_or_default()
             != expected.description.as_deref().unwrap_or_default()
         || before.due_on != expected.due_on;
+    // Check every content form constraint before any resource mutation.
     let date = if content_changed {
         web_content(expected)?
     } else {
@@ -300,16 +339,28 @@ async fn web_update(
     };
     let session = client.web_session().await?;
     if content_changed {
-        session
-            .edit_milestone(
-                owner,
-                repo,
-                number,
-                &expected.title,
-                expected.description.as_deref(),
-                date.as_deref(),
+        operation
+            .step(
+                &["title", "description", "due_on"],
+                session.edit_milestone(
+                    owner,
+                    repo,
+                    number,
+                    &expected.title,
+                    expected.description.as_deref(),
+                    date.as_deref(),
+                ),
             )
             .await?;
+        let actual = client.get_milestone(owner, repo, number).await?;
+        operation.identity(actual.number)?;
+        let mismatches = mismatched_fields(expected, &actual);
+        operation.verify(
+            &["title", "description", "due_on"].map(|field| (field, !mismatches.contains(&field))),
+        )?;
+        if before.state == expected.state {
+            return Ok(actual);
+        }
     }
     if before.state != expected.state {
         let action = if expected.state == "closed" {
@@ -317,23 +368,12 @@ async fn web_update(
         } else {
             "open"
         };
-        session
-            .update_milestone_state(owner, repo, number, action)
-            .await
-            .map_err(|err| {
-                if content_changed {
-                    unknown(UPDATE, err)
-                } else {
-                    err
-                }
-            })?;
+        operation
+            .step(
+                &["state"],
+                session.update_milestone_state(owner, repo, number, action),
+            )
+            .await?;
     }
-    client
-        .get_milestone(owner, repo, number)
-        .await
-        .map_err(|err| unknown(UPDATE, err))
-}
-
-fn unknown(operation: &'static str, cause: GbMcpError) -> GbMcpError {
-    super::http::unknown(operation, cause)
+    client.get_milestone(owner, repo, number).await
 }

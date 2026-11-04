@@ -1,3 +1,4 @@
+use gitbucket_mcp_server::models::operation::OutcomeStatus;
 use gitbucket_mcp_server::{
     api::{
         client::GitBucketClient,
@@ -182,7 +183,9 @@ async fn unknown_404_preserves_error_without_preflight_or_web_even_with_credenti
             .unwrap_err(),
     ];
     for result in results {
-        assert!(matches!(result, GbMcpError::Api { status: 404, .. }));
+        assert!(
+            matches!(result, GbMcpError::OperationFailed {outcome,cause} if outcome.status == gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied && matches!(*cause, GbMcpError::Api { status: 404, .. }))
+        );
     }
     let requests = server.received_requests().await.unwrap();
     assert_eq!(requests.len(), 5);
@@ -224,7 +227,9 @@ async fn standard_profiles_keep_rest_for_pr_rename_and_normal_milestone_errors()
                 .await
                 .unwrap_err(),
             ] {
-                assert!(matches!(error,GbMcpError::Api{status:s,..} if s==status));
+                assert!(
+                    matches!(error,GbMcpError::OperationFailed {outcome,cause} if outcome.status == gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied && matches!(*cause,GbMcpError::Api{status:s,..} if s==status))
+                );
             }
             let requests = server.received_requests().await.unwrap();
             assert_eq!(requests.len(), 3);
@@ -271,7 +276,7 @@ async fn label_rename_stays_rest_and_ignored_responses_are_not_success() {
         client(&server, ApiProfile::Standard)
             .update_label("owner", "repo", "old-name", &rename())
             .await,
-        Err(GbMcpError::OperationNotVerified { .. })
+        Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::NotVerified
     ));
 }
 
@@ -304,7 +309,7 @@ async fn same_name_color_uses_web_only_for_selected_contract_and_verifies_result
             } else {
                 assert!(matches!(
                     result,
-                    Err(GbMcpError::OperationNotVerified { .. })
+                    Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::NotVerified
                 ));
             }
             assert!(!server
@@ -463,7 +468,7 @@ async fn unverified_color_422_is_not_a_reason_to_try_web() {
             client(&server, mode)
                 .update_label("owner", "repo", "old-name", &recolor())
                 .await,
-            Err(GbMcpError::Api { status: 422, .. })
+            Err(GbMcpError::OperationFailed {outcome,cause}) if outcome.status == gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied && matches!(*cause,GbMcpError::Api { status: 422, .. })
         ));
         assert_eq!(server.received_requests().await.unwrap().len(), 2);
     }
@@ -695,6 +700,6 @@ async fn label_creation_verifies_name_and_color_instead_of_assuming_http_success
                 }
             )
             .await,
-        Err(GbMcpError::OperationNotVerified { .. })
+        Err(GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::NotVerified
     ));
 }

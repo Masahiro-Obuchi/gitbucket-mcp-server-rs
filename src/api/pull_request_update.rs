@@ -1,7 +1,8 @@
 //! Pull request update orchestration, separate from HTTP request construction.
 
-use super::client::GitBucketClient;
+use super::{client::GitBucketClient, outcome::Operation};
 use crate::error::{GbMcpError, Result};
+use crate::models::operation::{OperationTarget, ResourceKind};
 use crate::models::pull_request::{
     GitBucketPullRequestContent, GitBucketPullRequestUpdate, PullRequest, UpdatePullRequest,
 };
@@ -23,6 +24,11 @@ pub(super) async fn update(
     } else {
         None
     };
+    if current.as_ref().is_some_and(|pr| pr.number != number) {
+        return Err(GbMcpError::Other(
+            "GitBucket returned a different pull request; no write was sent".into(),
+        ));
+    }
     if let Some(base) = &change.base {
         validate_base(client, owner, repo, base).await?;
     }
@@ -50,11 +56,38 @@ pub(super) async fn update(
         content,
     };
 
-    client.operation_route(super::profile::Operation::PullRequestUpdate);
-    let path = format!("/repos/{owner}/{repo}/pulls/{number}");
-    let pr = client.patch(&path, &request).await?;
-    verify(&request, &pr)?;
-    Ok(pr)
+    let route = client.operation_route(super::profile::Operation::PullRequestUpdate);
+    let mut fields = Vec::new();
+    if request.content.is_some() {
+        fields.push(("title", change.title.is_some()));
+        fields.push(("body", change.body.is_some()));
+    }
+    if change.state.is_some() {
+        fields.push(("state", true));
+    }
+    if change.base.is_some() {
+        fields.push(("base", true));
+    }
+    if fields.is_empty() {
+        return Err(GbMcpError::InvalidInput(
+            "Supply a pull request change".into(),
+        ));
+    }
+    let operation = Operation::new(
+        "update_pull_request",
+        OperationTarget::new(ResourceKind::PullRequest, owner, repo).numbered(number),
+        route,
+        &fields,
+    );
+    operation
+        .run(async {
+            let path = format!("/repos/{owner}/{repo}/pulls/{number}");
+            let pr: PullRequest = client.patch(&path, &request).await?;
+            operation.identity(pr.number)?;
+            verify(&operation, &request, &pr)?;
+            Ok(pr)
+        })
+        .await
 }
 
 async fn validate_base(
@@ -75,32 +108,27 @@ async fn validate_base(
     Ok(())
 }
 
-fn verify(request: &GitBucketPullRequestUpdate<'_>, pr: &PullRequest) -> Result<()> {
-    let mut fields = Vec::new();
-    if request.state.is_some_and(|state| state != pr.state) {
-        fields.push("state");
+fn verify(
+    operation: &Operation,
+    request: &GitBucketPullRequestUpdate<'_>,
+    pr: &PullRequest,
+) -> Result<()> {
+    let mut checks = Vec::new();
+    if let Some(state) = request.state {
+        checks.push(("state", state == pr.state));
     }
-    if request
-        .base
-        .is_some_and(|base| pr.base.as_ref().map(|b| b.ref_name.as_str()) != Some(base))
-    {
-        fields.push("base");
+    if let Some(base) = request.base {
+        checks.push((
+            "base",
+            pr.base.as_ref().map(|b| b.ref_name.as_str()) == Some(base),
+        ));
     }
     if let Some(content) = &request.content {
-        if content.title != pr.title {
-            fields.push("title");
-        }
-        // GitBucket serializes an absent issue body as an empty string.
-        if content.body.unwrap_or_default() != pr.body.as_deref().unwrap_or_default() {
-            fields.push("body");
-        }
+        checks.push(("title", content.title == pr.title));
+        checks.push((
+            "body",
+            content.body.unwrap_or_default() == pr.body.as_deref().unwrap_or_default(),
+        ));
     }
-    if fields.is_empty() {
-        Ok(())
-    } else {
-        Err(GbMcpError::OperationNotVerified {
-            operation: "Pull request update",
-            fields,
-        })
-    }
+    operation.verify(&checks)
 }

@@ -3,7 +3,8 @@ use url::Url;
 use crate::error::{GbMcpError, Result};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 
-use super::client::GitBucketClient;
+use super::{client::GitBucketClient, outcome::Operation, profile::Route};
+use crate::models::operation::{OperationTarget, ResourceKind};
 
 impl GitBucketClient {
     pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<Label>> {
@@ -26,11 +27,21 @@ impl GitBucketClient {
             name: body.name.clone(),
             color: super::label_write::color(&body.color)?,
         };
-        let label = self
-            .post(&format!("/repos/{}/{}/labels", owner, repo), &request)
-            .await?;
-        super::label_write::verify(&label, &request.name, &request.color, "Label creation")?;
-        Ok(label)
+        let operation = Operation::new(
+            "create_label",
+            OperationTarget::new(ResourceKind::Label, owner, repo).named(&request.name),
+            Route::Rest,
+            &[("name", true), ("color", true)],
+        );
+        operation
+            .run(async {
+                let label = self
+                    .post(&format!("/repos/{owner}/{repo}/labels"), &request)
+                    .await?;
+                super::label_write::verify(&label, &request.name, &request.color, &operation)?;
+                Ok(label)
+            })
+            .await
     }
 
     pub async fn update_label(
@@ -48,15 +59,24 @@ impl GitBucketClient {
         super::url_safety::repository(owner, repo)?;
         let path = format!("/repos/{owner}/{repo}/labels/{name}");
         let url = label_url(self, owner, repo, name)?;
-        self.delete_url(url, &path).await?;
-        match self.get_label(owner, repo, name).await {
-            Err(GbMcpError::Api { status: 404, .. }) => Ok(()),
-            Ok(_) => Err(GbMcpError::OperationNotVerified {
-                operation: "Label deletion",
-                fields: vec!["existence"],
-            }),
-            Err(error) => Err(super::http::unknown("Label deletion", error)),
-        }
+        let operation = Operation::new(
+            "delete_label",
+            OperationTarget::new(ResourceKind::Label, owner, repo).named(name),
+            Route::Rest,
+            &[("existence", true)],
+        );
+        operation
+            .run(async {
+                self.delete_url(url, &path).await?;
+                match self.get_label(owner, repo, name).await {
+                    Err(GbMcpError::Api { status: 404, .. }) => {
+                        operation.verify(&[("existence", true)])
+                    }
+                    Ok(_) => operation.verify(&[("existence", false)]),
+                    Err(error) => Err(error),
+                }
+            })
+            .await
     }
 }
 

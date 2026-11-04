@@ -89,6 +89,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "username must not be empty".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }

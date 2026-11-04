@@ -1,3 +1,4 @@
+use gitbucket_mcp_server::models::operation::OutcomeStatus;
 mod common;
 
 use std::sync::{
@@ -1327,7 +1328,7 @@ async fn test_update_pull_request_invalid_write_response_is_unknown_without_retr
             .client()
             .update_pull_request("owner", "repo", 7, &update)
             .await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
     ));
     assert_eq!(
         server.mock_server.received_requests().await.unwrap().len(),
@@ -1352,7 +1353,7 @@ async fn test_update_pull_request_partial_application_is_not_success() {
     update.state = Some("closed".into());
     assert!(
         matches!(server.client().update_pull_request("owner", "repo", 7, &update).await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationNotVerified {fields, ..}) if fields == ["state"])
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..}) if outcome.fields.iter().any(|f| f.field == "state" && f.status == gitbucket_mcp_server::models::operation::FieldStatus::Mismatched))
     );
 }
 
@@ -1378,7 +1379,7 @@ async fn test_update_pull_request_existing_base_ignored_by_api_is_not_success() 
     update.base = Some("develop".into());
     assert!(
         matches!(server.client().update_pull_request("owner", "repo", 7, &update).await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationNotVerified {fields, ..}) if fields == ["base"])
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..}) if outcome.fields.iter().any(|f| f.field == "base" && f.status == gitbucket_mcp_server::models::operation::FieldStatus::Mismatched))
     );
 }
 
@@ -1402,10 +1403,12 @@ async fn test_update_pull_request_write_error_classification_without_retry() {
             .unwrap_err();
         if status == 408 || status == 500 {
             assert!(
-                matches!(error,GbMcpError::OperationOutcomeUnknown {cause,..} if matches!(*cause,GbMcpError::Api{status:s,..} if s==status))
+                matches!(error,GbMcpError::OperationFailed {cause,..} if matches!(*cause,GbMcpError::Api{status:s,..} if s==status))
             );
         } else {
-            assert!(matches!(error,GbMcpError::Api {status:s,..} if s==status));
+            assert!(
+                matches!(error,GbMcpError::OperationFailed {outcome,cause} if outcome.status == gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied && matches!(*cause,GbMcpError::Api {status:s,..} if s==status))
+            );
         }
         assert_eq!(
             server.mock_server.received_requests().await.unwrap().len(),
@@ -1448,6 +1451,16 @@ async fn test_update_pull_request_maps_wrapped_404_to_api_error() {
         .await
         .unwrap_err();
 
+    let err = match err {
+        gitbucket_mcp_server::error::GbMcpError::OperationFailed { outcome, cause } => {
+            assert_eq!(
+                outcome.status,
+                gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied
+            );
+            *cause
+        }
+        err => panic!("expected rejected operation with API cause, got {err}"),
+    };
     match err {
         gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
             assert_eq!(status, 404);
@@ -1485,6 +1498,16 @@ async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
         .await
         .unwrap_err();
 
+    let err = match err {
+        gitbucket_mcp_server::error::GbMcpError::OperationFailed { outcome, cause } => {
+            assert_eq!(
+                outcome.status,
+                gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied
+            );
+            *cause
+        }
+        err => panic!("expected rejected operation with API cause, got {err}"),
+    };
     match err {
         gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
             assert_eq!(status, 404);
@@ -1545,6 +1568,16 @@ async fn test_merge_pull_request_maps_wrapped_404_to_api_error() {
         .await
         .unwrap_err();
 
+    let err = match err {
+        gitbucket_mcp_server::error::GbMcpError::OperationFailed { outcome, cause } => {
+            assert_eq!(
+                outcome.status,
+                gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied
+            );
+            *cause
+        }
+        err => panic!("expected rejected operation with API cause, got {err}"),
+    };
     match err {
         gitbucket_mcp_server::error::GbMcpError::Api { status, message } => {
             assert_eq!(status, 404);

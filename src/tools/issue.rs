@@ -270,6 +270,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "state must be one of: open, closed, all".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }
@@ -296,6 +298,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "at least one of state, title, or body must be provided".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }
@@ -320,6 +324,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "body must not be empty".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }

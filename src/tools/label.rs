@@ -224,6 +224,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "color must be a 6-digit hex value like ff0000".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
     }
@@ -249,6 +251,8 @@ mod tests {
                 kind: "validation_error".to_string(),
                 message: "at least one of new_name or color must be provided".to_string(),
                 status: None,
+                operation: None,
+                cause: None,
             }
         );
         assert!(mock.calls().is_empty());

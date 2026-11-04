@@ -1,15 +1,17 @@
 //! Label update intent, route selection and result verification.
 use super::{
     client::GitBucketClient,
+    outcome::Operation as WriteOperation,
     profile::{Operation, Route},
 };
 use crate::{
     error::{GbMcpError, Result},
-    models::label::{Label, UpdateLabel},
+    models::{
+        label::{Label, UpdateLabel},
+        operation::{OperationTarget, ResourceKind},
+    },
 };
 use serde::Serialize;
-
-const UPDATE: &str = "Label update";
 
 #[derive(Serialize)]
 struct LabelWrite<'a> {
@@ -90,53 +92,73 @@ pub(super) async fn update(
     } else {
         Operation::LabelRename
     };
-    let result = if client.operation_route(operation) == Route::Web {
-        web_update(client, owner, repo, old_name, next_name, &next_color).await?
-    } else {
-        let url = super::label::label_url(client, owner, repo, old_name)?;
-        client
-            .patch_url(
-                url,
-                "label update",
-                &LabelWrite {
-                    name: next_name,
-                    color: &next_color,
-                },
-            )
-            .await?
-    };
-    verify(&result, next_name, &next_color, UPDATE)?;
-    Ok(result)
+    let route = client.operation_route(operation);
+    let operation = WriteOperation::new(
+        "update_label",
+        OperationTarget::new(ResourceKind::Label, owner, repo)
+            .named(old_name)
+            .renamed(next_name),
+        route,
+        &[
+            ("name", change.new_name.is_some()),
+            ("color", change.color.is_some()),
+        ],
+    );
+    operation
+        .run(async {
+            let result = if route == Route::Web {
+                web_update(
+                    client,
+                    &operation,
+                    owner,
+                    repo,
+                    old_name,
+                    next_name,
+                    &next_color,
+                )
+                .await?
+            } else {
+                let url = super::label::label_url(client, owner, repo, old_name)?;
+                client
+                    .patch_url(
+                        url,
+                        "label update",
+                        &LabelWrite {
+                            name: next_name,
+                            color: &next_color,
+                        },
+                    )
+                    .await?
+            };
+            verify(&result, next_name, &next_color, &operation)?;
+            Ok(result)
+        })
+        .await
 }
 
 pub(super) fn verify(
     label: &Label,
     expected_name: &str,
     expected_color: &str,
-    operation: &'static str,
+    operation: &WriteOperation,
 ) -> Result<()> {
-    let mut fields = Vec::new();
-    if label.name != expected_name {
-        fields.push("name");
-    }
-    if label
-        .color
-        .as_deref()
-        .and_then(|c| color(c).ok())
-        .as_deref()
-        != Some(expected_color)
-    {
-        fields.push("color");
-    }
-    if fields.is_empty() {
-        Ok(())
-    } else {
-        Err(GbMcpError::OperationNotVerified { operation, fields })
-    }
+    operation.verify(&[
+        ("name", label.name == expected_name),
+        (
+            "color",
+            label
+                .color
+                .as_deref()
+                .and_then(|value| color(value).ok())
+                .as_deref()
+                == Some(expected_color),
+        ),
+    ])
 }
 
 async fn web_update(
     client: &GitBucketClient,
+    operation: &WriteOperation,
     owner: &str,
     repo: &str,
     old_name: &str,
@@ -151,11 +173,9 @@ async fn web_update(
     }
     let session = client.web_session().await?;
     let label_id = session.find_label_id(owner, repo, old_name).await?;
+    operation.identity(label_id)?;
     session
         .edit_label(owner, repo, label_id, next_name, next_color)
         .await?;
-    client
-        .get_label(owner, repo, next_name)
-        .await
-        .map_err(|e| super::http::unknown(UPDATE, e))
+    client.get_label(owner, repo, next_name).await
 }

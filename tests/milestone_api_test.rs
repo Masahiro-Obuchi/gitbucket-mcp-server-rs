@@ -1,3 +1,4 @@
+use gitbucket_mcp_server::models::operation::OutcomeStatus;
 #[allow(dead_code)]
 mod common;
 
@@ -255,12 +256,12 @@ async fn test_ignored_and_unreadable_rest_responses_do_not_trigger_retries() {
         if unreadable {
             assert!(matches!(
                 err,
-                gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. }
+                gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..} if outcome.status == OutcomeStatus::Unknown
             ));
         } else {
             assert!(matches!(
                 err,
-                gitbucket_mcp_server::error::GbMcpError::OperationNotVerified { .. }
+                gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..} if outcome.status == OutcomeStatus::NotVerified
             ));
         }
         assert_eq!(
@@ -380,7 +381,7 @@ async fn test_web_200_validation_page_is_not_success() {
             .standard_client_with_web_auth("alice", "fake-password")
             .update_milestone("owner", "repo", 7, &update)
             .await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
     ));
 }
 
@@ -432,7 +433,7 @@ async fn test_web_creation_never_returns_an_existing_same_title_milestone() {
             .standard_client_with_web_auth("alice", "fake-password")
             .create_milestone("owner", "repo", &body)
             .await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
     ));
 }
 
@@ -517,12 +518,12 @@ async fn test_write_rejections_and_uncertain_errors_do_not_fall_back() {
             .unwrap_err();
         if status == 403 || status == 422 {
             assert!(
-                matches!(err,gitbucket_mcp_server::error::GbMcpError::Api{status:actual,..} if actual==status)
+                matches!(err,gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome,cause} if outcome.status == gitbucket_mcp_server::models::operation::OutcomeStatus::NotApplied && matches!(*cause,gitbucket_mcp_server::error::GbMcpError::Api{status:actual,..} if actual==status))
             );
         } else {
             assert!(matches!(
                 err,
-                gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. }
+                gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..} if outcome.status == OutcomeStatus::Unknown
             ));
         }
         assert_eq!(
@@ -574,6 +575,6 @@ async fn test_web_postwrite_read_failure_is_unknown() {
             .standard_client_with_web_auth("alice", "fake-password")
             .update_milestone("owner", "repo", 7, &update)
             .await,
-        Err(gitbucket_mcp_server::error::GbMcpError::OperationOutcomeUnknown { .. })
+        Err(gitbucket_mcp_server::error::GbMcpError::OperationFailed {outcome, ..}) if outcome.status == OutcomeStatus::Unknown
     ));
 }
