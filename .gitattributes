@@ -1,0 +1,2 @@
+# Preserve captured response whitespace for inline Markdown/DOM contract checks.
+tests/fixtures/inline_comments/*/*.html whitespace=-blank-at-eol

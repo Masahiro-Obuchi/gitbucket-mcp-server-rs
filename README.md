@@ -513,6 +513,17 @@ original error.
 | `get_authenticated_user` | Get the authenticated user's info |
 | `get_user` | Get a user by username |
 
+### Inline review comments
+
+Inline review tools are not implemented yet. Existing PR comments are ordinary
+conversation comments. The [P08 design](docs/inline-comment-design.md) records
+live contracts for official GitBucket 4.44.0/4.48.0 and the P09/P10 acceptance
+conditions. Standard web pages expose rendered HTML with incomplete history;
+reading other users' original Markdown requires more than repository read
+permission, and the posting form trims content. The design separates limited
+web support from the proposed API extension needed for stronger guarantees.
+Reproduce the research with the [disposable contract probe](TESTING.md#inline-comment-contract-probe-p08).
+
 ### Structured Output Shape
 
 MCP structured results are always JSON objects. List tools return their arrays under a stable field name:

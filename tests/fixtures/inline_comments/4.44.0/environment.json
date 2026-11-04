@@ -1,0 +1,12 @@
+{
+  "tested_at": "2026-11-04T16:18:47.362771+00:00",
+  "image": "ghcr.io/gitbucket/gitbucket:4.44.0",
+  "image_id": "sha256:c5d737d6ed93d9e24e106922fc6063a38a11b3baebd12ddd6ebf9d00b7d325df",
+  "repo_digests": [
+    "ghcr.io/gitbucket/gitbucket@sha256:45443c9465b8ddca703c24acc389316cc5ee9b1567acbb7999ef6e010044c3aa"
+  ],
+  "context_path": "/",
+  "plugins": "bundled image only; no additional plugins installed",
+  "transport": "loopback HTTP",
+  "authentication": "owner PAT + owner/guest Web sessions"
+}

@@ -69,6 +69,66 @@ rejects lossy standard web content and inline arguments; and verifies read-only
 listing/reads and blocked comments without changing conversation contents. It
 leaves its unique Issue/PR/branch fixtures in the disposable repository.
 
+## Inline comment contract probe (P08)
+
+`scripts/e2e/probe_inline_comments.py` is an explicit research experiment, not an
+MCP tool or a default E2E. It creates a private repository, a GUEST account, 11
+commit/file/line comments and Git history; it replaces its own fixture branch
+using a force-with-lease and merges it. Use only a dedicated disposable stock
+GitBucket environment with the bootstrap root account. The probe requires
+`--allow-disposable-writes` and an HTTP loopback URL with root context path.
+
+Run each version in its own Compose project and volume:
+
+```bash
+for version in 4.44.0 4.48.0; do
+  (
+    set -euo pipefail
+    export GITBUCKET_E2E_IMAGE="ghcr.io/gitbucket/gitbucket:${version}"
+    export GITBUCKET_E2E_COMPOSE_PROJECT="gitbucket-inline-${version//./}"
+    export GITBUCKET_E2E_HTTP_PORT=18204
+    export GITBUCKET_E2E_BASE_URL="http://127.0.0.1:${GITBUCKET_E2E_HTTP_PORT}"
+    export GITBUCKET_E2E_ROOT="$(mktemp -d /tmp/gitbucket-inline.XXXXXXXX)"
+    export GITBUCKET_E2E_ENV_FILE="${GITBUCKET_E2E_ROOT}/runtime.env"
+    export GITBUCKET_E2E_USER=inline-probe-owner
+    export GITBUCKET_E2E_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+    trap 'bash scripts/e2e/down.sh' EXIT
+    bash scripts/e2e/bootstrap.sh
+    docker image inspect "${GITBUCKET_E2E_IMAGE}" --format '{{json .RepoDigests}}'
+    source "${GITBUCKET_E2E_ENV_FILE}"
+    python3 scripts/e2e/probe_inline_comments.py \
+      --allow-disposable-writes --version-label "${version}" \
+      --output "${GITBUCKET_E2E_ROOT}-observations"
+  )
+done
+```
+
+Reserve the Compose project names for this experiment; teardown removes their
+volumes. Observations remain in the sibling `<runtime>-observations` directory;
+teardown removes the runtime directory and credentials. This probe does not touch the configured
+repository's branches: it creates its own repository for each run. Do not point
+the loopback URL at a tunnel to a business server.
+
+Captured, normalized evidence is in `tests/fixtures/inline_comments/`. It records
+image digests, exact upstream source blobs, request fields and statuses, body
+loss, GUEST authorization, both DOM card forms, fold state, head relocation,
+history replacement and post-merge coverage. The selected HTML fragments have
+been parsed and reserialized; the fixture README defines their limits.
+The [design](docs/inline-comment-design.md) separates source findings, live
+observations, untested cases and proposed extensions.
+
+Offline fixture/guard checks run in CI alongside the existing runtime tests:
+
+```bash
+python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
+```
+
+The six probe checks require no server. They cover target restrictions, upstream
+JSON forms, captured DOM kinds/IDs, raw text and authorization limits, history
+coverage and source/image provenance. Live probe completion does not mean that
+inline tools are available. The normal Rust suite still ignores its 23 existing
+live E2Es; the P08 probe is a separate command.
+
 ## Operation Routing Regression Tests
 
 ```bash
