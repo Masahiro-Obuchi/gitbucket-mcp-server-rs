@@ -123,6 +123,178 @@ fn assert_issue_partial(operation: &OperationOutcome) {
 }
 
 #[tokio::test]
+async fn issue_preflight_matches_survive_write_and_verification_failures() {
+    for verification_failure in [false, true] {
+        let server = MockServer::start().await;
+        signin(&server).await;
+        let reads = AtomicUsize::new(0);
+        Mock::given(method("GET"))
+            .and(path("/api/v3/repos/owner/repo/issues/1"))
+            .respond_with(move |_: &wiremock::Request| {
+                if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(200).set_body_json(json!({
+                        "number": 1, "title": "new title", "body": "old body", "state": "open"
+                    }))
+                } else {
+                    ResponseTemplate::new(403)
+                }
+            })
+            .expect(if verification_failure { 2 } else { 1 })
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/owner/repo/issues/edit/1"))
+            .respond_with(if verification_failure {
+                ResponseTemplate::new(303).insert_header("Location", "/owner/repo/issues/_data/1")
+            } else {
+                ResponseTemplate::new(500)
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/_data/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "title": "new title", "content": "new body"
+            })))
+            .expect(if verification_failure { 1 } else { 0 })
+            .mount(&server)
+            .await;
+        let error = client(&server)
+            .update_issue("owner", "repo", 1, &all_changes())
+            .await
+            .unwrap_err();
+        let report = outcome(&error);
+        assert_eq!(field(report, "title"), FieldStatus::Unchanged);
+        assert_eq!(field(report, "body"), FieldStatus::Unknown);
+        assert_eq!(field(report, "state"), FieldStatus::NotAttempted);
+        // An unchanged requested value does not prove a partial application.
+        assert_eq!(report.status, OutcomeStatus::Unknown);
+        assert_eq!(report.fields[0].intent, FieldIntent::Requested);
+        assert!(!server.received_requests().await.unwrap().iter().any(|r| {
+            r.url.path() == "/owner/repo/issues/edit_title/1" || r.url.path().ends_with("/state")
+        }));
+    }
+}
+
+#[tokio::test]
+async fn milestone_preflight_matches_survive_state_write_and_verification_failures() {
+    for verification_failure in [false, true] {
+        let server = MockServer::start().await;
+        signin(&server).await;
+        let reads = AtomicUsize::new(0);
+        Mock::given(method("GET"))
+            .and(path("/api/v3/repos/owner/repo/milestones/7"))
+            .respond_with(move |_: &wiremock::Request| {
+                if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                    ResponseTemplate::new(200).set_body_json(json!({
+                        "number": 7, "title": "日本語", "description": "keep", "state": "open",
+                        "due_on": "2026-04-01T00:00:00Z"
+                    }))
+                } else {
+                    ResponseTemplate::new(403)
+                }
+            })
+            .expect(if verification_failure { 2 } else { 1 })
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/milestones/7/close"))
+            .respond_with(if verification_failure {
+                ResponseTemplate::new(303)
+                    .insert_header("Location", "/owner/repo/issues/milestones")
+            } else {
+                ResponseTemplate::new(500)
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/owner/repo/issues/milestones"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("<a href='/owner/repo/issues/milestones/new'>New</a>"),
+            )
+            .expect(if verification_failure { 1 } else { 0 })
+            .mount(&server)
+            .await;
+        let error = client(&server)
+            .update_milestone(
+                "owner",
+                "repo",
+                7,
+                &UpdateMilestone {
+                    title: Some("日本語".into()),
+                    description: Some("keep".into()),
+                    due_on: None,
+                    state: Some("closed".into()),
+                },
+            )
+            .await
+            .unwrap_err();
+        let report = outcome(&error);
+        for name in ["title", "description", "due_on"] {
+            assert_eq!(field(report, name), FieldStatus::Unchanged, "{name}");
+        }
+        assert_eq!(field(report, "state"), FieldStatus::Unknown);
+        assert_eq!(report.status, OutcomeStatus::Unknown);
+        assert!(!server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| { r.url.path() == "/owner/repo/issues/milestones/7/edit" }));
+    }
+}
+
+#[tokio::test]
+async fn milestone_content_attempt_invalidates_matching_preflight_observations() {
+    let server = MockServer::start().await;
+    signin(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/owner/repo/milestones/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "number": 7, "title": "日本語", "description": "old", "state": "open",
+            "due_on": "2026-04-01T00:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/owner/repo/issues/milestones/7/edit"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let error = client(&server)
+        .update_milestone(
+            "owner",
+            "repo",
+            7,
+            &UpdateMilestone {
+                title: Some("日本語".into()),
+                description: Some("new".into()),
+                due_on: None,
+                state: Some("closed".into()),
+            },
+        )
+        .await
+        .unwrap_err();
+    let report = outcome(&error);
+    for name in ["title", "description", "due_on"] {
+        assert_eq!(field(report, name), FieldStatus::Unknown, "{name}");
+    }
+    assert_eq!(field(report, "state"), FieldStatus::NotAttempted);
+    assert_eq!(report.status, OutcomeStatus::Unknown);
+    assert!(!server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .any(|r| { r.url.path() == "/owner/repo/issues/milestones/7/close" }));
+}
+
+#[tokio::test]
 async fn issue_partial_error_keeps_verified_unknown_and_unattempted_fields_without_body_values() {
     let server = MockServer::start().await;
     signin(&server).await;
@@ -447,10 +619,20 @@ async fn ambiguous_milestone_creation_exposes_candidates_without_inventing_a_cre
 #[tokio::test]
 async fn tool_deadline_and_cancellation_keep_prior_field_evidence_and_stop_later_writes() {
     use rmcp::{service::RequestContext, ServerHandler};
-    for cancel in [false, true] {
+    for (cancel, unchanged_title) in [(false, false), (true, false), (false, true), (true, true)] {
         let http = MockServer::start().await;
         signin(&http).await;
-        issue_title(&http).await;
+        if unchanged_title {
+            Mock::given(method("GET"))
+                .and(path("/api/v3/repos/owner/repo/issues/1"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "number": 1, "title": "new title", "body": "old body", "state": "open"
+                })))
+                .mount(&http)
+                .await;
+        } else {
+            issue_title(&http).await;
+        }
         let arrived = Arc::new(tokio::sync::Notify::new());
         let notify = arrived.clone();
         Mock::given(method("POST"))
@@ -506,7 +688,14 @@ async fn tool_deadline_and_cancellation_keep_prior_field_evidence_and_stop_later
             .unwrap();
         assert_eq!(result.is_error, Some(true));
         let payload = result.structured_content.unwrap();
-        assert_eq!(payload["kind"], "operation_partial");
+        assert_eq!(
+            payload["kind"],
+            if unchanged_title {
+                "operation_unknown"
+            } else {
+                "operation_partial"
+            }
+        );
         assert_eq!(
             payload["cause"]["kind"],
             if cancel {
@@ -517,7 +706,14 @@ async fn tool_deadline_and_cancellation_keep_prior_field_evidence_and_stop_later
         );
         let report: OperationOutcome =
             serde_json::from_value(payload["operation"].clone()).unwrap();
-        assert_issue_partial(&report);
+        if unchanged_title {
+            assert_eq!(report.status, OutcomeStatus::Unknown);
+            assert_eq!(field(&report, "title"), FieldStatus::Unchanged);
+            assert_eq!(field(&report, "body"), FieldStatus::Unknown);
+            assert_eq!(field(&report, "state"), FieldStatus::NotAttempted);
+        } else {
+            assert_issue_partial(&report);
+        }
         assert!(!http
             .received_requests()
             .await

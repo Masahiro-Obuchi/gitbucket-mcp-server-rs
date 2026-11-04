@@ -184,6 +184,8 @@ A failed write returns `is_error=true` with one of these kinds:
 
 The `operation` object gives the name, REST/Web route, target locators and per-field results. Fields have an `intent` of `requested` or `preserved` and a `status` of `verified`, `unchanged`, `mismatched`, `unknown`, `rejected` or `not_attempted`. `verified` means the value matched an observation during this call; `unchanged` means it matched without a write to that field. Neither proves that this operation caused the value or protects against concurrent edits. Preserved fields matching alone do not make a partial result.
 
+Matching preflight values are retained as `unchanged` if a later field fails or the call is interrupted. If a subsequent write includes one of those fields, its status becomes `unknown` until verified again. An unchanged requested value alone does not make the operation partially applied.
+
 For example, an Issue title verified before a body timeout returns:
 
 ```json

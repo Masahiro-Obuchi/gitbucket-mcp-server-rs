@@ -65,6 +65,19 @@ pub(super) async fn update(
                     "GitBucket returned a different issue; no write was sent".into(),
                 ));
             }
+            // Keep requested no-op observations if a later field fails. Only
+            // matching fields are observations here; pending changes are not
+            // mismatches until they have actually been attempted and checked.
+            verify(
+                &operation,
+                &current,
+                change.title.as_deref().filter(|v| *v == current.title),
+                change
+                    .body
+                    .as_deref()
+                    .filter(|v| *v == current.body.as_deref().unwrap_or_default()),
+                change.state.as_deref().filter(|v| *v == current.state),
+            )?;
             let title = change.title.as_deref().filter(|v| *v != current.title);
             let body = change
                 .body

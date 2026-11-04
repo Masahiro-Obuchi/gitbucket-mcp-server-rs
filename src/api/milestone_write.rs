@@ -178,7 +178,8 @@ pub(super) async fn update(
     let before = existing(&current)?;
     let expected = changes.apply(before.clone());
     valid_state(&expected.state)?;
-    if mismatched_fields(&expected, &current).is_empty() {
+    let mismatches = mismatched_fields(&expected, &current);
+    if mismatches.is_empty() {
         return Ok(current);
     }
     let route = client.operation_route(
@@ -199,6 +200,15 @@ pub(super) async fn update(
             ("due_on", change.due_on.is_some()),
         ],
     );
+    // State-only web changes do not attempt the content fields. Retain the
+    // matching preflight values; a real content attempt will mark them unknown.
+    operation.verify(
+        &["title", "state", "description", "due_on"]
+            .into_iter()
+            .filter(|field| !mismatches.contains(field))
+            .map(|field| (field, true))
+            .collect::<Vec<_>>(),
+    )?;
     operation
         .run(async {
             let result = if route == super::profile::Route::Web {

@@ -53,6 +53,8 @@ cargo test --test operation_outcome_test
 
 Stateful HTTP fixtures verify Issue title success followed by body failure, PR partial HTTP 200 responses, wrong response identity, preserved-field intent, milestone content validation before state changes, and ambiguous creation candidate IDs. MCP dispatch tests interrupt a later Issue field with both a deadline and cancellation and verify that earlier field evidence survives while later writes stop. REST 400/401/403/404/409/422 rejections remain distinct from 408/5xx uncertainty, with safe nested causes and no replay. Error payloads must not contain form secrets, changed titles/bodies or raw server error text.
 
+Preflight no-op regressions retain matching Issue and milestone fields as `unchanged` after a later write fails or its verification returns 403. MCP deadline/cancellation cases preserve unchanged Issue fields without reporting partial application. A failed milestone content write marks every submitted content field unknown again, including values that matched during preflight.
+
 Existing transport/service regressions assert the new operation status explicitly, including unverified responses, expired authentication before the first write, verification read failures and deletion checks. Successful tool payloads are checked by the existing MCP suite. Live verification passed all 22 E2Es on each official GitBucket 4.44.0 and 4.48.0 image using the standard profile.
 
 ## Web Session Regression Tests
