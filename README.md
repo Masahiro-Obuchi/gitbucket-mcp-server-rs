@@ -126,6 +126,7 @@ Debug output redacts configuration and credentials. API errors report the HTTP s
 | `GITBUCKET_USERNAME` | ❌ | GitBucket username for web fallback operations | `alice` |
 | `GITBUCKET_PASSWORD` | ❌ | GitBucket password for web fallback operations | `secret-pass` |
 | `GITBUCKET_API_PROFILE` | ❌ | Upstream API contract; default `rest-only` | `standard` |
+| `GITBUCKET_READ_ONLY` | ❌ | Expose and allow only read tools; `true` or `false` (default) | `true` |
 | `GITBUCKET_MCP_CONFIG_DIR` | ❌ | Override config directory | `/custom/path` |
 
 \* Required if not set in config file. Environment variables override config file values. `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be set together when used.
@@ -135,6 +136,23 @@ uses a selected web compatibility route. Credentials alone do not enable that ro
 select `GITBUCKET_API_PROFILE=standard` as described below. They are **not** used for Git over HTTP operations such as `git clone`,
 `git fetch`, or `git push`. Configure your Git credential helper separately if
 Git commands prompt for a username or password.
+
+### Read-only access
+
+Set `GITBUCKET_READ_ONLY=true` to register only the 14 list/get tools. The server
+also rejects write calls with `read_only_error` before any HTTP or authentication
+requests, including calls to a known write name and direct Rust tool handlers.
+The setting is env-only; values other than `true` or `false` fail startup.
+Normal read/write access is the default. Rust server users opt in with
+`.with_access_mode(server::AccessMode::ReadOnly)`; library constructors do not
+read this environment variable. This mode controls the MCP server's tools;
+standalone `GitBucketClient` calls use the client's own capabilities.
+
+All tools advertise read-only, destructive, idempotent and open-world hints.
+Reads and deletions are marked idempotent; other writes conservatively are not,
+because updates can emit hooks or notifications. Updates, deletions and merge
+are destructive hints; creates/comments/forks are additive hints. Annotations
+are client hints, while read-only access is enforced independently by the server.
 
 ### GitBucket API profiles
 
@@ -509,6 +527,30 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
 
+All tool inputs reject unknown fields before HTTP with an MCP invalid-parameters
+error. In particular, `path`, `line` and `commit_id` do not turn an ordinary PR
+comment into an inline comment. Send only fields advertised by the input schema.
+
+Issue/PR bodies, comments, milestone/repository descriptions and merge commit
+messages preserve the supplied text, including indentation, trailing spaces and
+newlines. Required comments still reject whitespace-only text. Identifiers,
+titles, state and dates retain their documented normalization. Empty update
+bodies/descriptions explicitly clear content; whitespace-only optional content
+is preserved as content, not converted to a clear.
+
+The standard GitBucket Issue web form trims body text. If a changed body has
+leading/trailing whitespace, `update_issue` returns `unsupported_error` after its
+snapshot read and before any writes, including accompanying title/state changes.
+An unchanged body needs no content form, and REST-capable profiles preserve the
+text. Milestone web content has the corresponding existing whitespace constraint.
+
+PR results retain `draft`, labels/assignees, `merged_by`, branch users and the
+related API URLs supplied by GitBucket. Issue results retain the milestone,
+assignee, comment URL and PR link when supplied. Missing metadata arrays and
+boolean flags are `null`; explicit empty arrays and `false` remain distinct.
+`mergeable: null` means unknown, and a missing repository `fork` flag is also
+`null`. URL metadata alone does not establish that the linked API is supported.
+
 List retrieval follows GitBucket's endpoint-specific behavior:
 
 - Issues and pull requests use 25-item pages and continue until an empty page,
@@ -528,7 +570,11 @@ Label creation and updates verify the returned name and color. Web updates read 
 
 Standard-profile web color changes reject label names containing a comma or leading/trailing whitespace with `unsupported_error` before sign-in. The web form cannot safely preserve those names. The Rust API retains support for whitespace-padded names on REST create/rename operations, and unchanged labels need no web write.
 
-GitBucket's issue API does not expose `closed_at` on some versions. When a closed issue has no `closed_at` but does have `updated_at`, this server fills `closed_at` with `updated_at` as a best-effort GitHub-compatible value.
+GitBucket's Issue API does not expose `closed_at` on the tested official versions.
+Missing closure times remain `null`, even after later edits to a closed Issue;
+`updated_at` is never substituted. A closure time supplied by an API is retained.
+See [unreleased migration notes](RELEASE.md#unreleased-p07-input-and-model-changes)
+for the affected protocol and Rust response types.
 
 ## Development
 

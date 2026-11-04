@@ -194,7 +194,7 @@ impl Default for IntegrationMockApi {
             html_url: None,
             clone_url: None,
             is_private: false,
-            fork: false,
+            fork: Some(false),
             default_branch: Some("main".to_string()),
             owner: Some(user.clone()),
             watchers_count: None,
@@ -207,17 +207,21 @@ impl Default for IntegrationMockApi {
             body: Some("Issue body".to_string()),
             state: "open".to_string(),
             user: Some(user.clone()),
-            labels: vec![Label {
+            labels: Some(vec![Label {
                 name: "bug".to_string(),
                 color: None,
                 url: None,
-            }],
-            assignees: vec![],
+            }]),
+            assignees: Some(vec![]),
             html_url: None,
             created_at: None,
             updated_at: None,
             closed_at: None,
             comments: Some(1),
+            assignee: None,
+            milestone: None,
+            comments_url: None,
+            pull_request: None,
         };
         let label = RepositoryLabel {
             name: "bug".to_string(),
@@ -263,6 +267,17 @@ impl Default for IntegrationMockApi {
             updated_at: None,
             closed_at: None,
             merged_at: None,
+            draft: None,
+            labels: None,
+            assignees: None,
+            assignee: None,
+            merged_by: None,
+            url: None,
+            commits_url: None,
+            review_comments_url: None,
+            review_comment_url: None,
+            comments_url: None,
+            statuses_url: None,
         };
         let merge_result = MergeResult {
             sha: Some("merged-sha".to_string()),
@@ -1148,7 +1163,7 @@ async fn test_mcp_call_tool_create_milestone_trims_fields_and_serializes_json() 
             assert_eq!(owner, "owner");
             assert_eq!(repo, "repo");
             assert_eq!(body.title, "v1.0");
-            assert_eq!(body.description.as_deref(), Some("first release"));
+            assert_eq!(body.description.as_deref(), Some("  first release  "));
             assert_eq!(body.due_on.as_deref(), Some("2026-04-01"));
         }
         calls => panic!("unexpected calls: {calls:?}"),
@@ -1263,7 +1278,7 @@ async fn test_mcp_call_tool_create_issue_trims_fields_and_hits_api() {
             assert_eq!(owner, "owner");
             assert_eq!(repo, "repo");
             assert_eq!(body.title, "New issue");
-            assert_eq!(body.body.as_deref(), Some("body text"));
+            assert_eq!(body.body.as_deref(), Some("  body text  "));
             assert_eq!(body.labels.as_deref(), Some(&["bug".to_string()][..]));
             assert_eq!(body.assignees.as_deref(), Some(&["alice".to_string()][..]));
         }
@@ -1341,7 +1356,7 @@ async fn test_mcp_call_tool_merge_pull_request_trims_commit_message_and_serializ
             assert_eq!(owner, "owner");
             assert_eq!(repo, "repo");
             assert_eq!(*number, 7);
-            assert_eq!(body.commit_message.as_deref(), Some("merge message"));
+            assert_eq!(body.commit_message.as_deref(), Some("  merge message  "));
             assert_eq!(body.sha, None);
             assert_eq!(body.merge_method, None);
         }

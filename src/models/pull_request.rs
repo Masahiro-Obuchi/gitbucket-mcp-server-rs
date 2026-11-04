@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::issue::Label;
 use super::repository::Repository;
 use super::user::User;
 
@@ -10,6 +11,7 @@ pub struct PullRequestHead {
     pub ref_name: String,
     pub sha: Option<String>,
     pub repo: Option<Repository>,
+    pub user: Option<User>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -19,7 +21,18 @@ pub struct PullRequest {
     pub body: Option<String>,
     pub state: String,
     pub user: Option<User>,
+    pub draft: Option<bool>,
+    pub labels: Option<Vec<Label>>,
+    pub assignees: Option<Vec<User>>,
+    pub assignee: Option<User>,
+    pub merged_by: Option<User>,
     pub html_url: Option<String>,
+    pub url: Option<String>,
+    pub commits_url: Option<String>,
+    pub review_comments_url: Option<String>,
+    pub review_comment_url: Option<String>,
+    pub comments_url: Option<String>,
+    pub statuses_url: Option<String>,
     pub head: Option<PullRequestHead>,
     pub base: Option<PullRequestHead>,
     pub merged: Option<bool>,

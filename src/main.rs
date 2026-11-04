@@ -3,7 +3,7 @@ use tracing_subscriber::EnvFilter;
 
 use gitbucket_mcp_server::api::client::GitBucketClient;
 use gitbucket_mcp_server::config::Config;
-use gitbucket_mcp_server::server::GitBucketMcpServer;
+use gitbucket_mcp_server::server::{AccessMode, GitBucketMcpServer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_api_profile(gitbucket_mcp_server::api::profile::ApiProfile::from_env()?);
 
     // Create and start MCP server via stdio transport
-    let server = GitBucketMcpServer::new(client);
+    let server = GitBucketMcpServer::new(client).with_access_mode(AccessMode::from_env()?);
     let service = server
         .serve(rmcp::transport::stdio())
         .await

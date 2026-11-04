@@ -6,12 +6,15 @@ use serde::{Deserialize, Serialize};
 use crate::models::milestone::{CreateMilestone, UpdateMilestone};
 use crate::models::milestone_date::MilestoneDate;
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
+use crate::tools::response::{
+    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+};
 use crate::tools::validation::{
     error, issue_state, list_state, repository_fields, required_optional_trimmed, required_trimmed,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListMilestonesParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -22,6 +25,7 @@ pub struct ListMilestonesParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetMilestoneParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -32,6 +36,7 @@ pub struct GetMilestoneParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateMilestoneParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -48,6 +53,7 @@ pub struct CreateMilestoneParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateMilestoneParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -68,6 +74,7 @@ pub struct UpdateMilestoneParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DeleteMilestoneParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -85,7 +92,15 @@ struct DeleteMilestoneResult {
 
 #[tool_router(router = tool_router_milestone, vis = "pub")]
 impl GitBucketMcpServer {
-    #[tool(description = "List milestones for a GitBucket repository")]
+    #[tool(
+        description = "List milestones for a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_milestones(
         &self,
         Parameters(params): Parameters<ListMilestonesParams>,
@@ -109,7 +124,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Get details of a milestone in a GitBucket repository")]
+    #[tool(
+        description = "Get details of a milestone in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_milestone(
         &self,
         Parameters(params): Parameters<GetMilestoneParams>,
@@ -129,11 +152,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Create a milestone in a GitBucket repository")]
+    #[tool(
+        description = "Create a milestone in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn create_milestone(
         &self,
         Parameters(params): Parameters<CreateMilestoneParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -154,10 +188,7 @@ impl GitBucketMcpServer {
         }
         let body = CreateMilestone {
             title,
-            description: params
-                .description
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty()),
+            description: params.description,
             due_on,
         };
 
@@ -167,11 +198,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Update a milestone in a GitBucket repository")]
+    #[tool(
+        description = "Update a milestone in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn update_milestone(
         &self,
         Parameters(params): Parameters<UpdateMilestoneParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -184,7 +226,7 @@ impl GitBucketMcpServer {
             Ok(state) => state,
             Err(err) => return validation_error(err),
         };
-        let description = params.description.map(|value| value.trim().to_string());
+        let description = params.description;
         let due_on = params.due_on.map(|value| value.trim().to_string());
         if let Some(value) = due_on.as_deref().filter(|value| !value.is_empty()) {
             if let Err(err) = MilestoneDate::parse(value) {
@@ -215,11 +257,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Delete a milestone from a GitBucket repository")]
+    #[tool(
+        description = "Delete a milestone from a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn delete_milestone(
         &self,
         Parameters(params): Parameters<DeleteMilestoneParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -361,7 +414,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_milestone_trims_optional_fields_and_serializes_response() {
+    async fn test_create_milestone_preserves_description_and_normalizes_date() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -381,7 +434,7 @@ mod tests {
                 assert_eq!(owner, "owner");
                 assert_eq!(repo, "repo");
                 assert_eq!(body.title, "v1.0");
-                assert_eq!(body.description.as_deref(), Some("first release"));
+                assert_eq!(body.description.as_deref(), Some("  first release  "));
                 assert_eq!(body.due_on.as_deref(), Some("2026-04-01"));
             }
             calls => panic!("unexpected calls: {calls:?}"),
@@ -389,7 +442,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_milestone_trims_fields_and_preserves_clear_values() {
+    async fn test_update_milestone_normalizes_identifiers_and_preserves_explicit_clears() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -399,7 +452,7 @@ mod tests {
                 repo: " repo ".to_string(),
                 milestone_number: 7,
                 title: Some("  v1.1  ".to_string()),
-                description: Some("   ".to_string()),
+                description: Some(String::new()),
                 due_on: Some("".to_string()),
                 state: Some("closed".to_string()),
             }))

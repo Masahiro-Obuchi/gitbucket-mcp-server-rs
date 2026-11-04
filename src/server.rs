@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use crate::{api::http, error::GbMcpError, tools::response::from_gb_error};
+use crate::{
+    api::http,
+    error::GbMcpError,
+    tools::response::{from_gb_error, read_only_error},
+};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::ServerHandler;
@@ -8,11 +12,54 @@ use std::time::Duration;
 
 use crate::api::{client::GitBucketClient, GitBucketApi};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AccessMode {
+    #[default]
+    ReadWrite,
+    ReadOnly,
+}
+
+impl AccessMode {
+    /// Server-only setting; library clients opt in with `with_access_mode`.
+    pub fn from_env() -> crate::error::Result<Self> {
+        match std::env::var("GITBUCKET_READ_ONLY") {
+            Err(std::env::VarError::NotPresent) => Ok(Self::ReadWrite),
+            Ok(value) if value.trim() == "true" => Ok(Self::ReadOnly),
+            Ok(value) if value.trim() == "false" => Ok(Self::ReadWrite),
+            _ => Err(GbMcpError::Config(
+                "GITBUCKET_READ_ONLY must be true or false".into(),
+            )),
+        }
+    }
+}
+
+// An explicit allowlist enforces access independently of advisory annotations.
+fn is_read_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "get_authenticated_user"
+            | "get_user"
+            | "list_repositories"
+            | "get_repository"
+            | "list_branches"
+            | "list_labels"
+            | "get_label"
+            | "list_milestones"
+            | "get_milestone"
+            | "list_issues"
+            | "get_issue"
+            | "list_issue_comments"
+            | "list_pull_requests"
+            | "get_pull_request"
+    )
+}
+
 #[derive(Debug, Clone)]
 pub struct GitBucketMcpServer {
     pub(crate) client: Arc<dyn GitBucketApi>,
     tool_router: ToolRouter<Self>,
     tool_timeout: Duration,
+    access_mode: AccessMode,
 }
 
 impl GitBucketMcpServer {
@@ -37,17 +84,41 @@ impl GitBucketMcpServer {
         Ok(Self::build(client, tool_timeout))
     }
 
-    fn build(client: Arc<dyn GitBucketApi>, tool_timeout: Duration) -> Self {
+    pub fn with_access_mode(mut self, access_mode: AccessMode) -> Self {
+        self.access_mode = access_mode;
+        self.tool_router = Self::routes(access_mode);
+        self
+    }
+
+    pub(crate) fn is_read_only(&self) -> bool {
+        self.access_mode == AccessMode::ReadOnly
+    }
+
+    fn routes(access_mode: AccessMode) -> ToolRouter<Self> {
         let tool_router = Self::tool_router_user()
             + Self::tool_router_repository()
             + Self::tool_router_label()
             + Self::tool_router_milestone()
             + Self::tool_router_issue()
             + Self::tool_router_pull_request();
+        if access_mode == AccessMode::ReadWrite {
+            return tool_router;
+        }
+        let mut read_routes = ToolRouter::new();
+        for route in tool_router {
+            if is_read_tool(route.name()) {
+                read_routes.add_route(route);
+            }
+        }
+        read_routes
+    }
+
+    fn build(client: Arc<dyn GitBucketApi>, tool_timeout: Duration) -> Self {
         Self {
             client,
-            tool_router,
+            tool_router: Self::routes(AccessMode::ReadWrite),
             tool_timeout,
+            access_mode: AccessMode::ReadWrite,
         }
     }
 
@@ -63,26 +134,13 @@ impl ServerHandler for GitBucketMcpServer {
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        if self.is_read_only() && !is_read_tool(&request.name) {
+            return read_only_error();
+        }
         let cancellation = context.ct.clone();
         // Unknown adapters cannot prove a mutation has not started. These
         // built-in read tool names are independent of any transport tracking.
-        let read_only = matches!(
-            request.name.as_ref(),
-            "get_authenticated_user"
-                | "get_user"
-                | "list_repositories"
-                | "get_repository"
-                | "list_branches"
-                | "list_labels"
-                | "get_label"
-                | "list_milestones"
-                | "get_milestone"
-                | "list_issues"
-                | "get_issue"
-                | "list_issue_comments"
-                | "list_pull_requests"
-                | "get_pull_request"
-        );
+        let read_only = is_read_tool(&request.name);
         let untracked_write = !self.client.tracks_write_attempts() && !read_only;
         let tool_context =
             rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
@@ -132,6 +190,40 @@ impl ServerHandler for GitBucketMcpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[serial_test::serial]
+    fn read_only_environment_setting_is_explicit_and_invalid_values_fail() {
+        let saved = std::env::var_os("GITBUCKET_READ_ONLY");
+        for (value, expected) in [
+            (None, Some(AccessMode::ReadWrite)),
+            (Some("false"), Some(AccessMode::ReadWrite)),
+            (Some("true"), Some(AccessMode::ReadOnly)),
+            (Some(" true "), Some(AccessMode::ReadOnly)),
+            (Some(""), None),
+            (Some("tru"), None),
+            (Some("fake-private-setting"), None),
+        ] {
+            if let Some(value) = value {
+                std::env::set_var("GITBUCKET_READ_ONLY", value);
+            } else {
+                std::env::remove_var("GITBUCKET_READ_ONLY");
+            }
+            let actual = AccessMode::from_env();
+            if let Some(expected) = expected {
+                assert_eq!(actual.unwrap(), expected);
+            } else {
+                let error = actual.unwrap_err();
+                assert!(matches!(error, GbMcpError::Config(_)));
+                assert!(!error.to_string().contains("fake-private-setting"));
+            }
+        }
+        if let Some(saved) = saved {
+            std::env::set_var("GITBUCKET_READ_ONLY", saved);
+        } else {
+            std::env::remove_var("GITBUCKET_READ_ONLY");
+        }
+    }
 
     #[test]
     fn test_server_info() {

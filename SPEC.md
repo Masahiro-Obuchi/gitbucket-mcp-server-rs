@@ -136,6 +136,32 @@ All tools return MCP tool results.
 
 - Success responses use structured JSON content.
 - Failures use MCP error tool results with `is_error=true` and a structured payload.
+- Every Params type rejects unknown fields and advertises `additionalProperties=false`.
+  Schema/type errors are MCP invalid-parameters errors before API calls. Ordinary
+  PR comment tools reject inline-location arguments.
+- Tools provide readOnly/destructive/idempotent/openWorld annotations as hints.
+  List/get tools are read-only; create/comment/fork tools are additive;
+  update/delete/merge tools are destructive. Reads and deletes have idempotent
+  hints; other writes conservatively do not. All tools interact with external data.
+- `GITBUCKET_READ_ONLY=true` registers only the 14 read tools and rejects all other
+  MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
+  The default is false; this env-only setting accepts only true/false. Rust server
+  constructors use read/write mode until `with_access_mode(AccessMode::ReadOnly)`
+  is called. Standalone API clients are outside this server-only mode.
+
+### Response metadata
+
+Issue responses retain milestone, assignee, comments_url and optional pull_request
+links. PR responses retain draft, labels, assignees, assignee, merged_by, branch
+users and url/commits_url/review_comments_url/review_comment_url/comments_url/
+statuses_url. These fields follow the official 4.44.0/4.48.0 API models; retaining
+URL metadata is not a declaration that an endpoint is implemented.
+
+Missing/null metadata collections and boolean flags remain null rather than
+inventing an empty collection or false. Explicit empty arrays and false are
+preserved. This includes Issue/PR labels and assignees, PR draft/mergeable/merged
+and repository fork. Unknown closed_at stays null; updated_at is never used as
+a closure-time estimate. API-provided closed_at values are retained unchanged.
 
 ### 6.1 Repository Tools
 
@@ -224,7 +250,8 @@ web writes retains verified field observations and can return `operation_partial
 
 ## 7. Input Validation Rules
 
-- Required string fields must not be blank after trimming.
+- Required strings must not be whitespace-only. Identifier/title/state/date
+  normalization is separate from content validation.
 - `create_label.color` and `update_label.color` must be a 6-digit hex value and may optionally include a leading `#`.
 - `list_issues.state`, `list_milestones.state`, and `list_pull_requests.state` must be one of `open`, `closed`, or `all`.
 - `update_issue.state` and `update_milestone.state` must be one of `open` or `closed`.
@@ -233,8 +260,12 @@ web writes retains verified field observations and can return `operation_partial
 - Standard web label updates reject comma-containing names and leading/trailing whitespace before sign-in, preserving the stored name. REST label writes and no-op updates retain their supported names.
 - `update_milestone` must receive at least one of `title`, `description`, `due_on`, or `state`.
 - `update_issue` uses Web directly only under the `standard` profile with web credentials; `rest-only` uses REST. A failed REST write never activates another route.
-- Optional string fields may be trimmed before sending to GitBucket, except that
-  `update_pull_request.body` preserves the supplied text exactly.
+- Body/comment text, descriptions and merge messages are sent unchanged. Required
+  comment validation checks for blank text without rewriting it. Empty optional
+  content and whitespace-only optional content remain distinct.
+- Standard web Issue content changes reject leading/trailing body whitespace
+  after the snapshot GET, before any accompanying title/body/state writes or
+  sign-in. An unchanged raw body needs no content form. REST routes retain raw text.
 - Validation failures must be returned without issuing an outbound API request.
 
 ## 8. Error Handling

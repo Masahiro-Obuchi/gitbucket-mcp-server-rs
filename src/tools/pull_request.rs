@@ -6,13 +6,16 @@ use serde::Deserialize;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, UpdatePullRequest};
 use crate::server::GitBucketMcpServer;
-use crate::tools::response::{from_gb_error, success, success_list, validation_error, ToolResult};
+use crate::tools::response::{
+    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+};
 use crate::tools::validation::{
-    error, issue_state, list_state, optional_trimmed, repository_fields, required_optional_trimmed,
+    error, issue_state, list_state, repository_fields, required_optional_trimmed, required_text,
     required_trimmed,
 };
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListPullRequestsParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -23,6 +26,7 @@ pub struct ListPullRequestsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetPullRequestParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -33,6 +37,7 @@ pub struct GetPullRequestParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreatePullRequestParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -49,6 +54,7 @@ pub struct CreatePullRequestParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdatePullRequestParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -67,6 +73,7 @@ pub struct UpdatePullRequestParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MergePullRequestParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -79,6 +86,7 @@ pub struct MergePullRequestParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddPullRequestCommentParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -92,7 +100,15 @@ pub struct AddPullRequestCommentParams {
 
 #[tool_router(router = tool_router_pull_request, vis = "pub")]
 impl GitBucketMcpServer {
-    #[tool(description = "List pull requests in a GitBucket repository")]
+    #[tool(
+        description = "List pull requests in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn list_pull_requests(
         &self,
         Parameters(params): Parameters<ListPullRequestsParams>,
@@ -116,7 +132,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Get details of a specific pull request in a GitBucket repository")]
+    #[tool(
+        description = "Get details of a specific pull request in a GitBucket repository",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_pull_request(
         &self,
         Parameters(params): Parameters<GetPullRequestParams>,
@@ -136,11 +160,22 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Create a new pull request in a GitBucket repository")]
+    #[tool(
+        description = "Create a new pull request in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn create_pull_request(
         &self,
         Parameters(params): Parameters<CreatePullRequestParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -162,7 +197,7 @@ impl GitBucketMcpServer {
             title,
             head,
             base,
-            body: optional_trimmed(params.body),
+            body: params.body,
         };
         match self.client.create_pull_request(&owner, &repo, &body).await {
             Ok(pr) => success(&pr),
@@ -171,12 +206,21 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "Update a pull request in a GitBucket repository (change state, title, body, or base branch)"
+        description = "Update a pull request in a GitBucket repository (change state, title, body, or base branch)",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
     )]
     pub async fn update_pull_request(
         &self,
         Parameters(params): Parameters<UpdatePullRequestParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
@@ -217,18 +261,29 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Merge a pull request in a GitBucket repository")]
+    #[tool(
+        description = "Merge a pull request in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn merge_pull_request(
         &self,
         Parameters(params): Parameters<MergePullRequestParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
 
         let body = MergePullRequest {
-            commit_message: optional_trimmed(params.commit_message),
+            commit_message: params.commit_message,
             sha: None,
             merge_method: None,
         };
@@ -242,16 +297,27 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Add a comment to a pull request in a GitBucket repository")]
+    #[tool(
+        description = "Add a comment to a pull request in a GitBucket repository",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
     pub async fn add_pull_request_comment(
         &self,
         Parameters(params): Parameters<AddPullRequestCommentParams>,
     ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
         let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
             Ok(fields) => fields,
             Err(err) => return validation_error(err),
         };
-        let comment = match required_trimmed(&params.body, "body") {
+        let comment = match required_text(&params.body, "body") {
             Ok(comment) => comment,
             Err(err) => return validation_error(err),
         };
@@ -389,7 +455,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_pull_request_passes_trimmed_fields_to_api_and_serializes_response() {
+    async fn test_create_pull_request_preserves_body_and_normalizes_identifiers() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -413,7 +479,7 @@ mod tests {
                 assert_eq!(body.title, "Add feature");
                 assert_eq!(body.head, "feature-branch");
                 assert_eq!(body.base, "main");
-                assert_eq!(body.body.as_deref(), Some("PR body"));
+                assert_eq!(body.body.as_deref(), Some("  PR body  "));
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }
@@ -515,7 +581,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_merge_pull_request_passes_trimmed_fields_and_serializes_response() {
+    async fn test_merge_pull_request_preserves_message_and_normalizes_identifiers() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -540,14 +606,14 @@ mod tests {
                 assert_eq!(owner, "owner");
                 assert_eq!(repo, "repo");
                 assert_eq!(*number, 7);
-                assert_eq!(body.commit_message.as_deref(), Some("merge message"));
+                assert_eq!(body.commit_message.as_deref(), Some("  merge message  "));
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }
     }
 
     #[tokio::test]
-    async fn test_add_pull_request_comment_passes_trimmed_fields_and_serializes_response() {
+    async fn test_add_pull_request_comment_preserves_body_and_normalizes_identifiers() {
         let mock = MockApi::default();
         let server = GitBucketMcpServer::new_with_api(Arc::new(mock.clone()));
 
@@ -572,7 +638,7 @@ mod tests {
                 assert_eq!(owner, "owner");
                 assert_eq!(repo, "repo");
                 assert_eq!(*number, 7);
-                assert_eq!(body.body, "Looks good");
+                assert_eq!(body.body, "  Looks good  ");
             }
             calls => panic!("unexpected calls: {calls:?}"),
         }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::user::User;
+use super::{milestone::Milestone, user::User};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Label {
@@ -16,15 +16,23 @@ pub struct Issue {
     pub body: Option<String>,
     pub state: String,
     pub user: Option<User>,
-    #[serde(default)]
-    pub labels: Vec<Label>,
-    #[serde(default)]
-    pub assignees: Vec<User>,
+    pub labels: Option<Vec<Label>>,
+    pub assignees: Option<Vec<User>>,
+    pub assignee: Option<User>,
+    pub milestone: Option<Milestone>,
+    pub comments_url: Option<String>,
+    pub pull_request: Option<IssuePullRequest>,
     pub html_url: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub closed_at: Option<String>,
     pub comments: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IssuePullRequest {
+    pub url: Option<String>,
+    pub html_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,9 +79,9 @@ mod tests {
         assert_eq!(issue.number, 42);
         assert_eq!(issue.title, "Bug report");
         assert_eq!(issue.state, "open");
-        assert_eq!(issue.labels.len(), 1);
-        assert_eq!(issue.labels[0].name, "bug");
-        assert_eq!(issue.assignees.len(), 1);
+        assert_eq!(issue.labels.as_ref().unwrap().len(), 1);
+        assert_eq!(issue.labels.as_ref().unwrap()[0].name, "bug");
+        assert_eq!(issue.assignees.as_ref().unwrap().len(), 1);
     }
 
     #[test]
@@ -86,8 +94,8 @@ mod tests {
 
         let issue: Issue = serde_json::from_str(json).unwrap();
         assert_eq!(issue.number, 1);
-        assert!(issue.labels.is_empty());
-        assert!(issue.assignees.is_empty());
+        assert!(issue.labels.is_none());
+        assert!(issue.assignees.is_none());
     }
 
     #[test]

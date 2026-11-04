@@ -29,8 +29,12 @@ pub fn required_optional_trimmed(
         .transpose()
 }
 
-pub fn optional_trimmed(value: Option<String>) -> Option<String> {
-    value.map(|v| v.trim().to_string())
+/// Reject blank required content without rewriting Markdown or code.
+pub fn required_text(value: &str, field: &str) -> std::result::Result<String, String> {
+    if value.trim().is_empty() {
+        return Err(error(format!("{field} must not be empty")));
+    }
+    Ok(value.to_owned())
 }
 
 pub fn label_color(value: &str) -> std::result::Result<String, String> {

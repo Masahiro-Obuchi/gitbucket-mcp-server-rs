@@ -1,0 +1,27 @@
+{
+  "number": 42,
+  "title": "Preserve Issue metadata",
+  "body": "    code\n\nA hard break  \n",
+  "state": "closed",
+  "user": {"login": "author"},
+  "assignees": [{"login": "reviewer"}],
+  "assignee": {"login": "reviewer"},
+  "labels": [{"name": "bug", "color": "ff0000", "url": "https://example.test/api/v3/repos/owner/repo/labels/bug"}],
+  "created_at": "2026-10-01T00:00:00Z",
+  "updated_at": "2026-11-04T12:00:00Z",
+  "html_url": "https://example.test/owner/repo/issues/42",
+  "comments_url": "https://example.test/api/v3/repos/owner/repo/issues/42/comments",
+  "pull_request": null,
+  "milestone": {
+    "number": 7,
+    "title": "v1.0",
+    "state": "open",
+    "description": "Release notes",
+    "due_on": "2026-12-01T00:00:00Z",
+    "closed_at": null,
+    "open_issues": 1,
+    "closed_issues": 2,
+    "url": "https://example.test/api/v3/repos/owner/repo/milestones/7",
+    "html_url": "https://example.test/owner/repo/milestone/7"
+  }
+}

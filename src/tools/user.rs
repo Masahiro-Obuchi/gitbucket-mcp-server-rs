@@ -10,6 +10,7 @@ use crate::tools::response::{from_gb_error, success, validation_error, ToolResul
 use crate::tools::validation::required_trimmed;
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GetAuthenticatedUserParams {}
 
 impl JsonSchema for GetAuthenticatedUserParams {
@@ -28,6 +29,7 @@ impl JsonSchema for GetAuthenticatedUserParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetUserParams {
     #[schemars(description = "The username to look up")]
     pub username: String,
@@ -35,7 +37,15 @@ pub struct GetUserParams {
 
 #[tool_router(router = tool_router_user, vis = "pub")]
 impl GitBucketMcpServer {
-    #[tool(description = "Get the currently authenticated GitBucket user")]
+    #[tool(
+        description = "Get the currently authenticated GitBucket user",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_authenticated_user(
         &self,
         Parameters(_params): Parameters<GetAuthenticatedUserParams>,
@@ -46,7 +56,15 @@ impl GitBucketMcpServer {
         }
     }
 
-    #[tool(description = "Get a GitBucket user by username")]
+    #[tool(
+        description = "Get a GitBucket user by username",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
     pub async fn get_user(&self, Parameters(params): Parameters<GetUserParams>) -> ToolResult {
         let username = match required_trimmed(&params.username, "username") {
             Ok(username) => username,

@@ -47,6 +47,14 @@ pub fn validation_error(message: impl Into<String>) -> ToolResult {
     error_payload("validation_error", message.into(), None)
 }
 
+pub(crate) fn read_only_error() -> ToolResult {
+    error_payload(
+        "read_only_error",
+        "This MCP server is read-only; write tools are disabled".into(),
+        None,
+    )
+}
+
 pub fn internal_error(message: impl Into<String>) -> ToolResult {
     error_payload("internal_error", message.into(), None)
 }

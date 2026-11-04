@@ -1,5 +1,5 @@
 use gitbucket_mcp_server::api::client::GitBucketClient;
-use gitbucket_mcp_server::server::GitBucketMcpServer;
+use gitbucket_mcp_server::server::{AccessMode, GitBucketMcpServer};
 use gitbucket_mcp_server::tools::response::ToolErrorPayload;
 use rmcp::model::CallToolRequestParams;
 use rmcp::ServiceExt;
@@ -73,6 +73,13 @@ impl E2eConfig {
 async fn spawn_client_and_server(
     config: &E2eConfig,
 ) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
+    spawn_client_and_server_with_mode(config, AccessMode::ReadWrite).await
+}
+
+async fn spawn_client_and_server_with_mode(
+    config: &E2eConfig,
+    mode: AccessMode,
+) -> rmcp::service::RunningService<rmcp::RoleClient, ()> {
     let (server_transport, client_transport) = tokio::io::duplex(4096);
     let client = GitBucketClient::new_with_web_auth(
         &config.url,
@@ -91,6 +98,7 @@ async fn spawn_client_and_server(
 
     tokio::spawn(async move {
         let server = GitBucketMcpServer::new(client)
+            .with_access_mode(mode)
             .serve(server_transport)
             .await
             .unwrap();
@@ -169,6 +177,160 @@ fn unique_suffix() -> String {
         .as_nanos();
 
     format!("{}-{}", std::process::id(), now)
+}
+
+#[tokio::test]
+#[ignore = "requires a disposable standard-profile GitBucket, web and Git credentials"]
+#[serial]
+async fn test_e2e_input_content_metadata_and_read_only() {
+    let config = E2eConfig::from_env();
+    let client = spawn_client_and_server(&config).await;
+    let (owner, repo) = config.repository_target();
+    let text = "    code block\n\nA hard break  \n";
+    let title = format!("input-semantics-{}", unique_suffix());
+    let issue = call_tool_json(
+        &client,
+        "create_issue",
+        json!({
+            "owner":owner,"repo":repo,"title":title,"body":text
+        }),
+    )
+    .await;
+    let number = issue["number"].as_u64().unwrap();
+    assert_eq!(issue["body"], text);
+    assert!(issue["milestone"].is_null());
+    let comment = call_tool_json(
+        &client,
+        "add_issue_comment",
+        json!({
+            "owner":owner,"repo":repo,"issue_number":number,"body":text
+        }),
+    )
+    .await;
+    assert_eq!(comment["body"], text);
+    let comments = call_tool_json(
+        &client,
+        "list_issue_comments",
+        json!({
+            "owner":owner,"repo":repo,"issue_number":number
+        }),
+    )
+    .await;
+    assert!(comments["comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|row| row["id"] == comment["id"] && row["body"] == text));
+    let closed = call_tool_json(
+        &client,
+        "update_issue",
+        json!({
+            "owner":owner,"repo":repo,"issue_number":number,"state":"closed"
+        }),
+    )
+    .await;
+    assert_eq!(closed["state"], "closed");
+    assert_eq!(closed["body"], text);
+    assert!(closed["closed_at"].is_null());
+    let rejected = call_tool(&client, "update_issue", json!({
+        "owner":owner,"repo":repo,"issue_number":number,"title":"must not apply","state":"open","body":format!("{text}Changed body\n")
+    })).await;
+    assert_eq!(parse_error(&rejected).kind, "unsupported_error");
+    let fetched = call_tool_json(
+        &client,
+        "get_issue",
+        json!({
+            "owner":owner,"repo":repo,"issue_number":number
+        }),
+    )
+    .await;
+    assert_eq!(fetched["title"], title);
+    assert_eq!(fetched["state"], "closed");
+    assert_eq!(fetched["body"], text);
+    assert!(fetched["closed_at"].is_null());
+
+    let seed = push_test_pr_branch(&client, &config, owner, repo).await;
+    let api =
+        GitBucketClient::new_with_options(&config.url, &config.token, config.allow_invalid_certs)
+            .unwrap();
+    // Seed the upstream draft field directly; create_pull_request does not expose it.
+    let draft: Value = api
+        .post(
+            &format!("/repos/{owner}/{repo}/pulls"),
+            &json!({
+                "title":format!("draft-{}", unique_suffix()),"head":seed.feature_branch,
+                "base":seed.base_branch,"draft":true,"body":"Draft fixture"
+            }),
+        )
+        .await
+        .unwrap();
+    let pull = draft["number"].as_u64().unwrap();
+    let updated = call_tool_json(
+        &client,
+        "update_pull_request",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":pull,"body":text
+        }),
+    )
+    .await;
+    assert_eq!(updated["body"], text);
+    assert_eq!(updated["draft"], true);
+    assert_eq!(updated["labels"], json!([]));
+    assert_eq!(updated["assignees"], json!([]));
+    assert!(updated["mergeable"].is_null());
+    assert!(updated["merged_by"].is_null());
+    assert!(updated["commits_url"]
+        .as_str()
+        .unwrap()
+        .ends_with(&format!("/pulls/{pull}/commits")));
+    let before = call_tool_json(
+        &client,
+        "list_issue_comments",
+        json!({
+            "owner":owner,"repo":repo,"issue_number":pull
+        }),
+    )
+    .await;
+    assert!(client.call_tool(CallToolRequestParams::new("add_pull_request_comment").with_arguments(json!({
+        "owner":owner,"repo":repo,"pull_number":pull,"body":"must not post","path":"file.rs","line":1
+    }).as_object().unwrap().clone())).await.is_err());
+
+    let read_only = spawn_client_and_server_with_mode(&config, AccessMode::ReadOnly).await;
+    let tools = read_only.list_all_tools().await.unwrap();
+    assert_eq!(tools.len(), 14);
+    assert!(tools
+        .iter()
+        .all(|t| t.annotations.as_ref().unwrap().read_only_hint == Some(true)));
+    let read = call_tool_json(
+        &read_only,
+        "get_pull_request",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":pull
+        }),
+    )
+    .await;
+    assert_eq!(read["draft"], true);
+    assert_eq!(read["body"], text);
+    let denied = call_tool(
+        &read_only,
+        "add_pull_request_comment",
+        json!({
+            "owner":owner,"repo":repo,"pull_number":pull,"body":"must not post"
+        }),
+    )
+    .await;
+    assert_eq!(parse_error(&denied).kind, "read_only_error");
+    let after = call_tool_json(
+        &client,
+        "list_issue_comments",
+        json!({
+            "owner":owner,"repo":repo,"issue_number":pull
+        }),
+    )
+    .await;
+    assert_eq!(before["comments"], after["comments"]);
+    read_only.cancel().await.unwrap();
+    client.cancel().await.unwrap();
 }
 
 fn assert_list_contains(result: &Value, key: &str, field: &str, expected: &BTreeSet<String>) {
@@ -823,7 +985,12 @@ async fn test_e2e_create_repository() {
         created["full_name"].as_str(),
         Some(expected_full_name.as_str())
     );
-    assert_eq!(created["fork"].as_bool(), Some(false));
+    // 4.44.0 omits fork, while 4.48.0 supplies false. Preserve either contract.
+    let api =
+        GitBucketClient::new_with_options(&config.url, &config.token, config.allow_invalid_certs)
+            .unwrap();
+    let raw: Value = api.get(&format!("/repos/{owner}/{repo}")).await.unwrap();
+    assert_eq!(created["fork"], raw["fork"]);
 
     let fetched = call_tool_json(
         &client,
