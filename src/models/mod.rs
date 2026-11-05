@@ -6,4 +6,5 @@ pub(crate) mod milestone_date;
 pub mod operation;
 pub mod pull_request;
 pub mod repository;
+pub mod review_comment;
 pub mod user;

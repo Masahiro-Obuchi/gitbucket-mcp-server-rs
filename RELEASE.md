@@ -2,6 +2,20 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P09 review-comment reads
+
+- Add read-only `list_pull_request_review_comments` and
+  `get_pull_request_review_comment`. The server now advertises 31 tools, including
+  16 reads. The tools require the standard profile and matching PAT/Web credentials.
+- Review results distinguish commit/file/line comments and use `commit:<ID>`
+  identities. Results contain HTML and explicit partial coverage; unknown raw
+  text, original positions and timestamps remain null. Missing lookups return
+  `not_observed` rather than asserting deletion. No inline write tool is added.
+- Add public review model types and two required `GitBucketApi` methods. Custom
+  Rust adapters must implement them. `GbMcpError::ReadConflict` and the MCP
+  `read_conflict` kind report observed PR changes during a read. No legacy shim
+  or invented HTTP status is provided. See [the contract](docs/review-comment-reads.md).
+
 ## Unreleased P07 input and model changes
 
 - All MCP tools reject unknown arguments before HTTP. Clients must remove

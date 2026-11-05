@@ -11,6 +11,27 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn list_pull_request_review_comments<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, crate::models::review_comment::ReviewCommentList> {
+        Box::pin(async move {
+            GitBucketClient::list_pull_request_review_comments(self, owner, repo, number).await
+        })
+    }
+    fn get_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        id: &'a str,
+    ) -> ApiFuture<'a, crate::models::review_comment::ReviewCommentLookup> {
+        Box::pin(async move {
+            GitBucketClient::get_pull_request_review_comment(self, owner, repo, number, id).await
+        })
+    }
     fn tracks_write_attempts(&self) -> bool {
         true
     }

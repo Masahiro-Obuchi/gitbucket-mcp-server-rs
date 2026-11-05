@@ -22,6 +22,17 @@ use serde_json::{json, Value};
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum RecordedCall {
+    ListReviewComments {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    GetReviewComment {
+        owner: String,
+        repo: String,
+        number: u64,
+        id: String,
+    },
     GetAuthenticatedUser,
     GetUser {
         username: String,
@@ -319,6 +330,53 @@ impl IntegrationMockApi {
 }
 
 impl GitBucketApi for IntegrationMockApi {
+    fn list_pull_request_review_comments<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::review_comment::ReviewCommentList> {
+        self.record(RecordedCall::ListReviewComments {
+            owner: owner.into(),
+            repo: repo.into(),
+            number,
+        });
+        Box::pin(async {
+            Ok(
+                gitbucket_mcp_server::models::review_comment::ReviewCommentList {
+                    comments: vec![],
+                    coverage: gitbucket_mcp_server::models::review_comment::ReviewCoverage::web(
+                        None, None,
+                    ),
+                },
+            )
+        })
+    }
+    fn get_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        id: &'a str,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::review_comment::ReviewCommentLookup> {
+        self.record(RecordedCall::GetReviewComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            number,
+            id: id.into(),
+        });
+        Box::pin(async move {
+            Ok(
+                gitbucket_mcp_server::models::review_comment::ReviewCommentList {
+                    comments: vec![],
+                    coverage: gitbucket_mcp_server::models::review_comment::ReviewCoverage::web(
+                        None, None,
+                    ),
+                }
+                .lookup(id),
+            )
+        })
+    }
     fn get_authenticated_user(&self) -> ApiFuture<'_, User> {
         self.record(RecordedCall::GetAuthenticatedUser);
         let user = self.user.clone();
@@ -791,6 +849,7 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "get_label",
         "get_milestone",
         "get_pull_request",
+        "get_pull_request_review_comment",
         "get_repository",
         "get_user",
         "list_branches",
@@ -799,6 +858,7 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "list_labels",
         "list_milestones",
         "list_pull_requests",
+        "list_pull_request_review_comments",
         "list_repositories",
         "merge_pull_request",
         "update_label",
@@ -866,6 +926,62 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         json!(["owner", "repo", "pull_number"])
     );
 
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_review_reads_dispatch_normalized_inputs_to_custom_api() {
+    let (client, api) = spawn_client_and_server().await;
+    for (name, id) in [
+        ("list_pull_request_review_comments", None),
+        ("get_pull_request_review_comment", Some("commit:3")),
+    ] {
+        let mut args = json!({"owner":" owner ","repo":" repo ","pull_number":7});
+        if let Some(id) = id {
+            args["comment_id"] = json!(id);
+        }
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new(name).with_arguments(args.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        let data = structured_json(&result);
+        assert_eq!(data["coverage"]["complete"], false);
+        if id.is_some() {
+            assert_eq!(data["status"], "not_observed");
+            assert!(data["comment"].is_null());
+        } else {
+            assert_eq!(data["comments"], json!([]));
+        }
+    }
+    match api.calls().as_slice() {
+        [RecordedCall::ListReviewComments {
+            owner,
+            repo,
+            number,
+        }, RecordedCall::GetReviewComment {
+            owner: get_owner,
+            repo: get_repo,
+            number: get_number,
+            id,
+        }] => {
+            assert_eq!(
+                (owner.as_str(), repo.as_str(), *number),
+                ("owner", "repo", 7)
+            );
+            assert_eq!(
+                (
+                    get_owner.as_str(),
+                    get_repo.as_str(),
+                    *get_number,
+                    id.as_str()
+                ),
+                ("owner", "repo", 7, "commit:3")
+            );
+        }
+        calls => panic!("unexpected review calls: {calls:?}"),
+    }
     client.cancel().await.unwrap();
 }
 

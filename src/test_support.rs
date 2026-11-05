@@ -35,6 +35,17 @@ pub fn error_payload(result: ToolResult) -> ToolErrorPayload {
 
 #[derive(Debug, Clone)]
 pub enum RecordedCall {
+    ListReviewComments {
+        owner: String,
+        repo: String,
+        number: u64,
+    },
+    GetReviewComment {
+        owner: String,
+        repo: String,
+        number: u64,
+        id: String,
+    },
     GetAuthenticatedUser,
     GetUser {
         username: String,
@@ -345,6 +356,45 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn list_pull_request_review_comments<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, crate::models::review_comment::ReviewCommentList> {
+        self.record(RecordedCall::ListReviewComments {
+            owner: owner.into(),
+            repo: repo.into(),
+            number,
+        });
+        Box::pin(async {
+            Ok(crate::models::review_comment::ReviewCommentList {
+                comments: vec![],
+                coverage: crate::models::review_comment::ReviewCoverage::web(None, None),
+            })
+        })
+    }
+    fn get_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        id: &'a str,
+    ) -> ApiFuture<'a, crate::models::review_comment::ReviewCommentLookup> {
+        self.record(RecordedCall::GetReviewComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            number,
+            id: id.into(),
+        });
+        Box::pin(async move {
+            Ok(crate::models::review_comment::ReviewCommentList {
+                comments: vec![],
+                coverage: crate::models::review_comment::ReviewCoverage::web(None, None),
+            }
+            .lookup(id))
+        })
+    }
     fn get_authenticated_user(&self) -> ApiFuture<'_, User> {
         self.record(RecordedCall::GetAuthenticatedUser);
         let user = self.user.clone();

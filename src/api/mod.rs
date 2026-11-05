@@ -10,6 +10,7 @@ use crate::models::pull_request::{
     CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
 };
 use crate::models::repository::{Branch, CreateRepository, Repository};
+use crate::models::review_comment::{ReviewCommentList, ReviewCommentLookup};
 use crate::models::user::User;
 
 mod adapter;
@@ -26,6 +27,8 @@ pub mod profile;
 pub mod pull_request;
 mod pull_request_update;
 pub mod repository;
+pub mod review_comment;
+mod review_html;
 pub(crate) mod url_safety;
 pub mod user;
 pub mod web;
@@ -34,6 +37,19 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn list_pull_request_review_comments<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, ReviewCommentList>;
+    fn get_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        id: &'a str,
+    ) -> ApiFuture<'a, ReviewCommentLookup>;
     /// True only when business writes use `http::mutation` in the calling task.
     /// The default keeps deadline/cancellation outcomes conservative for custom adapters.
     fn tracks_write_attempts(&self) -> bool {

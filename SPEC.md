@@ -143,7 +143,7 @@ All tools return MCP tool results.
   List/get tools are read-only; create/comment/fork tools are additive;
   update/delete/merge tools are destructive. Reads and deletes have idempotent
   hints; other writes conservatively do not. All tools interact with external data.
-- `GITBUCKET_READ_ONLY=true` registers only the 14 read tools and rejects all other
+- `GITBUCKET_READ_ONLY=true` registers only the 16 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
   The default is false; this env-only setting accepts only true/false. Rust server
   constructors use read/write mode until `with_access_mode(AccessMode::ReadOnly)`
@@ -163,10 +163,23 @@ preserved. This includes Issue/PR labels and assignees, PR draft/mergeable/merge
 and repository fork. Unknown closed_at stays null; updated_at is never used as
 a closure-time estimate. API-provided closed_at values are retained unchanged.
 
-The [P08 inline-comment design](docs/inline-comment-design.md) defines proposed
-review models, web coverage limits and acceptance criteria for future tools.
-It does not add a tool or configure an extension endpoint in this version.
-Ordinary PR comment tools retain their existing conversation-comment meaning.
+P09 adds `list_pull_request_review_comments(owner, repo, pull_number)` and
+`get_pull_request_review_comment(owner, repo, pull_number, comment_id)` as read
+tools. `pull_number` is positive; `comment_id` must be `commit:<positive decimal>`
+without leading zeros. Both reject unknown fields. The standard profile and
+matching PAT/Web credentials are required; rest-only rejects these reads before
+HTTP without speculative REST probing or implicit Web use.
+
+The [read contract](docs/review-comment-reads.md) defines the public types.
+List returns `comments`/`coverage`; get returns `status`/`comment`/`coverage`.
+`not_observed` is a successful partial observation with null comment, not a 404
+or evidence of deletion. HTTP/identity/structure failures are errors.
+Bodies are HTML; raw text, original positions and unknown timestamps are null.
+All positions and stored PR association are unverified; full historical coverage
+is false. An observed metadata change returns `read_conflict` without invented
+HTTP status or write outcome. Reads cannot guarantee an atomic snapshot.
+The [P08 design](docs/inline-comment-design.md) documents the remaining extension
+and posting work. Ordinary PR comments retain their conversation-comment meaning.
 
 ### 6.1 Repository Tools
 
