@@ -1,0 +1,236 @@
+[
+  {
+    "path": "src/main/twirl/gitbucket/core/issues/commentlist.scala.html",
+    "versions": {
+      "4.44.0": {
+        "blob": "a0240e9f5f82fcf080169f903b54b0db207b3b72",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/issues/commentlist.scala.html"
+      },
+      "4.48.0": {
+        "blob": "5a97f5d5729faf4d940cb3fb68b9d0b2d7b46469",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/issues/commentlist.scala.html"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/model/Comment.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "a5d920e6c23cb0127a3f50ed01518cad919fca05",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/model/Comment.scala"
+      },
+      "4.48.0": {
+        "blob": "a5d920e6c23cb0127a3f50ed01518cad919fca05",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/model/Comment.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/service/CommitsService.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "782e8b52b05de855ae3d4bab9bd6bddcb15d1cfa",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/service/CommitsService.scala"
+      },
+      "4.48.0": {
+        "blob": "782e8b52b05de855ae3d4bab9bd6bddcb15d1cfa",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/CommitsService.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/service/IssuesService.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "983233381125247c0685627faa0e511bf163905b",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/service/IssuesService.scala"
+      },
+      "4.48.0": {
+        "blob": "983233381125247c0685627faa0e511bf163905b",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/IssuesService.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/service/PullRequestService.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "08348cedfcfe964b5bc289b8fd78b2c04496535c",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/service/PullRequestService.scala"
+      },
+      "4.48.0": {
+        "blob": "3b335efcaaa393ff8e1dd79ace034462d0f54663",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/PullRequestService.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/controller/RepositoryViewerController.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "42d23d0321336101805430c911f7372ed12dd9de",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/RepositoryViewerController.scala"
+      },
+      "4.48.0": {
+        "blob": "ba353e4d9f7398886be79ab10df24c870cc44e76",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/RepositoryViewerController.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/controller/PullRequestsController.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "f745adcc646ac9d199da85b0ffc217309496bbb4",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/PullRequestsController.scala"
+      },
+      "4.48.0": {
+        "blob": "8ba2bf65f7034f16e39f40d680ef4055831cb805",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/PullRequestsController.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "f2529bb2a8acb93be8e423866322ada649c2d148",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala"
+      },
+      "4.48.0": {
+        "blob": "112460b0d7a96e006f218250f74a350ffcffc199",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/controller/api/ApiIssueCommentControllerBase.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "3e8892e69535fc368bed73f94f8ec83f399e2434",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiIssueCommentControllerBase.scala"
+      },
+      "4.48.0": {
+        "blob": "3e8892e69535fc368bed73f94f8ec83f399e2434",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiIssueCommentControllerBase.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/controller/api/ApiRepositoryCommitControllerBase.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "720ea810af3c0e9c60e4d5b22400f2759b6fa464",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiRepositoryCommitControllerBase.scala"
+      },
+      "4.48.0": {
+        "blob": "a4897fbdcb483099d467d9c62d4372595cc2d1f5",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiRepositoryCommitControllerBase.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/controller/api/ApiRepositoryCollaboratorControllerBase.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "4a8ab09f8d5e5dfd7d8c7773056e518df7d4c215",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiRepositoryCollaboratorControllerBase.scala"
+      },
+      "4.48.0": {
+        "blob": "4a8ab09f8d5e5dfd7d8c7773056e518df7d4c215",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiRepositoryCollaboratorControllerBase.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/api/AddACollaborator.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "05b1768708812ac42097c1568466cfc4d7177b68",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/api/AddACollaborator.scala"
+      },
+      "4.48.0": {
+        "blob": "05b1768708812ac42097c1568466cfc4d7177b68",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/api/AddACollaborator.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/scala/gitbucket/core/util/Authenticator.scala",
+    "versions": {
+      "4.44.0": {
+        "blob": "ba838d27f5bb2c98078d2b9502632d0dd10b0f71",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/util/Authenticator.scala"
+      },
+      "4.48.0": {
+        "blob": "9df92fd96aefe2fe786e1db6b6fd9aa2527cecc4",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/util/Authenticator.scala"
+      }
+    }
+  },
+  {
+    "path": "src/main/twirl/gitbucket/core/helper/commitcomment.scala.html",
+    "versions": {
+      "4.44.0": {
+        "blob": "c0542ee652121373cc3ed6744a90ee52dee48baf",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/helper/commitcomment.scala.html"
+      },
+      "4.48.0": {
+        "blob": "d27eb3c0a7b72989287b98e6ad0b9edc11e0fc87",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/helper/commitcomment.scala.html"
+      }
+    }
+  },
+  {
+    "path": "src/main/twirl/gitbucket/core/helper/commitcomments.scala.html",
+    "versions": {
+      "4.44.0": {
+        "blob": "bbdd1133106b91cca97db82e145fec0ab79978e4",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/helper/commitcomments.scala.html"
+      },
+      "4.48.0": {
+        "blob": "bbdd1133106b91cca97db82e145fec0ab79978e4",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/helper/commitcomments.scala.html"
+      }
+    }
+  },
+  {
+    "path": "src/main/twirl/gitbucket/core/helper/diff.scala.html",
+    "versions": {
+      "4.44.0": {
+        "blob": "4579a90407a836d2fd578a8a38310b99043cce60",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/helper/diff.scala.html"
+      },
+      "4.48.0": {
+        "blob": "4579a90407a836d2fd578a8a38310b99043cce60",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/helper/diff.scala.html"
+      }
+    }
+  },
+  {
+    "path": "src/main/twirl/gitbucket/core/repo/commentform.scala.html",
+    "versions": {
+      "4.44.0": {
+        "blob": "59a348432cf8eabf366af82eed7ef71aa463d20a",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/repo/commentform.scala.html"
+      },
+      "4.48.0": {
+        "blob": "59a348432cf8eabf366af82eed7ef71aa463d20a",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/repo/commentform.scala.html"
+      }
+    }
+  },
+  {
+    "path": "src/main/twirl/gitbucket/core/repo/editcomment.scala.html",
+    "versions": {
+      "4.44.0": {
+        "blob": "91e97f53daec8ef538045602c1b25ee9d637287d",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/repo/editcomment.scala.html"
+      },
+      "4.48.0": {
+        "blob": "91e97f53daec8ef538045602c1b25ee9d637287d",
+        "url": "https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/repo/editcomment.scala.html"
+      }
+    }
+  }
+]

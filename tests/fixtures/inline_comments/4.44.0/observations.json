@@ -1,0 +1,1229 @@
+{
+  "version": "4.44.0",
+  "repository_private": true,
+  "reader_permission": {
+    "permission": "GUEST",
+    "user": {
+      "login": "probe-reader",
+      "email": "probe-reader@example.test",
+      "type": "User",
+      "site_admin": false,
+      "created_at": "2026-11-04T16:18:42Z",
+      "id": 0,
+      "url": "http://gitbucket.test/api/v3/users/probe-reader",
+      "html_url": "http://gitbucket.test/probe-reader",
+      "avatar_url": "http://gitbucket.test/probe-reader/_avatar"
+    }
+  },
+  "requests": [
+    {
+      "label": "review_rest",
+      "method": "GET",
+      "path": "/api/v3/repos/probe-owner/probe-repo/pulls/1/comments",
+      "status": 404,
+      "form": null
+    },
+    {
+      "label": "commit_rest",
+      "method": "GET",
+      "path": "/api/v3/repos/probe-owner/probe-repo/commits/HEAD1/comments",
+      "status": 404,
+      "form": null
+    },
+    {
+      "label": "commit_whole",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/FIRST/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "commit_whole"
+      }
+    },
+    {
+      "label": "file_whole",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "file_whole",
+        "fileName": "review.txt",
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "new_line",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "    indented code\n\n日本語 & <tag> **bold**  \n",
+        "fileName": "review.txt",
+        "newLineNumber": 2,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"2\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "same_line_second",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "same_line_second",
+        "fileName": "review.txt",
+        "newLineNumber": 2,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"2\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "old_line",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "old_line",
+        "fileName": "review.txt",
+        "oldLineNumber": 2,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"2\", \"newLine\": \"\", \"type\": \"delete\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "deleted_line",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "deleted_line",
+        "fileName": "deleted.txt",
+        "oldLineNumber": 1,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"1\", \"newLine\": \"\", \"type\": \"delete\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "renamed_line",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "renamed_line",
+        "fileName": "renamed_日本語.txt",
+        "newLineNumber": 7,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"7\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "special_path",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "special_path",
+        "fileName": "quoted & name.txt",
+        "newLineNumber": 1,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"1\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "past_commit_line",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/FIRST/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "past_commit_line",
+        "fileName": "review.txt",
+        "newLineNumber": 2,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"2\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "guest_comment",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "guest_comment",
+        "fileName": "review.txt",
+        "newLineNumber": 3,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"3\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "invalid_position",
+      "method": "POST",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_data/new",
+      "status": 200,
+      "form": {
+        "content": "invalid_position",
+        "fileName": "not-in-diff.txt",
+        "newLineNumber": 99999,
+        "issueId": 1,
+        "diff": "[{\"oldLine\": \"\", \"newLine\": \"99999\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+      }
+    },
+    {
+      "label": "owner_raw",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/commit_comments/_data/3?dataType=html",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "guest_raw",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/commit_comments/_data/3?dataType=html",
+      "status": 401,
+      "form": null
+    },
+    {
+      "label": "new_line_form",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/commit/HEAD1/comment/_form?fileName=review.txt&newLineNumber=2&issueId=1",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "conversation_before",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "files_before",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1/files",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "commit_first_before",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/commit/FIRST",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "conversation_after_push",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "files_after_push",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1/files",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "historical_commit",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/commit/FIRST",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "conversation_after_rewrite",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "files_after_rewrite",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1/files",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "historical_after_rewrite",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/commit/FIRST",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "conversation_after_merge",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1",
+      "status": 200,
+      "form": null
+    },
+    {
+      "label": "files_after_merge",
+      "method": "GET",
+      "path": "/probe-owner/probe-repo/pull/1/files",
+      "status": 200,
+      "form": null
+    }
+  ],
+  "snapshots": {
+    "conversation_before": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 2,
+          "path": "review.txt",
+          "kind": "file",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-2\">\n        <p>file_whole</p>\n      </div>"
+        },
+        {
+          "id": 3,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-3\">\n        <p>indented code</p>\n<p>日本語 &amp;  <strong>bold</strong></p>\n      </div>"
+        },
+        {
+          "id": 4,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-4\">\n        <p>same_line_second</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        },
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "7",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "99999",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "files_before": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 2,
+          "path": "review.txt",
+          "kind": "file",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-2\">\n        <p>file_whole</p>\n      </div>"
+        },
+        {
+          "id": 3,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-3\">\n        <p>indented code</p>\n<p>日本語 &amp;  <strong>bold</strong></p>\n      </div>"
+        },
+        {
+          "id": 4,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-4\">\n        <p>same_line_second</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        },
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "7",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "99999",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "commit_first_before": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "conversation_after_push": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 2,
+          "path": "review.txt",
+          "kind": "file",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-2\">\n        <p>file_whole</p>\n      </div>"
+        },
+        {
+          "id": 3,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-3\">\n        <p>indented code</p>\n<p>日本語 &amp;  <strong>bold</strong></p>\n      </div>"
+        },
+        {
+          "id": 4,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-4\">\n        <p>same_line_second</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        },
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": "7",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "4",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": "99999",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [
+        "fold-comments-2"
+      ],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "files_after_push": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 2,
+          "path": "review.txt",
+          "kind": "file",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-2\">\n        <p>file_whole</p>\n      </div>"
+        },
+        {
+          "id": 3,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-3\">\n        <p>indented code</p>\n<p>日本語 &amp;  <strong>bold</strong></p>\n      </div>"
+        },
+        {
+          "id": 4,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-4\">\n        <p>same_line_second</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        },
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": "7",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "4",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": "99999",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [
+        "fold-comments-2"
+      ],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "historical_commit": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "conversation_after_rewrite": {
+      "comments": [
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "7",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "99999",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": true,
+      "whole_commit_text_present": false
+    },
+    "files_after_rewrite": {
+      "comments": [
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "7",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "99999",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": true,
+      "whole_commit_text_present": false
+    },
+    "historical_after_rewrite": {
+      "comments": [
+        {
+          "id": 1,
+          "path": null,
+          "kind": "commit",
+          "old_line": null,
+          "new_line": null,
+          "inline_class": false,
+          "author": "probe-owner",
+          "body_html": "<div class=\"panel-body markdown-body commit-commentContent-1\">\n        <p>commit_whole</p>\n      </div>"
+        },
+        {
+          "id": 9,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "2",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-9\">\n        <p>past_commit_line</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": false,
+      "whole_commit_text_present": true
+    },
+    "conversation_after_merge": {
+      "comments": [
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "7",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "99999",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": true,
+      "whole_commit_text_present": false
+    },
+    "files_after_merge": {
+      "comments": [
+        {
+          "id": 5,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": "2",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-5\">\n        <p>old_line</p>\n      </div>"
+        },
+        {
+          "id": 6,
+          "path": "deleted.txt",
+          "kind": "line",
+          "old_line": "1",
+          "new_line": null,
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-6\">\n        <p>deleted_line</p>\n      </div>"
+        },
+        {
+          "id": 7,
+          "path": "renamed_日本語.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "7",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-7\">\n        <p>renamed_line</p>\n      </div>"
+        },
+        {
+          "id": 8,
+          "path": "quoted & name.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "1",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-8\">\n        <p>special_path</p>\n      </div>"
+        },
+        {
+          "id": 10,
+          "path": "review.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "3",
+          "inline_class": true,
+          "author": "probe-reader",
+          "body_html": "<div class=\"commit-commentContent-10\">\n        <p>guest_comment</p>\n      </div>"
+        },
+        {
+          "id": 11,
+          "path": "not-in-diff.txt",
+          "kind": "line",
+          "old_line": null,
+          "new_line": "99999",
+          "inline_class": true,
+          "author": "probe-owner",
+          "body_html": "<div class=\"commit-commentContent-11\">\n        <p>invalid_position</p>\n      </div>"
+        }
+      ],
+      "folded_groups": [],
+      "normal_comment_text_present": true,
+      "whole_commit_text_present": false
+    }
+  },
+  "cases": {
+    "commit_whole": {
+      "id": 1,
+      "commit": "FIRST",
+      "content": "commit_whole"
+    },
+    "file_whole": {
+      "id": 2,
+      "commit": "HEAD1",
+      "content": "file_whole",
+      "fileName": "review.txt",
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "new_line": {
+      "id": 3,
+      "commit": "HEAD1",
+      "content": "    indented code\n\n日本語 & <tag> **bold**  \n",
+      "fileName": "review.txt",
+      "newLineNumber": 2,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"2\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "same_line_second": {
+      "id": 4,
+      "commit": "HEAD1",
+      "content": "same_line_second",
+      "fileName": "review.txt",
+      "newLineNumber": 2,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"2\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "old_line": {
+      "id": 5,
+      "commit": "HEAD1",
+      "content": "old_line",
+      "fileName": "review.txt",
+      "oldLineNumber": 2,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"2\", \"newLine\": \"\", \"type\": \"delete\", \"text\": \"probe line\"}]"
+    },
+    "deleted_line": {
+      "id": 6,
+      "commit": "HEAD1",
+      "content": "deleted_line",
+      "fileName": "deleted.txt",
+      "oldLineNumber": 1,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"1\", \"newLine\": \"\", \"type\": \"delete\", \"text\": \"probe line\"}]"
+    },
+    "renamed_line": {
+      "id": 7,
+      "commit": "HEAD1",
+      "content": "renamed_line",
+      "fileName": "renamed_日本語.txt",
+      "newLineNumber": 7,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"7\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "special_path": {
+      "id": 8,
+      "commit": "HEAD1",
+      "content": "special_path",
+      "fileName": "quoted & name.txt",
+      "newLineNumber": 1,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"1\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "past_commit_line": {
+      "id": 9,
+      "commit": "FIRST",
+      "content": "past_commit_line",
+      "fileName": "review.txt",
+      "newLineNumber": 2,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"2\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "guest_comment": {
+      "id": 10,
+      "commit": "HEAD1",
+      "content": "guest_comment",
+      "fileName": "review.txt",
+      "newLineNumber": 3,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"3\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    },
+    "invalid_position": {
+      "id": 11,
+      "commit": "HEAD1",
+      "content": "invalid_position",
+      "fileName": "not-in-diff.txt",
+      "newLineNumber": 99999,
+      "issueId": 1,
+      "diff": "[{\"oldLine\": \"\", \"newLine\": \"99999\", \"type\": \"insert\", \"text\": \"probe line\"}]"
+    }
+  },
+  "normal_comment_id": 1,
+  "owner_raw": {
+    "status": 200,
+    "textarea_values": [
+      "indented code\n\n日本語 & <tag> **bold**"
+    ]
+  },
+  "guest_raw": {
+    "status": 401,
+    "textarea_values": []
+  },
+  "new_line_form": {
+    "status": 200,
+    "fields": [
+      {
+        "type": "hidden",
+        "name": "issueId",
+        "value": "1"
+      },
+      {
+        "type": "hidden",
+        "name": "fileName",
+        "value": "review.txt"
+      },
+      {
+        "type": "hidden",
+        "name": "newLineNumber",
+        "value": "2"
+      }
+    ]
+  },
+  "pr_commits": [
+    "HEAD1",
+    "FIRST"
+  ],
+  "issue_rest_ids": [
+    1
+  ],
+  "whole_commit_visible_before": true,
+  "merged": true
+}

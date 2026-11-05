@@ -163,6 +163,11 @@ preserved. This includes Issue/PR labels and assignees, PR draft/mergeable/merge
 and repository fork. Unknown closed_at stays null; updated_at is never used as
 a closure-time estimate. API-provided closed_at values are retained unchanged.
 
+The [P08 inline-comment design](docs/inline-comment-design.md) defines proposed
+review models, web coverage limits and acceptance criteria for future tools.
+It does not add a tool or configure an extension endpoint in this version.
+Ordinary PR comment tools retain their existing conversation-comment meaning.
+
 ### 6.1 Repository Tools
 
 - `list_repositories(owner)`
