@@ -35,6 +35,9 @@ pub enum GbMcpError {
     #[error("{0}")]
     Unsupported(String),
 
+    #[error("{0}")]
+    ReadConflict(&'static str),
+
     #[error("{outcome}. Cause: {cause}")]
     OperationFailed {
         outcome: Box<crate::models::operation::OperationOutcome>,

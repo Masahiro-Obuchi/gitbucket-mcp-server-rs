@@ -51,6 +51,8 @@ fn is_read_tool(name: &str) -> bool {
             | "list_issue_comments"
             | "list_pull_requests"
             | "get_pull_request"
+            | "list_pull_request_review_comments"
+            | "get_pull_request_review_comment"
     )
 }
 
@@ -100,7 +102,8 @@ impl GitBucketMcpServer {
             + Self::tool_router_label()
             + Self::tool_router_milestone()
             + Self::tool_router_issue()
-            + Self::tool_router_pull_request();
+            + Self::tool_router_pull_request()
+            + Self::tool_router_review_comment();
         if access_mode == AccessMode::ReadWrite {
             return tool_router;
         }

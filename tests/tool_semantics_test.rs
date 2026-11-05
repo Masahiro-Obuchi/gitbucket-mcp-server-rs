@@ -504,7 +504,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
     let normal_client = connect(normal).await;
     let all = normal_client.list_all_tools().await.unwrap();
     let tools = client.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 14);
+    assert_eq!(tools.len(), 16);
     assert!(tools
         .iter()
         .all(|t| t.name.starts_with("get_") || t.name.starts_with("list_")));

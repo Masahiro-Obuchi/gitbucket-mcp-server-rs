@@ -48,7 +48,7 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 29 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 31 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
@@ -68,6 +68,45 @@ checks a real draft PR, null mergeability, metadata URLs and missing closed_at;
 rejects lossy standard web content and inline arguments; and verifies read-only
 listing/reads and blocked comments without changing conversation contents. It
 leaves its unique Issue/PR/branch fixtures in the disposable repository.
+
+## Review comment reads (P09)
+
+`tests/review_comment_test.rs` covers the real HTTP adapter and MCP tool dispatch:
+list/get scope and missing lookups, context paths, profile/credentials, strict
+IDs, PAT/cookie identity, wrong page/markup, head changes, actual 403/404,
+redirect refusal, limits, read deadlines and read-only registration. Parser unit
+tests check both captured DOM forms, ordinary-only/empty pages, duplicate IDs,
+folded cards, positions, special paths, HTML/raw distinction and body-contained
+metadata lookalikes. MCP mock tests cover the public trait dispatch as well.
+
+For a live check, first build the server:
+
+```bash
+cargo build --locked
+```
+
+Use the disposable environment setup below, adding this option to the probe:
+
+```bash
+python3 scripts/e2e/probe_inline_comments.py \
+  --allow-disposable-writes --version-label 4.44.0 \
+  --output "${GITBUCKET_E2E_ROOT}-review-observations" \
+  --mcp-binary target/debug/gitbucket-mcp-server
+```
+
+Repeat for 4.48.0 in its own Compose project. The optional stdio client starts
+the built binary with an isolated config directory, standard profile and
+read-only mode. It creates a separate disposable GUEST PAT without saving it.
+At four conversation snapshots (initial, head addition, history replacement,
+merged), both identities compare MCP results with the observed page and test
+found/not-observed lookups. `mcp_checks` records eight successful identity/snapshot
+checks per version. Credentials and MCP processes are cleaned up on failure too.
+Default P08 runs omit this option and retain their research-only behavior.
+
+Live P09 verification passed the eight stdio checks and all existing 23 E2Es on
+each official 4.44.0/4.48.0 image with the standard profile. It does not establish
+complete stored-history or raw-Markdown support; see the
+[read contract](docs/review-comment-reads.md).
 
 ## Inline comment contract probe (P08)
 
@@ -125,9 +164,9 @@ python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
 
 The six probe checks require no server. They cover target restrictions, upstream
 JSON forms, captured DOM kinds/IDs, raw text and authorization limits, history
-coverage and source/image provenance. Live probe completion does not mean that
-inline tools are available. The normal Rust suite still ignores its 23 existing
-live E2Es; the P08 probe is a separate command.
+coverage and source/image provenance. Default research-probe completion alone
+does not validate the MCP tools; use the P09 option above. The normal Rust suite
+still ignores its 23 existing live E2Es; the probe is a separate command.
 
 ## Operation Routing Regression Tests
 

@@ -74,6 +74,7 @@ fn gb_error_payload(error: GbMcpError) -> ToolErrorPayload {
         }
         GbMcpError::InvalidInput(message) => payload("validation_error", message, None),
         GbMcpError::Unsupported(message) => payload("unsupported_error", message, None),
+        GbMcpError::ReadConflict(message) => payload("read_conflict", message.into(), None),
         GbMcpError::OperationFailed { mut outcome, cause } => {
             if outcome.status == OutcomeStatus::Verified {
                 outcome.status = OutcomeStatus::Unknown;

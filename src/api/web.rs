@@ -47,6 +47,37 @@ enum Reply {
 }
 
 impl GitBucketWebSession {
+    /// Resource read only; never follow a redirect to another page or replay it.
+    pub(crate) async fn pull_request_conversation(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<(String, Url)> {
+        let url = self.repo_url(owner, repo, &["pull", &number.to_string()])?;
+        self.check_identity().await?;
+        let response = self
+            .client
+            .get(url.clone())
+            .send()
+            .await
+            .map_err(GbMcpError::from)?;
+        if response.status().is_redirection() {
+            self.location(&response)?;
+            return Err(GbMcpError::Authentication("GitBucket redirected a review read instead of returning the requested authenticated PR page"));
+        }
+        if response.status() != StatusCode::OK {
+            return Err(GbMcpError::Api {
+                status: response.status().as_u16(),
+                message: "GitBucket did not authorize or return the requested review page".into(),
+            });
+        }
+        let body =
+            http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML").await?;
+        web_html::check_page(&body, &url, &self.api_base)?;
+        self.check_identity().await?;
+        Ok((body, url))
+    }
     async fn connect(api: &GitBucketClient, username: &str, password: &str) -> Result<Self> {
         let api_base = Url::parse(api.base_url())?;
         let base_url = api

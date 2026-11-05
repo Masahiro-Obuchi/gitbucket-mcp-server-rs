@@ -139,7 +139,7 @@ Git commands prompt for a username or password.
 
 ### Read-only access
 
-Set `GITBUCKET_READ_ONLY=true` to register only the 14 list/get tools. The server
+Set `GITBUCKET_READ_ONLY=true` to register only the 16 list/get tools. The server
 also rejects write calls with `read_only_error` before any HTTP or authentication
 requests, including calls to a known write name and direct Rust tool handlers.
 The setting is env-only; values other than `true` or `false` fail startup.
@@ -160,14 +160,15 @@ are client hints, while read-only access is enforced independently by the server
 
 | Value | Behavior |
 | --- | --- |
-| `rest-only` (default) | Use REST and return its errors. Do not write through the web UI, even when web credentials are configured. |
+| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads return `unsupported_error` before HTTP. |
 | `standard` | Use the common standard GitBucket contract verified on 4.44.0 and 4.48.0. Web routes require both web credentials. |
 
-Under `standard`, operations use the following routes before attempting a write:
+Under `standard`, operations select the following routes:
 
 | Operation | Route |
 | --- | --- |
 | PR update; label rename; milestone delete | REST |
+| PR review-comment list/get | Web conversation page; HTML and partial coverage only |
 | Ordinary Issue update | Web; the standard REST Issue PATCH is unavailable |
 | Label same-name color change | Web; the standard REST implementation rejects its own existing name with 422 |
 | Milestone create/update with REST-valid title | REST |
@@ -487,6 +488,8 @@ concurrent edits. Operation routes follow the API profile above.
 | `update_pull_request` | Update PR state, title, body, or base branch |
 | `merge_pull_request` | Merge a pull request |
 | `add_pull_request_comment` | Add a comment to a pull request |
+| `list_pull_request_review_comments` | Read observed commit/file/line comments with partial coverage |
+| `get_pull_request_review_comment` | Look up `commit:<ID>` within the PR page observation |
 
 `update_pull_request` preserves fields you omit. GitBucket requires title and body
 to be updated together, so changing only one first fetches the PR and preserves
@@ -515,15 +518,27 @@ original error.
 
 ### Inline review comments
 
-Inline review tools are not implemented yet. Existing PR comments are ordinary
-conversation comments. The [P08 design](docs/inline-comment-design.md) records
-live contracts for official GitBucket 4.44.0/4.48.0 and the P09/P10 acceptance
-conditions. Standard web pages expose rendered HTML with incomplete history;
-reading other users' original Markdown requires more than repository read
-permission, and the posting form trims content and file paths. The design
-separates limited web support from the proposed API extension needed for stronger
-guarantees.
-Reproduce the research with the [disposable contract probe](TESTING.md#inline-comment-contract-probe-p08).
+`list_pull_request_review_comments(owner, repo, pull_number)` returns `comments`
+and `coverage`. `get_pull_request_review_comment` additionally requires a
+repository-scoped `comment_id`, such as `commit:123`, and returns `status`,
+`comment` and `coverage`. These read tools require `GITBUCKET_API_PROFILE=standard`
+and matching PAT/Web credentials. They work with repository read permission and
+are available in read-only mode. They never call the edit-only raw-text endpoint.
+
+Bodies are rendered `body_html`, with `body_format: "html"` and `body_raw: null`.
+Original positions and unavailable timestamps remain null. Positions are observed
+HTML attributes, not verified against the current diff. Coverage always states
+that stored history, raw Markdown and stored PR association are incomplete or
+unverified. A lookup with `status: "not_observed", comment: null` means the ID
+was absent from this observation; it does not establish deletion or global absence.
+PR metadata is read before and after the page; an observed change returns
+`read_conflict` without partial data. These reads are not an atomic snapshot.
+
+Existing PR comment creation is still an ordinary conversation comment. Inline
+posting is not implemented. See [the read contract](docs/review-comment-reads.md)
+and [P08 design](docs/inline-comment-design.md) for fields, limits and the planned
+extension required for original Markdown and complete history. Reproduce live
+stdio MCP checks with the [contract probe](TESTING.md#review-comment-reads-p09).
 
 ### Structured Output Shape
 
@@ -538,6 +553,7 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_labels` | `labels` |
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
+| `list_pull_request_review_comments` | `comments` (also returns `coverage`) |
 
 All tool inputs reject unknown fields before HTTP with an MCP invalid-parameters
 error. In particular, `path`, `line` and `commit_id` do not turn an ordinary PR

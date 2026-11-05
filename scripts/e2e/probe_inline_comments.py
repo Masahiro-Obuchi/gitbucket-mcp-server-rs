@@ -8,6 +8,7 @@ afterwards. Only selected, credential-free response fragments are recorded.
 
 import argparse
 import base64
+from contextlib import ExitStack
 import html
 from html.parser import HTMLParser
 import http.cookiejar
@@ -188,7 +189,7 @@ class Http:
             raise RuntimeError(f"signin returned HTTP {status}")
 
 
-def run(output, version):
+def run(output, version, mcp_binary=None):
     base = loopback_url(os.environ["GITBUCKET_E2E_URL"])
     user = os.environ["GITBUCKET_E2E_GIT_USERNAME"]
     password = os.environ["GITBUCKET_E2E_GIT_PASSWORD"]
@@ -224,6 +225,8 @@ def run(output, version):
                                    "form": kwargs.get("form")})
         return status, body
 
+    mcp_clients = {}
+
     def snapshot(label, path, http=guest_web):
         status, body = request(label, http, "GET", path)
         assert status == 200, (label, status)
@@ -232,9 +235,40 @@ def run(output, version):
         result["snapshots"][label]["whole_commit_text_present"] = "commit_whole" in body
         fragment = "\n".join(n.render() for n in comment_nodes(body))
         (output / (label + ".html")).write_text(fragment, encoding="utf-8")
+        if mcp_clients and label.startswith("conversation_"):
+            expected = {c["id"]: c for c in describe(body)["comments"]}
+            for identity, mcp in mcp_clients.items():
+                args = {"owner": user, "repo": repo, "pull_number": number}
+                observed = mcp.call("list_pull_request_review_comments", args)
+                assert {c["storage_id"] for c in observed["comments"]} == set(expected), (label, identity, "ID set")
+                coverage = observed["coverage"]
+                assert coverage["complete"] is False and coverage["historical_complete"] is False
+                assert coverage["body_raw_complete"] is False and coverage["association_verified"] is False
+                assert coverage["observed_head"] == api.json("GET", rest + f"/pulls/{number}")["head"]["sha"]
+                for comment in observed["comments"]:
+                    source = expected[comment["storage_id"]]
+                    assert comment["id"] == "commit:" + str(source["id"])
+                    assert comment["kind"] == source["kind"] and comment["author"] == source["author"]
+                    assert comment["path"] == source["path"]
+                    assert comment["body_format"] == "html" and comment["body_raw"] is None
+                    assert Parser(comment["body_html"]).root.text() == Parser(source["body_html"]).root.text()
+                    assert comment["position_verified"] is False
+                    for field in ["original_commit", "original_old_line", "original_new_line", "created_at", "updated_at"]:
+                        assert comment[field] is None
+                    for side in ["old", "new"]:
+                        line = source[side + "_line"]
+                        assert comment["observed_" + side + "_line"] == (int(line) if line else None)
+                for cid in [3, 99999]:
+                    lookup = mcp.call("get_pull_request_review_comment", {**args, "comment_id": f"commit:{cid}"})
+                    assert lookup["status"] == ("found" if cid in expected else "not_observed")
+                    assert (lookup["comment"] is not None) == (cid in expected)
+                    assert lookup["coverage"]["complete"] is False
+                result.setdefault("mcp_checks", []).append({"snapshot": label, "identity": identity,
+                                                            "comments": len(expected), "passed": True})
         return body
 
-    with tempfile.TemporaryDirectory(prefix="gitbucket-inline-") as directory:
+    with ExitStack() as resources:
+        directory = resources.enter_context(tempfile.TemporaryDirectory(prefix="gitbucket-inline-"))
         work = Path(directory)
         askpass = work / "askpass.sh"
         askpass.write_text('#!/bin/sh\ncase "$1" in *Username*) printf "%s\\n" "$INLINE_GIT_USER";; *) printf "%s\\n" "$INLINE_GIT_PASSWORD";; esac\n')
@@ -282,6 +316,17 @@ def run(output, version):
         aliases[head] = "HEAD1"
         pr = api.json("POST", rest + "/pulls", {"title": "Inline contract probe", "head": branch, "base": default})
         number = pr["number"]
+        if mcp_binary:
+            from mcp_review_client import McpReviewClient
+            status, token_page = guest_web.request("POST", "/" + reader + "/_personalToken", form={"note": "p09-disposable-probe"})
+            assert status in {302, 303}, "guest PAT creation did not redirect to applications"
+            status, token_page = guest_web.request("GET", "/" + reader + "/_application")
+            match = re.search(r'data-clipboard-text="([0-9a-f]{40})"', token_page)
+            assert status == 200 and match, "guest PAT creation failed"
+            for identity, pat, login, secret in [("owner", token, user, password), ("guest", match.group(1), reader, reader_password)]:
+                mcp = McpReviewClient(mcp_binary, base, pat, login, secret)
+                resources.callback(mcp.close)
+                mcp_clients[identity] = mcp
         pull = web + f"/pull/{number}"
         normal = api.json("POST", rest + f"/issues/{number}/comments", {"body": "normal issue comment"})
         result["normal_comment_id"] = normal["id"]
@@ -382,9 +427,10 @@ def main():
     parser.add_argument("--allow-disposable-writes", action="store_true", required=True)
     parser.add_argument("--version-label", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--mcp-binary", type=Path, help="Also verify owner/GUEST review reads through this built server's stdio MCP tools")
     args = parser.parse_args()
     os.umask(0o077)
-    run(args.output, args.version_label)
+    run(args.output, args.version_label, args.mcp_binary)
 
 
 if __name__ == "__main__":
