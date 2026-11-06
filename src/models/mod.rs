@@ -7,4 +7,5 @@ pub mod operation;
 pub mod pull_request;
 pub mod repository;
 pub mod review_comment;
+pub mod review_post;
 pub mod user;

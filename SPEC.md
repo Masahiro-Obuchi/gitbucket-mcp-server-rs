@@ -178,8 +178,34 @@ Bodies are HTML; raw text, original positions and unknown timestamps are null.
 All positions and stored PR association are unverified; full historical coverage
 is false. An observed metadata change returns `read_conflict` without invented
 HTTP status or write outcome. Reads cannot guarantee an atomic snapshot.
-The [P08 design](docs/inline-comment-design.md) documents the remaining extension
-and posting work. Ordinary PR comments retain their conversation-comment meaning.
+Ordinary PR comments retain their conversation-comment meaning.
+
+P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
+commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
+The normal server advertises 32 tools: 16 reads and 16 writes. The standard
+profile and matching PAT/Web credentials are required. An open PR, its exact
+current full lowercase SHA-1, a repository-relative path and exactly one
+positive changed-line side are required. Only added/modified ordinary text files
+are supported; context lines, whole-file deletion, explicit rename/copy,
+binary/symlink/submodule and historical/file-wide comments are unsupported.
+
+`head_guard` is required: `preflight` explicitly accepts the race window between
+checking PR metadata and one native Web POST; `atomic` is rejected before HTTP.
+Leading/trailing body/path whitespace, CR and unsupported control characters
+are rejected before HTTP because exact preservation cannot be guaranteed.
+Internal indentation, LF, tabs and Markdown hard breaks are preserved.
+
+Success returns `comment`, `coverage` and `verification` after checking the
+created ID's exact own raw body, commit-page identity/position and PR-page
+membership, then the PR head/base/state. The new comment has
+`body_format: "markdown"`, `body_raw`, `current_commit` and a verified requested
+position; unavailable original metadata remains null. This scoped verification
+does not establish stored PR association or full history. List/get behavior
+remains HTML-only. Failure after a write uses structured operation outcomes,
+retaining reconciliation locators and a captured ID across verification failure
+or interruption. No automatic retry, fallback comment or rollback is sent.
+See [the posting contract](docs/review-comment-posts.md) and
+[P08 design](docs/inline-comment-design.md).
 
 ### 6.1 Repository Tools
 

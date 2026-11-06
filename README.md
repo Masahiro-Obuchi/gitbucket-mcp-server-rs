@@ -160,7 +160,7 @@ are client hints, while read-only access is enforced independently by the server
 
 | Value | Behavior |
 | --- | --- |
-| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads return `unsupported_error` before HTTP. |
+| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts return `unsupported_error` before HTTP. |
 | `standard` | Use the common standard GitBucket contract verified on 4.44.0 and 4.48.0. Web routes require both web credentials. |
 
 Under `standard`, operations select the following routes:
@@ -169,6 +169,7 @@ Under `standard`, operations select the following routes:
 | --- | --- |
 | PR update; label rename; milestone delete | REST |
 | PR review-comment list/get | Web conversation page; HTML and partial coverage only |
+| PR review-comment creation | One Web POST after pinned diff/head checks, followed by own raw/commit/PR verification |
 | Ordinary Issue update | Web; the standard REST Issue PATCH is unavailable |
 | Label same-name color change | Web; the standard REST implementation rejects its own existing name with 422 |
 | Milestone create/update with REST-valid title | REST |
@@ -490,6 +491,7 @@ concurrent edits. Operation routes follow the API profile above.
 | `add_pull_request_comment` | Add a comment to a pull request |
 | `list_pull_request_review_comments` | Read observed commit/file/line comments with partial coverage |
 | `get_pull_request_review_comment` | Look up `commit:<ID>` within the PR page observation |
+| `add_pull_request_review_comment` | Post and verify one changed-line comment at the current PR head |
 
 `update_pull_request` preserves fields you omit. GitBucket requires title and body
 to be updated together, so changing only one first fetches the PR and preserves
@@ -534,11 +536,29 @@ was absent from this observation; it does not establish deletion or global absen
 PR metadata is read before and after the page; an observed change returns
 `read_conflict` without partial data. These reads are not an atomic snapshot.
 
-Existing PR comment creation is still an ordinary conversation comment. Inline
-posting is not implemented. See [the read contract](docs/review-comment-reads.md)
-and [P08 design](docs/inline-comment-design.md) for fields, limits and the planned
-extension required for original Markdown and complete history. Reproduce live
-stdio MCP checks with the [contract probe](TESTING.md#review-comment-reads-p09).
+`add_pull_request_review_comment` requires `owner`, `repo`, `pull_number`, `body`,
+`path`, the full lowercase current-head SHA-1 as `commit`, exactly one positive
+`old_line` / `new_line`, and explicit `head_guard: "preflight"`. It supports
+changed lines in added/modified ordinary text files on an open PR. It verifies
+the pinned base/head patch before posting once, then reads the saved ID's own
+raw Markdown, commit page and PR page. Success returns `comment`, `coverage`
+and scoped `verification`; stored PR association and complete history remain
+unverified. Subsequent list/get calls still return HTML only.
+
+The Web form trims body and path, so leading/trailing whitespace and unsupported
+control characters are rejected before HTTP. Internal LF, indentation, tabs and
+Markdown hard breaks are preserved. Context lines, whole-file deletion,
+explicit rename/copy diffs, binary files and historical commits are unsupported.
+The head check has a race window; `head_guard: "atomic"` is rejected before
+HTTP. Read-only mode hides and rejects the tool. After an uncertain result,
+inspect the structured operation target and any saved ID before retrying;
+there is no automatic retry, ordinary-comment fallback or rollback.
+
+See [the posting contract](docs/review-comment-posts.md),
+[the read contract](docs/review-comment-reads.md) and
+[P08 design](docs/inline-comment-design.md) for exact limits and the extension
+required for complete history. Reproduce live stdio MCP checks with the
+[contract probe](TESTING.md#review-comment-posts-p10).
 
 ### Structured Output Shape
 
@@ -561,7 +581,8 @@ comment into an inline comment. Send only fields advertised by the input schema.
 
 Issue/PR bodies, comments, milestone/repository descriptions and merge commit
 messages preserve the supplied text, including indentation, trailing spaces and
-newlines. Required comments still reject whitespace-only text. Identifiers,
+newlines. Required comments still reject whitespace-only text. Review posting
+has the additional Web preservation constraints above. Identifiers,
 titles, state and dates retain their documented normalization. Empty update
 bodies/descriptions explicitly clear content; whitespace-only optional content
 is preserved as content, not converted to a clear.

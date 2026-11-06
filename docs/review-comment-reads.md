@@ -3,7 +3,8 @@
 The server provides two read tools for commit/file/line comments observed on a
 GitBucket PR conversation page. Ordinary Issue/PR conversation comments remain
 available through `list_issue_comments`; the storage namespaces are separate.
-No inline posting tool is added by P09.
+P10 adds a separate [posting tool](review-comment-posts.md); the read contract
+below remains unchanged, including HTML-only bodies and partial coverage.
 
 ## Inputs and setup
 
@@ -125,9 +126,9 @@ Complete original Markdown, original positions, exact update timestamps and
 all stored PR history remain outside the standard Web adapter's capability.
 The proposed extension API is not implemented or configured. Fork-origin PRs,
 other-PR shared-commit association, SSO and unsupported markup changes retain
-the limitations described in P08. P10 posting still needs independent diff and
-position checks, preservation constraints and post-write verification; P09's
-observed attributes do not supply those guarantees.
+the limitations described in P08. P10's separate posting contract adds pinned
+diff checks and verification of its own new comment; these read tools continue
+to report observed attributes without those guarantees.
 
 Rust adapters must implement the two new `GitBucketApi` methods and return the
 new public review models. There are no default compatibility methods. Exhaustive

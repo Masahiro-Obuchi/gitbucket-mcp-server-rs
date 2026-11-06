@@ -108,6 +108,22 @@ pub(super) fn parse(page: &str, page_url: &Url, web_root: &str) -> Result<Vec<Re
         }
     }
 
+    let comments = cards(list, page_url, web_root)?;
+    let ordinary = list
+        .select(&selector(".issue-comment-box[id^='comment-']"))
+        .filter(|node| !inside_body(*node))
+        .count();
+    let positioned = comments
+        .iter()
+        .filter(|c| c.kind != ReviewCommentKind::Commit)
+        .count();
+    if badge > positioned + ordinary {
+        return Err(invalid());
+    }
+    Ok(comments)
+}
+
+fn cards(list: ElementRef<'_>, page_url: &Url, web_root: &str) -> Result<Vec<ReviewComment>> {
     let mut comments = Vec::new();
     let mut ids = HashSet::new();
     for card in list
@@ -257,18 +273,61 @@ pub(super) fn parse(page: &str, page_url: &Url, web_root: &str) -> Result<Vec<Re
     if bodies != comments.len() {
         return Err(invalid());
     }
-    let ordinary = list
-        .select(&selector(".issue-comment-box[id^='comment-']"))
-        .filter(|node| !inside_body(*node))
-        .count();
-    let positioned = comments
-        .iter()
-        .filter(|c| c.kind != ReviewCommentKind::Commit)
-        .count();
-    if badge > positioned + ordinary {
+    Ok(comments)
+}
+
+pub(super) fn posted_id(fragment: &str) -> Result<u64> {
+    let html = Html::parse_fragment(fragment);
+    let card = one(html
+        .select(&selector(".commit-comment-box"))
+        .filter(|node| !inside_body(*node)))?;
+    card.value()
+        .id()
+        .and_then(|id| id.strip_prefix("discussion_r"))
+        .and_then(positive_decimal)
+        .ok_or_else(invalid)
+}
+
+pub(super) fn posted_card(fragment: &str, pr_url: &Url, web_root: &str) -> Result<ReviewComment> {
+    let html = Html::parse_fragment(fragment);
+    let mut parsed = cards(html.root_element(), pr_url, web_root)?;
+    if parsed.len() != 1 {
         return Err(invalid());
     }
-    Ok(comments)
+    Ok(parsed.remove(0))
+}
+
+pub(super) fn commit_comments(
+    page: &str,
+    pr_url: &Url,
+    web_root: &str,
+    commit: &str,
+) -> Result<Vec<ReviewComment>> {
+    let html = Html::parse_document(page);
+    let identity = one(html
+        .select(&selector("span.commit-id.monospace.strong"))
+        .filter(|node| !inside_body(*node)))?;
+    if identity.text().collect::<String>().trim() != commit {
+        return Err(invalid());
+    }
+    one(html
+        .select(&selector("input#show-notes[type=checkbox]"))
+        .filter(|node| !inside_body(*node)))?;
+    let list = one(html
+        .select(&selector("#comment-list"))
+        .filter(|node| !inside_body(*node)))?;
+    cards(list, pr_url, web_root)
+}
+
+pub(super) fn own_raw_body(page: &str, id: u64) -> Result<String> {
+    let html = Html::parse_fragment(page);
+    one(html.select(&selector(&format!(".error-edit-content-{id}"))))?;
+    one(html.select(&selector(&format!(
+        "input.update-comment-{id}[type=button]"
+    ))))?;
+    Ok(one(html.select(&selector("textarea[name=content]")))?
+        .text()
+        .collect())
 }
 
 #[cfg(test)]

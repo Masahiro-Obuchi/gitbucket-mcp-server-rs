@@ -47,6 +47,131 @@ enum Reply {
 }
 
 impl GitBucketWebSession {
+    async fn review_read(&self, url: Url, html: bool) -> Result<String> {
+        self.check_identity().await?;
+        let response = self
+            .client
+            .get(url.clone())
+            .header("X-Requested-With", "XMLHttpRequest")
+            .send()
+            .await
+            .map_err(GbMcpError::from)?;
+        if response.status().is_redirection() {
+            self.location(&response)?;
+            return Err(GbMcpError::Authentication(
+                "GitBucket redirected a review verification read; no redirect was followed",
+            ));
+        }
+        if response.status() != StatusCode::OK {
+            return Err(GbMcpError::Api {
+                status: response.status().as_u16(),
+                message: "GitBucket did not return the requested review verification resource"
+                    .into(),
+            });
+        }
+        if !html
+            && response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_none_or(|v| v.split(';').next() != Some("text/plain"))
+        {
+            return Err(GbMcpError::Unsupported(
+                "GitBucket did not return the expected plain-text patch; no write was sent".into(),
+            ));
+        }
+        let body =
+            http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML/patch").await?;
+        if html {
+            web_html::check_page(&body, &url, &self.api_base)?;
+        }
+        self.check_identity().await?;
+        Ok(body)
+    }
+
+    pub(crate) async fn review_patch(
+        &self,
+        owner: &str,
+        repo: &str,
+        base: &str,
+        head: &str,
+    ) -> Result<String> {
+        self.review_read(
+            self.repo_url(owner, repo, &["patch", &format!("{base}...{head}")])?,
+            false,
+        )
+        .await
+    }
+
+    pub(crate) async fn review_commit_page(
+        &self,
+        owner: &str,
+        repo: &str,
+        commit: &str,
+    ) -> Result<String> {
+        self.review_read(self.repo_url(owner, repo, &["commit", commit])?, true)
+            .await
+    }
+
+    pub(crate) async fn own_review_body(&self, owner: &str, repo: &str, id: u64) -> Result<String> {
+        let mut url = self.repo_url(owner, repo, &["commit_comments", "_data", &id.to_string()])?;
+        url.query_pairs_mut().append_pair("dataType", "html");
+        self.review_read(url, true).await
+    }
+
+    pub(crate) async fn prepare_review_write(&self) -> Result<()> {
+        self.check_identity().await
+    }
+
+    /// Caller checks cookie identity, then the final REST head, immediately before this single POST.
+    pub(crate) async fn create_review_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        change: &crate::models::review_post::CreateReviewComment,
+        diff: &serde_json::Value,
+    ) -> Result<String> {
+        let url = self.repo_url(
+            owner,
+            repo,
+            &["commit", &change.commit, "comment", "_data", "new"],
+        )?;
+        let mut fields = vec![
+            ("content", change.body.clone()),
+            ("fileName", change.path.clone()),
+            ("issueId", number.to_string()),
+            ("diff", diff.to_string()),
+        ];
+        if let Some(line) = change.old_line {
+            fields.push(("oldLineNumber", line.to_string()));
+        }
+        if let Some(line) = change.new_line {
+            fields.push(("newLineNumber", line.to_string()));
+        }
+        let request = self
+            .client
+            .post(url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .form(&fields)
+            .build()
+            .map_err(GbMcpError::from)?;
+        http::mutation("Review comment creation", async {
+            let response = self.client.execute(request).await.map_err(GbMcpError::from)?;
+            if response.status() != StatusCode::OK {
+                // Actual 4xx headers are a definite rejection; do not turn a slow error body into unknown.
+                return Err(GbMcpError::Api {
+                    status: response.status().as_u16(),
+                    message: "GitBucket did not return the expected review creation response; no redirect or replay was attempted".into(),
+                });
+            }
+            let page_url = response.url().clone();
+            let body = http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML").await?;
+            web_html::check_page(&body, &page_url, &self.api_base)?;
+            Ok(body)
+        })
+        .await
+    }
     /// Resource read only; never follow a redirect to another page or replay it.
     pub(crate) async fn pull_request_conversation(
         &self,

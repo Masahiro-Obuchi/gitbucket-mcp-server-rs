@@ -48,13 +48,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 31 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 32 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 15 writes, call each through MCP
+skips the content form. Read-only tests hide all 16 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -107,6 +107,49 @@ Live P09 verification passed the eight stdio checks and all existing 23 E2Es on
 each official 4.44.0/4.48.0 image with the standard profile. It does not establish
 complete stored-history or raw-Markdown support; see the
 [read contract](docs/review-comment-reads.md).
+
+## Review comment posts (P10)
+
+```bash
+cargo test --test review_post_test
+```
+
+Eight HTTP/MCP integration tests cover the dedicated posting tool, pinned
+base/head patch, exact old/new line forms and own raw-body verification. They
+reject invalid/lossy inputs and atomic guards before HTTP, and reject stale PRs,
+invalid paths/context lines and preflight races without posting. After posting,
+definite 403 rejection is distinct from redirect/malformed/reused-ID ambiguity;
+verification failures, head changes, MCP deadlines and actual TCP disconnects
+retain any captured ID and field evidence without replay. Patch unit tests
+cover quoted UTF-8 paths, multiple hunks, no-newline markers and unsupported or
+malformed diffs. Schema/annotation and MCP/direct-handler read-only checks cover
+the new tool along with the other 31 tools.
+
+Using the same dedicated disposable setup below, build the binary and enable
+both read and write MCP checks:
+
+```bash
+cargo build --locked
+python3 scripts/e2e/probe_inline_comments.py \
+  --allow-disposable-writes --version-label 4.48.0 \
+  --output /tmp/gitbucket-p10-observations \
+  --mcp-binary target/debug/gitbucket-mcp-server --verify-posts
+```
+
+`--verify-posts` requires `--mcp-binary`. It adds three verified comments: an owner
+new-side line, a GUEST old-side line and an owner added UTF-8/quoted filename.
+Eight negative requests cover atomic mode, outer body/path whitespace, both
+sides, zero line, old commit, context line and absent path. A read-only call is
+also blocked. The probe compares review ID sets around rejected calls and checks
+that ordinary IssueComment IDs did not change. `mcp_post_checks` records the
+results without credentials; subsequent head-update/history-replacement/merge
+snapshots still validate the read tools for both accounts. Default probe behavior
+is unchanged without this flag.
+
+These checks and the existing 23 live E2Es passed on each official 4.44.0/4.48.0
+image with the standard profile. They establish the bounded
+[posting contract](docs/review-comment-posts.md), including its preflight race
+window, rather than atomic head protection or complete saved PR association.
 
 ## Inline comment contract probe (P08)
 

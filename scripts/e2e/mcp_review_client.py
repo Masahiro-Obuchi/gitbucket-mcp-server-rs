@@ -1,4 +1,4 @@
-"""Minimal stdio MCP client for the live review-read contract probe only."""
+"""Minimal stdio MCP client for disposable review contract probes only."""
 import json
 import os
 from pathlib import Path
@@ -10,13 +10,13 @@ import time
 
 
 class McpReviewClient:
-    def __init__(self, binary, url, token, username, password):
+    def __init__(self, binary, url, token, username, password, *, read_only=True):
         self.config = tempfile.TemporaryDirectory(prefix="gitbucket-mcp-review-")
         env = {k: v for k, v in os.environ.items() if not k.startswith("GITBUCKET_")}
         env.update({
             "GITBUCKET_URL": url, "GITBUCKET_TOKEN": token,
             "GITBUCKET_USERNAME": username, "GITBUCKET_PASSWORD": password,
-            "GITBUCKET_API_PROFILE": "standard", "GITBUCKET_READ_ONLY": "true",
+            "GITBUCKET_API_PROFILE": "standard", "GITBUCKET_READ_ONLY": "true" if read_only else "false",
             "GITBUCKET_MCP_CONFIG_DIR": self.config.name,
         })
         self.process = subprocess.Popen([str(Path(binary).resolve())], stdin=subprocess.PIPE,
@@ -30,11 +30,16 @@ class McpReviewClient:
                                     "clientInfo": {"name": "review-contract-probe", "version": "1"}})
             self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
             tools = self.rpc("tools/list", {})["tools"]
-            assert len(tools) == 16
+            assert len(tools) == (16 if read_only else 32)
             for name in ["list_pull_request_review_comments", "get_pull_request_review_comment"]:
                 tool = next(t for t in tools if t["name"] == name)
                 assert tool["annotations"]["readOnlyHint"] is True
                 assert tool["inputSchema"]["additionalProperties"] is False
+            if not read_only:
+                post = next(t for t in tools if t["name"] == "add_pull_request_review_comment")
+                assert post["annotations"]["readOnlyHint"] is False
+                assert post["annotations"]["idempotentHint"] is False
+                assert "head_guard" in post["inputSchema"]["required"]
         except BaseException:
             self.close()
             raise
