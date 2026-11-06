@@ -53,6 +53,7 @@ pub enum ResourceKind {
     Repository,
     IssueComment,
     PullRequestComment,
+    PullRequestReviewComment,
 }
 
 /// Locators only: never include credentials, URLs, titles or body values.
@@ -74,6 +75,14 @@ pub struct OperationTarget {
     pub candidate_numbers: Vec<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_number: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_line: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_line: Option<u64>,
 }
 
 impl OperationTarget {
@@ -88,6 +97,10 @@ impl OperationTarget {
             requested_name: None,
             candidate_numbers: Vec::new(),
             observed_number: None,
+            commit: None,
+            path: None,
+            old_line: None,
+            new_line: None,
         }
     }
 

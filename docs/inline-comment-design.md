@@ -3,6 +3,8 @@
 P08は契約調査と設計の単位で、当該PRではインライン用ツールを追加していない。
 基点はPR #28マージ後の `75536dd`。P09の参照ツールの実装済み契約は
 [review-comment-reads.md](review-comment-reads.md)を参照する。
+P10の投稿ツールの実装済み契約・検証結果は
+[review-comment-posts.md](review-comment-posts.md)を参照する。
 
 ## 採用する経路と到達範囲
 

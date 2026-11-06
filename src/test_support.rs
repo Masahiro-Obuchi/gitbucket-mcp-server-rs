@@ -35,6 +35,12 @@ pub fn error_payload(result: ToolResult) -> ToolErrorPayload {
 
 #[derive(Debug, Clone)]
 pub enum RecordedCall {
+    AddReviewComment {
+        owner: String,
+        repo: String,
+        number: u64,
+        change: crate::models::review_post::CreateReviewComment,
+    },
     ListReviewComments {
         owner: String,
         repo: String,
@@ -356,6 +362,25 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn add_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a crate::models::review_post::CreateReviewComment,
+    ) -> ApiFuture<'a, crate::models::review_post::PostedReviewComment> {
+        self.record(RecordedCall::AddReviewComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            number,
+            change: change.clone(),
+        });
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock adapter does not store review posts".into(),
+            ))
+        })
+    }
     fn list_pull_request_review_comments<'a>(
         &'a self,
         owner: &'a str,

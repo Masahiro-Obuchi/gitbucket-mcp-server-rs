@@ -189,8 +189,10 @@ class Http:
             raise RuntimeError(f"signin returned HTTP {status}")
 
 
-def run(output, version, mcp_binary=None):
+def run(output, version, mcp_binary=None, verify_posts=False):
     base = loopback_url(os.environ["GITBUCKET_E2E_URL"])
+    if verify_posts and not mcp_binary:
+        raise ValueError("--verify-posts requires --mcp-binary")
     user = os.environ["GITBUCKET_E2E_GIT_USERNAME"]
     password = os.environ["GITBUCKET_E2E_GIT_PASSWORD"]
     token = os.environ["GITBUCKET_E2E_TOKEN"]
@@ -226,6 +228,7 @@ def run(output, version, mcp_binary=None):
         return status, body
 
     mcp_clients = {}
+    mcp_writers = {}
 
     def snapshot(label, path, http=guest_web):
         status, body = request(label, http, "GET", path)
@@ -304,6 +307,8 @@ def run(output, version, mcp_binary=None):
         git("mv", "rename before.txt", "renamed_日本語.txt")
         (checkout / "renamed_日本語.txt").write_text("".join(("changed seven\n" if i == 7 else f"line {i}\n") for i in range(1, 21)))
         (checkout / 'quoted & name.txt').write_text("new file\n")
+        if verify_posts:
+            (checkout / '新規 & "quoted".txt').write_text("added Unicode file\n")
         git("add", ".")
         git("commit", "-m", "Change old and new sides, rename and delete")
         first_sha = git("rev-parse", "HEAD")
@@ -327,6 +332,10 @@ def run(output, version, mcp_binary=None):
                 mcp = McpReviewClient(mcp_binary, base, pat, login, secret)
                 resources.callback(mcp.close)
                 mcp_clients[identity] = mcp
+                if verify_posts:
+                    writer = McpReviewClient(mcp_binary, base, pat, login, secret, read_only=False)
+                    resources.callback(writer.close)
+                    mcp_writers[identity] = writer
         pull = web + f"/pull/{number}"
         normal = api.json("POST", rest + f"/issues/{number}/comments", {"body": "normal issue comment"})
         result["normal_comment_id"] = normal["id"]
@@ -372,6 +381,46 @@ def run(output, version, mcp_binary=None):
             result[identity + "_raw"] = {"status": status, "textarea_values": fields}
         form_status, form_body = request("new_line_form", guest_web, "GET", web + f"/commit/{head}/comment/_form?" + urlencode({"fileName": "review.txt", "newLineNumber": 2, "issueId": number}), ajax=True)
         result["new_line_form"] = {"status": form_status, "fields": [n.attrs for n in Parser(form_body).root.nodes() if n.tag == "input" and n.attrs.get("name") in {"fileName", "issueId", "oldLineNumber", "newLineNumber"}]}
+        if verify_posts:
+            ordinary_before = [c["id"] for c in api.json("GET", rest + f"/issues/{number}/comments")]
+            args = {"owner":user,"repo":repo,"pull_number":number,"commit":head,"path":"review.txt",
+                    "body":"P10 body\n\n    indented code\nhard break  \nend","head_guard":"preflight"}
+            created = []
+            for identity, position in [("owner",{"new_line":2}), ("guest",{"old_line":2}),
+                                       ("owner",{"new_line":1,"path":'新規 & "quoted".txt'})]:
+                submitted = {**args, **position}
+                actual = mcp_writers[identity].call("add_pull_request_review_comment", submitted)
+                comment = actual["comment"]
+                assert comment["body_raw"] == args["body"] and comment["body_format"] == "markdown"
+                assert comment["path"] == submitted["path"] and comment["current_commit"] == head
+                assert comment["observed_old_line"] == position.get("old_line")
+                assert comment["observed_new_line"] == position.get("new_line")
+                assert comment["position_verified"] is True
+                verification = actual["verification"]
+                assert verification["raw_body_verified"] and verification["commit_page_verified"] and verification["pr_page_membership_verified"]
+                assert not verification["atomic_head_guard"] and not verification["stored_pr_association_verified"]
+                created.append(comment["storage_id"])
+            status, visible = guest_web.request("GET", pull)
+            assert status == 200
+            ids_before = {c["id"] for c in describe(visible)["comments"]}
+            for invalid in [
+                {**args,"new_line":2,"head_guard":"atomic"},
+                {**args,"new_line":2,"body":" leading"},
+                {**args,"new_line":2,"path":" review.txt"},
+                {**args,"old_line":2,"new_line":2},
+                {**args,"new_line":0},
+                {**args,"new_line":2,"commit":base_sha},
+                {**args,"new_line":1},
+                {**args,"new_line":2,"path":"missing.txt"},
+            ]:
+                reply = mcp_writers["owner"].rpc("tools/call", {"name":"add_pull_request_review_comment","arguments":invalid})
+                assert reply["isError"] is True
+            blocked = mcp_clients["owner"].rpc("tools/call", {"name":"add_pull_request_review_comment","arguments":{**args,"new_line":2}})
+            assert blocked["structuredContent"]["kind"] == "read_only_error"
+            status, visible = guest_web.request("GET", pull)
+            assert status == 200 and {c["id"] for c in describe(visible)["comments"]} == ids_before
+            assert [c["id"] for c in api.json("GET", rest + f"/issues/{number}/comments")] == ordinary_before
+            result["mcp_post_checks"] = {"created_ids":created,"positive_cases":3,"negative_cases":8,"readonly_blocked":True,"ordinary_comment_ids_unchanged":True}
         before = snapshot("conversation_before", pull)
         snapshot("files_before", pull + "/files")
         snapshot("commit_first_before", web + "/commit/" + first_sha)
@@ -428,9 +477,10 @@ def main():
     parser.add_argument("--version-label", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mcp-binary", type=Path, help="Also verify owner/GUEST review reads through this built server's stdio MCP tools")
+    parser.add_argument("--verify-posts", action="store_true", help="Also create verified MCP comments and test rejection paths in the disposable repository")
     args = parser.parse_args()
     os.umask(0o077)
-    run(args.output, args.version_label, args.mcp_binary)
+    run(args.output, args.version_label, args.mcp_binary, args.verify_posts)
 
 
 if __name__ == "__main__":

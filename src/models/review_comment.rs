@@ -13,6 +13,7 @@ pub enum ReviewCommentKind {
 #[serde(rename_all = "snake_case")]
 pub enum ReviewBodyFormat {
     Html,
+    Markdown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

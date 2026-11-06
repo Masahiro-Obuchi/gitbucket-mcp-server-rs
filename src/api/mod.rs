@@ -29,6 +29,8 @@ mod pull_request_update;
 pub mod repository;
 pub mod review_comment;
 mod review_html;
+mod review_patch;
+pub mod review_post;
 pub(crate) mod url_safety;
 pub mod user;
 pub mod web;
@@ -37,6 +39,13 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn add_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a crate::models::review_post::CreateReviewComment,
+    ) -> ApiFuture<'a, crate::models::review_post::PostedReviewComment>;
     fn list_pull_request_review_comments<'a>(
         &'a self,
         owner: &'a str,

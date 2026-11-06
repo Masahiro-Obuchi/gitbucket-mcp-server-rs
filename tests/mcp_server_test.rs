@@ -22,6 +22,12 @@ use serde_json::{json, Value};
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum RecordedCall {
+    AddReviewComment {
+        owner: String,
+        repo: String,
+        number: u64,
+        change: gitbucket_mcp_server::models::review_post::CreateReviewComment,
+    },
     ListReviewComments {
         owner: String,
         repo: String,
@@ -330,6 +336,25 @@ impl IntegrationMockApi {
 }
 
 impl GitBucketApi for IntegrationMockApi {
+    fn add_pull_request_review_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a gitbucket_mcp_server::models::review_post::CreateReviewComment,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::review_post::PostedReviewComment> {
+        self.record(RecordedCall::AddReviewComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            number,
+            change: change.clone(),
+        });
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock adapter does not store review posts".into(),
+            ))
+        })
+    }
     fn list_pull_request_review_comments<'a>(
         &'a self,
         owner: &'a str,
@@ -836,6 +861,7 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     let expected = BTreeSet::from([
         "add_issue_comment",
         "add_pull_request_comment",
+        "add_pull_request_review_comment",
         "create_issue",
         "create_label",
         "create_milestone",

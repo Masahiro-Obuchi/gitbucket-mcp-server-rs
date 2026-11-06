@@ -2,6 +2,26 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P10 review-comment posting
+
+- Add `add_pull_request_review_comment` for one changed line on an open PR's
+  exact current head under the standard profile. The server advertises 32 tools,
+  including 16 reads. Read-only mode hides and rejects all 16 writes.
+- Require explicit `head_guard: "preflight"`, accepting its race window;
+  `atomic` is unsupported before HTTP. Lossy outer body/path whitespace, control
+  characters, historical/context/file-wide positions and unsupported diffs are
+  rejected. No automatic retry, ordinary-comment fallback or rollback occurs.
+- Verify the created ID's own raw body, commit-page position and PR-page
+  observation before success. Unknown outcomes preserve the target and any
+  captured ID. Stored PR association and full history remain unverified. See
+  [the posting contract](docs/review-comment-posts.md).
+- Rust adapters must implement the new required `GitBucketApi` posting method.
+  Add public `CreateReviewComment`, `HeadGuard`, `PostedReviewComment` and
+  `ReviewPostVerification` models, `ReviewBodyFormat::Markdown` and
+  `ResourceKind::PullRequestReviewComment`. `OperationTarget` gains optional
+  commit/path/old_line/new_line reconciliation fields, omitted when absent.
+  Update exhaustive matches and struct literals; no compatibility shim is added.
+
 ## Unreleased P09 review-comment reads
 
 - Add read-only `list_pull_request_review_comments` and

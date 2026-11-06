@@ -18,6 +18,7 @@ pub enum Operation {
     MilestoneRestrictedTitle,
     MilestoneDelete,
     ReviewCommentRead,
+    ReviewCommentCreate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +53,8 @@ impl ApiProfile {
                 Operation::IssueUpdate
                 | Operation::LabelSameNameUpdate
                 | Operation::MilestoneRestrictedTitle
-                | Operation::ReviewCommentRead => Route::Web,
+                | Operation::ReviewCommentRead
+                | Operation::ReviewCommentCreate => Route::Web,
                 _ => Route::Rest,
             },
         };

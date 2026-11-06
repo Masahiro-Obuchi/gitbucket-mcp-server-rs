@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-fn revision(pr: &PullRequest, number: u64) -> Result<(String, String)> {
+pub(super) fn revision(pr: &PullRequest, number: u64) -> Result<(String, String)> {
     let sha = |value: Option<&str>| {
         value
             .filter(|v| v.len() == 40 && v.bytes().all(|c| c.is_ascii_hexdigit()))

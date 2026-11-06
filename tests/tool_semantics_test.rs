@@ -54,6 +54,11 @@ fn valid_args(tool: &rmcp::model::Tool) -> Map<String, Value> {
             }),
         );
     }
+    if tool.name == "add_pull_request_review_comment" {
+        args.insert("commit".into(), json!("b".repeat(40)));
+        args.insert("head_guard".into(), json!("preflight"));
+        args.insert("new_line".into(), json!(2));
+    }
     args
 }
 
@@ -550,6 +555,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "update_pull_request" => direct!(update_pull_request),
             "merge_pull_request" => direct!(merge_pull_request),
             "add_pull_request_comment" => direct!(add_pull_request_comment),
+            "add_pull_request_review_comment" => direct!(add_pull_request_review_comment),
             name => panic!("add a direct-handler check for {name}"),
         };
         assert_eq!(result.is_error, Some(true));
