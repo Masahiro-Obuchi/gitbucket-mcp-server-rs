@@ -415,6 +415,55 @@ async fn readonly_mcp_tools_return_coverage_and_namespaced_lookup_results() {
 }
 
 #[tokio::test]
+async fn review_continuations_keep_partial_coverage_and_do_not_repeat_web_reads() {
+    let (http, api) = fixture(
+        "",
+        ResponseTemplate::new(200).set_body_string(page("", &captured(""), 10)),
+        false,
+        HttpSettings::default(),
+    )
+    .await;
+    let client = mcp(GitBucketMcpServer::new(api).with_access_mode(AccessMode::ReadOnly)).await;
+    let mut args =
+        json!({"owner":"probe-owner","repo":"probe-repo","pull_number":1,"view":"full","limit":3});
+    let mut coverage = None;
+    let mut ids = std::collections::BTreeSet::new();
+    let mut initial_reads = 0;
+    loop {
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new("list_pull_request_review_comments")
+                    .with_arguments(args.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.is_error, Some(false));
+        assert!(serde_json::to_vec(&result).unwrap().len() <= 65536);
+        let page = result.structured_content.unwrap();
+        assert_eq!(page["range"]["source_complete"], false);
+        assert_eq!(page["coverage"]["complete"], false);
+        if let Some(first) = &coverage {
+            assert_eq!(&page["coverage"], first);
+            assert_eq!(http.received_requests().await.unwrap().len(), initial_reads);
+        } else {
+            coverage = Some(page["coverage"].clone());
+            initial_reads = http.received_requests().await.unwrap().len();
+        }
+        for comment in page["comments"].as_array().unwrap() {
+            assert!(ids.insert(comment["id"].as_str().unwrap().to_owned()));
+            assert_eq!(comment["body_format"], "html");
+        }
+        if page["has_more"] == false {
+            assert!(page["next_cursor"].is_null());
+            break;
+        }
+        args["cursor"] = page["next_cursor"].clone();
+    }
+    assert_eq!(ids.len(), 11);
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn review_tool_deadline_is_a_read_timeout_without_write_outcome() {
     let (_http, api) = fixture(
         "",

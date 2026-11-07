@@ -527,7 +527,8 @@ repository-scoped `comment_id`, such as `commit:123`, and returns `status`,
 and matching PAT/Web credentials. They work with repository read permission and
 are available in read-only mode. They never call the edit-only raw-text endpoint.
 
-Bodies are rendered `body_html`, with `body_format: "html"` and `body_raw: null`.
+Get and full-view list bodies are rendered `body_html`, with `body_format: "html"`
+and `body_raw: null`; default summary lists explicitly omit bodies.
 Original positions and unavailable timestamps remain null. Positions are observed
 HTML attributes, not verified against the current diff. Coverage always states
 that stored history, raw Markdown and stored PR association are incomplete or
@@ -543,7 +544,8 @@ changed lines in added/modified ordinary text files on an open PR. It verifies
 the pinned base/head patch before posting once, then reads the saved ID's own
 raw Markdown, commit page and PR page. Success returns `comment`, `coverage`
 and scoped `verification`; stored PR association and complete history remain
-unverified. Subsequent list/get calls still return HTML only.
+unverified. Subsequent get/full-view list calls return HTML only; summary lists
+omit bodies explicitly.
 
 The Web form trims body and path, so leading/trailing whitespace and unsupported
 control characters are rejected before HTTP. Internal LF, indentation, tabs and
@@ -575,6 +577,27 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_pull_requests` | `pull_requests` |
 | `list_pull_request_review_comments` | `comments` (also returns `coverage`) |
 
+All eight list tools accept optional `limit` (default 50, maximum 100), `cursor`
+and `view` (`summary` by default, or `full`). Every page adds `has_more`,
+`next_cursor` and `range`. Follow cursors with identical target, filters, limit
+and view until `has_more` is false. Cursors expire after five minutes and can be
+evicted earlier; invalid cursors fail before HTTP without a fresh search.
+
+Summary lists omit Issue/PR bodies and repeated PR repository details; other
+long display text, including ordinary comment previews, is bounded.
+`_list.omitted_fields` / `_list.truncated_fields` identify removed/shortened
+fields. Use detail getters or `view: "full"` for full models. Full view is also
+paged and can reject an item that cannot fit; it adds no unknown review raw
+text/history. Getters and writes retain their complete models.
+
+Each list response is bounded to 64 KiB, including MCP's structured result and
+text fallback, so a page can contain fewer than `limit` items. Range reports
+the observed total, offsets, limit reason and source completeness. Continuations
+serve a cached observation without HTTP; initial collection and later detail
+reads are not an atomic snapshot. The last review page retains partial coverage.
+See [the paging contract](docs/list-continuation.md) and
+[migration notes](RELEASE.md#unreleased-p11-bounded-list-responses).
+
 All tool inputs reject unknown fields before HTTP with an MCP invalid-parameters
 error. In particular, `path`, `line` and `commit_id` do not turn an ordinary PR
 comment into an inline comment. Send only fields advertised by the input schema.
@@ -593,7 +616,7 @@ snapshot read and before any writes, including accompanying title/state changes.
 An unchanged body needs no content form, and REST-capable profiles preserve the
 text. Milestone web content has the corresponding existing whitespace constraint.
 
-PR results retain `draft`, labels/assignees, `merged_by`, branch users and the
+Detail and full-view PR results retain `draft`, labels/assignees, `merged_by`, branch users and the
 related API URLs supplied by GitBucket. Issue results retain the milestone,
 assignee, comment URL and PR link when supplied. Missing metadata arrays and
 boolean flags are `null`; explicit empty arrays and `false` remain distinct.
@@ -612,8 +635,8 @@ List retrieval follows GitBucket's endpoint-specific behavior:
 
 List results retain the JSON fields above. They are not atomic snapshots: edits
 during retrieval can cause overlapping pages, which are reported as an error;
-not every concurrent change can be detected. MCP response-size limits and
-client-controlled continuation are separate follow-up work.
+not every concurrent change can be detected. MCP response pages are separate
+from those traversals; subsequent cursors serve the cached observation.
 
 Label creation and updates verify the returned name and color. Web updates read the label again; ignored or partly matched changes return `operation_not_verified` or `operation_partial`, and a failed verification read returns an uncertain outcome. Same-value updates return the current label without writing. Label description is not an accepted create/update argument. Any supplied value is rejected by strict input deserialization before HTTP, including an empty or null value or a request that also changes name/color. No requested field is silently dropped. These operations do not provide atomic protection against concurrent edits.
 

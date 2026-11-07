@@ -555,6 +555,7 @@ dependencies = [
  "assert-json-diff",
  "chrono",
  "dirs",
+ "getrandom 0.3.4",
  "libc",
  "reqwest",
  "rmcp",

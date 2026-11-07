@@ -170,6 +170,48 @@ async fn call_tool_json(
     parse_json(&result)
 }
 
+async fn collect_list_json(
+    client: &rmcp::service::RunningService<rmcp::RoleClient, ()>,
+    name: &'static str,
+    mut arguments: Value,
+) -> Value {
+    let key = match name {
+        "list_repositories" => "repositories",
+        "list_branches" => "branches",
+        "list_labels" => "labels",
+        "list_milestones" => "milestones",
+        "list_issues" => "issues",
+        "list_pull_requests" => "pull_requests",
+        "list_issue_comments" => "comments",
+        _ => panic!("unknown list tool"),
+    };
+    let mut items = Vec::new();
+    let mut observation = None;
+    loop {
+        let result = call_tool(client, name, arguments.clone()).await;
+        assert!(serde_json::to_vec(&result).unwrap().len() <= 65536);
+        let page = parse_json(&result);
+        let range = &page["range"];
+        assert_eq!(range["start"], items.len());
+        assert_eq!(range["atomic"], false);
+        assert_eq!(range["source_complete"], true);
+        if let Some(id) = &observation {
+            assert_eq!(&range["observation_id"], id);
+        } else {
+            observation = Some(range["observation_id"].clone());
+        }
+        items.extend(page[key].as_array().unwrap().iter().cloned());
+        assert_eq!(range["end"], items.len());
+        if page["has_more"] == false {
+            assert!(page["next_cursor"].is_null());
+            assert_eq!(range["observed_total"], items.len());
+            return json!({key:items});
+        }
+        assert!(!page[key].as_array().unwrap().is_empty());
+        arguments["cursor"] = page["next_cursor"].clone();
+    }
+}
+
 fn unique_suffix() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -375,8 +417,26 @@ async fn test_e2e_list_paged_resources_over_25_items() {
     let sha = branch["commit"]["sha"].as_str().unwrap();
     let mut issue_numbers = BTreeSet::new();
     let mut closed_numbers = BTreeSet::new();
+    let large_body = format!(
+        "P11 body\n\n    code\n{}\nhard break  \nend",
+        "日本語".repeat(8000)
+    );
+    let mut large_number = None;
     for i in 0..51 {
-        let issue = create_test_issue(&client, &owner, &repo).await;
+        let issue = if i == 0 {
+            let issue = call_tool_json(
+                &client,
+                "create_issue",
+                json!({
+                    "owner":owner,"repo":repo,"title":"P11 large body","body":large_body
+                }),
+            )
+            .await;
+            large_number = issue["number"].as_u64();
+            issue
+        } else {
+            create_test_issue(&client, &owner, &repo).await
+        };
         issue_numbers.insert(issue["number"].to_string());
         if i < 26 {
             let number = issue["number"].as_u64().unwrap();
@@ -400,7 +460,7 @@ async fn test_e2e_list_paged_resources_over_25_items() {
             issue_numbers.difference(&closed_numbers).cloned().collect(),
         ),
     ] {
-        let result = call_tool_json(
+        let result = collect_list_json(
             &client,
             "list_issues",
             json!({"owner":owner,"repo":repo,"state":state}),
@@ -408,7 +468,26 @@ async fn test_e2e_list_paged_resources_over_25_items() {
         .await;
         assert_list_contains(&result, "issues", "number", &expected);
         assert_eq!(result["issues"].as_array().unwrap().len(), expected.len());
+        assert!(result["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|issue| issue.get("body").is_none()));
     }
+    let detail = call_tool_json(
+        &client,
+        "get_issue",
+        json!({"owner":owner,"repo":repo,"issue_number":large_number.unwrap()}),
+    )
+    .await;
+    assert_eq!(detail["body"], large_body);
+    let full = call_tool(
+        &client,
+        "list_issues",
+        json!({"owner":owner,"repo":repo,"state":"all","view":"full"}),
+    )
+    .await;
+    assert_eq!(parse_error(&full).kind, "response_too_large");
     let mut prs = BTreeSet::new();
     let suffix = unique_suffix();
     for i in 0..26 {
@@ -426,7 +505,7 @@ async fn test_e2e_list_paged_resources_over_25_items() {
         prs.insert(pr["number"].to_string());
     }
     for state in ["open", "all"] {
-        let result = call_tool_json(
+        let result = collect_list_json(
             &client,
             "list_pull_requests",
             json!({"owner":owner,"repo":repo,"state":state}),
@@ -528,10 +607,11 @@ async fn test_e2e_list_unpaged_resources_over_100_items() {
             json!({"owner":owner,"repo":repo}),
         ),
     ] {
-        let result = call_tool_json(&client, tool, args).await;
+        let result = collect_list_json(&client, tool, args).await;
         assert_list_contains(&result, key, field, &expected);
     }
-    let repositories = call_tool_json(&client, "list_repositories", json!({"owner":owner})).await;
+    let repositories =
+        collect_list_json(&client, "list_repositories", json!({"owner":owner})).await;
     assert_list_contains(
         &repositories,
         "repositories",

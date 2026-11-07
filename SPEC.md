@@ -134,6 +134,29 @@ Requirements:
 
 All tools return MCP tool results.
 
+All eight list tools accept `limit?` (1..100, default 50), `cursor?` and
+`view?` (`summary` default / `full`). Array keys remain with `has_more`,
+`next_cursor` and `range`. Summary omissions and UTF-8-safe 1024-byte display
+previews are explicit in per-item `_list` metadata; Issue/PR bodies and repeated
+repository details are omitted by default. Full view/getters preserve existing
+model fields within their respective limits; full view is still paged.
+
+Each serialized list CallToolResult is capped at 64 KiB, including the text
+fallback. Pages contain at most the requested count and advance if more items
+remain. Cursors are server-issued positions in a cached observation, bound to
+tool/owner/repo/object number/state/view/limit and observed upstream order.
+Invalid/expired/mismatched cursors fail before HTTP. They expire after five
+minutes or earlier eviction/restart. Cached continuations perform no HTTP and
+do not recheck permissions or changes. Initial collection uses existing source
+traversal and can span concurrent edits.
+
+`range` exposes offsets, observed total, source completeness, observation ID,
+timestamps, view/order, byte limit and count/byte limit reason. `atomic` is
+always false. Review lists retain partial coverage and source_complete=false
+even after has_more=false. The [paging contract](docs/list-continuation.md)
+defines projection and observation/cache bounds; limit failures never become
+successful partial traversal. API lists retain their Vec-returning contracts.
+
 - Success responses use structured JSON content.
 - Failures use MCP error tool results with `is_error=true` and a structured payload.
 - Every Params type rejects unknown fields and advertises `additionalProperties=false`.
@@ -174,7 +197,8 @@ The [read contract](docs/review-comment-reads.md) defines the public types.
 List returns `comments`/`coverage`; get returns `status`/`comment`/`coverage`.
 `not_observed` is a successful partial observation with null comment, not a 404
 or evidence of deletion. HTTP/identity/structure failures are errors.
-Bodies are HTML; raw text, original positions and unknown timestamps are null.
+Get and full-view list bodies are HTML; summary lists explicitly omit bodies.
+Raw text, original positions and unknown timestamps are null.
 All positions and stored PR association are unverified; full historical coverage
 is false. An observed metadata change returns `read_conflict` without invented
 HTTP status or write outcome. Reads cannot guarantee an atomic snapshot.

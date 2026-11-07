@@ -45,6 +45,8 @@ Pull request tools:
 - `update_pull_request`
 - `merge_pull_request`
 - `add_pull_request_comment`
+- `list_pull_request_review_comments`, `get_pull_request_review_comment`
+- `add_pull_request_review_comment`
 
 Label and milestone tools:
 
@@ -69,8 +71,28 @@ MCP structured results are JSON objects. List tools return arrays under stable f
 | `list_labels` | `labels` |
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
+| `list_pull_request_review_comments` | `comments` (also `coverage`) |
 
 Do not assume list tools return a bare JSON array.
+
+All lists default to summary pages: optional `limit` is 1..100 (default 50),
+`view` is `summary` or `full`, and `cursor` continues the observed list. Follow
+`has_more` / `next_cursor` with identical target, filters, effective limit and
+view. `limit: 100` does not imply all results. Pages are also bounded to 64 KiB,
+including MCP's text fallback; `range` reports offsets, observed count and
+count/byte limitation. `has_more: false` exhausts this observation only; review
+coverage remains partial. Read `_list.omitted_fields` and `truncated_fields`:
+Issue/PR bodies and nested details are omitted by default; long display text or
+ordinary comment previews can be shortened. Use detail getters or explicit
+`view: "full"` within limits for complete model fields.
+
+Reuse the exact issued cursor; do not construct or edit it. Cursors expire after
+five minutes, earlier on eviction/server restart. After a cursor error, start a
+new observation without cursor and do not join it with older pages. Continuations
+serve cached values without HTTP or renewed permission checks and do not
+establish an atomic source snapshot. Omit cursor to fetch current data. Giant
+full items may return `response_too_large`; prefer summaries/detail getters
+rather than treating truncated text as complete Markdown.
 
 ## Common Workflows
 
@@ -114,7 +136,7 @@ Some GitBucket versions differ from GitHub-compatible REST behavior.
 - Label create/update tools do not accept description. Do not send the field, including null or an empty string; unknown arguments are rejected before HTTP, so a combined request cannot partially apply name/color.
 - All tools reject unknown arguments before HTTP. Do not send inline `path`, `line` or `commit_id` to ordinary PR comment tools.
 - Use `list_pull_request_review_comments` / `get_pull_request_review_comment` for observed commit/file/line comments under the standard profile with matching PAT/Web credentials. IDs use `commit:<ID>` within a repository. They are read tools and work in read-only mode.
-- Review list/get bodies are HTML, not original Markdown. Inspect `coverage`: stored history, original positions and stored PR association are incomplete/unverified. A `not_observed` lookup with null comment is not evidence of deletion. `read_conflict` means PR metadata changed during the read; repeat the read if needed.
+- Review get/full-view list bodies are HTML, not original Markdown; summary lists explicitly omit bodies. Inspect `coverage`: stored history, original positions and stored PR association are incomplete/unverified, even on the last page. A `not_observed` lookup with null comment is not evidence of deletion. `read_conflict` means PR metadata changed during the read; repeat the read if needed.
 - Use `add_pull_request_review_comment` for one changed line on an open PR's exact current head: supply `body`, exact repository-relative `path`, full lowercase SHA-1 `commit`, exactly one of `old_line` / `new_line`, and explicit `head_guard: "preflight"` accepting the race window. `atomic` is unsupported. Check the schema and current diff; do not infer positions from rendered read attributes.
 - Review posting rejects leading/trailing body/path whitespace and unsupported control characters rather than rewriting them. Internal LF, tabs, code indentation and hard breaks are preserved. Context lines, historical/file-wide comments, whole-file deletion, explicit rename/copy diffs and non-text files are unsupported. Success verifies its own raw body, commit/position and PR-page observation, without claiming stored PR association or complete history. Inspect captured IDs and operation locators after uncertainty or cancellation; never automatically repeat, substitute an ordinary comment, or delete a possibly saved comment.
 - Bodies/comments, descriptions and merge messages preserve their original whitespace within their documented Web constraints. Required comments reject whitespace-only text. Empty optional content clears it; spaces are content, not a clear.

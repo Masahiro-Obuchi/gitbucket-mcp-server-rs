@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::{
     api::http,
@@ -59,6 +59,7 @@ fn is_read_tool(name: &str) -> bool {
 #[derive(Debug, Clone)]
 pub struct GitBucketMcpServer {
     pub(crate) client: Arc<dyn GitBucketApi>,
+    pub(crate) lists: Arc<Mutex<crate::tools::list_page::ListCache>>,
     tool_router: ToolRouter<Self>,
     tool_timeout: Duration,
     access_mode: AccessMode,
@@ -119,6 +120,7 @@ impl GitBucketMcpServer {
     fn build(client: Arc<dyn GitBucketApi>, tool_timeout: Duration) -> Self {
         Self {
             client,
+            lists: Arc::new(Mutex::new(crate::tools::list_page::ListCache::default())),
             tool_router: Self::routes(AccessMode::ReadWrite),
             tool_timeout,
             access_mode: AccessMode::ReadWrite,

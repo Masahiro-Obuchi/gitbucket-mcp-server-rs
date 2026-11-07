@@ -1,6 +1,7 @@
 pub mod comment;
 pub mod issue;
 pub mod label;
+pub mod list_page;
 pub mod milestone;
 pub(crate) mod milestone_date;
 pub mod operation;
