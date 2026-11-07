@@ -1,3 +1,5 @@
+use crate::models::list_page::{ListOptions, ListView};
+use crate::tools::list_page::{ListKind, ListObservation, ListScope};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
@@ -6,7 +8,7 @@ use serde::Deserialize;
 use crate::models::repository::CreateRepository;
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{
-    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+    from_gb_error, read_only_error, success, validation_error, ToolResult,
 };
 use crate::tools::validation::{repository_fields, required_trimmed};
 
@@ -15,6 +17,18 @@ use crate::tools::validation::{repository_fields, required_trimmed};
 pub struct ListRepositoriesParams {
     #[schemars(description = "Repository owner (username or organization name)")]
     pub owner: String,
+    #[schemars(
+        description = "Maximum returned items: 1..100, default 50; byte limit may return fewer"
+    )]
+    pub limit: Option<u64>,
+    #[schemars(
+        description = "Server-issued continuation; reuse identical filters, view and limit before expiry"
+    )]
+    pub cursor: Option<String>,
+    #[schemars(
+        description = "summary (default) omits/previews fields explicitly; full returns complete model fields within byte limits"
+    )]
+    pub view: Option<ListView>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,12 +69,24 @@ pub struct ListBranchesParams {
     pub owner: String,
     #[schemars(description = "Repository name")]
     pub repo: String,
+    #[schemars(
+        description = "Maximum returned items: 1..100, default 50; byte limit may return fewer"
+    )]
+    pub limit: Option<u64>,
+    #[schemars(
+        description = "Server-issued continuation; reuse identical filters, view and limit before expiry"
+    )]
+    pub cursor: Option<String>,
+    #[schemars(
+        description = "summary (default) omits/previews fields explicitly; full returns complete model fields within byte limits"
+    )]
+    pub view: Option<ListView>,
 }
 
 #[tool_router(router = tool_router_repository, vis = "pub")]
 impl GitBucketMcpServer {
     #[tool(
-        description = "List repositories for a user or organization in GitBucket",
+        description = "List repositories for a user or organization in GitBucket. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -77,10 +103,16 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
-        match self.client.list_repositories(&owner).await {
-            Ok(repos) => success_list("repositories", &repos),
-            Err(e) => from_gb_error(e),
-        }
+        self.list_response(
+            ListScope::new(ListKind::Repositories, &owner, None),
+            ListOptions {
+                limit: params.limit,
+                cursor: params.cursor,
+                view: params.view,
+            },
+            async { ListObservation::new(self.client.list_repositories(&owner).await?, None) },
+        )
+        .await
     }
 
     #[tool(
@@ -168,7 +200,7 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "List branches for a GitBucket repository",
+        description = "List branches for a GitBucket repository. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -185,10 +217,16 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
-        match self.client.list_branches(&owner, &repo).await {
-            Ok(branches) => success_list("branches", &branches),
-            Err(e) => from_gb_error(e),
-        }
+        self.list_response(
+            ListScope::new(ListKind::Branches, &owner, Some(&repo)),
+            ListOptions {
+                limit: params.limit,
+                cursor: params.cursor,
+                view: params.view,
+            },
+            async { ListObservation::new(self.client.list_branches(&owner, &repo).await?, None) },
+        )
+        .await
     }
 }
 
@@ -212,6 +250,9 @@ mod tests {
         let result = server
             .list_repositories(Parameters(ListRepositoriesParams {
                 owner: "   ".to_string(),
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 
@@ -288,6 +329,9 @@ mod tests {
         let result = server
             .list_repositories(Parameters(ListRepositoriesParams {
                 owner: "  mock-user  ".to_string(),
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 
@@ -357,6 +401,9 @@ mod tests {
             .list_branches(Parameters(ListBranchesParams {
                 owner: "  mock-user ".to_string(),
                 repo: " mock-repo ".to_string(),
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 

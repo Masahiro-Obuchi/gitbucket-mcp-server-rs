@@ -2,6 +2,24 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P11 bounded list responses
+
+- All eight MCP lists now default to summary pages of at most 50 items. Optional
+  `limit` accepts 1..100; `cursor` continues the same observation; `view: "full"`
+  requests all existing model fields within limits. Array keys remain, with
+  `has_more`, `next_cursor`, `range` and per-summary omission/truncation metadata.
+  Clients must traverse pages; one call or `limit: 100` no longer means all items.
+- Responses are capped at 64 KiB including both MCP representations. Oversized
+  full items/observations fail explicitly. Review coverage remains partial on
+  the last page. Initial traversal and continuations are not atomic snapshots.
+- Cursors are server-issued, bound to normalized scope/filters/view/limit and
+  expire after five minutes, earlier on cache pressure/restart. Invalid cursors
+  fail before HTTP; cached pages never silently refetch a different observation.
+- Rust list Params gain `limit`, `cursor`, `view`; update struct literals. Add
+  public `ListOptions` / `ListView`; remove the unused unbounded `success_list`
+  helper. API/adapter Vec methods and detail models remain unchanged. No legacy
+  mode or environment setting is added. See [the contract](docs/list-continuation.md).
+
 ## Unreleased P10 review-comment posting
 
 - Add `add_pull_request_review_comment` for one changed line on an open PR's

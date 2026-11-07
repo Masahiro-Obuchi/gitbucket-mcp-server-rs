@@ -342,7 +342,7 @@ async fn issue_and_pr_contract_fields_survive_get_and_list() {
             (get_tool, json!({"owner":"owner","repo":"repo"})),
             (
                 list_tool,
-                json!({"owner":"owner","repo":"repo","state":"all"}),
+                json!({"owner":"owner","repo":"repo","state":"all","view":"full"}),
             ),
         ] {
             if tool == get_tool {

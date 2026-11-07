@@ -94,7 +94,8 @@ timestamps remain null; no historical metadata is reconstructed.
 PR-page membership is an observation, not proof of the saved row's `issueId`.
 Global `coverage` retains P09's partial/history/raw-body/position limitations;
 those aggregate flags are not upgraded by verifying one new comment. A later
-list/get still returns HTML-only observed attributes under the
+get/full-view list still returns HTML-only observed attributes; default summary
+lists omit bodies under the
 [read contract](review-comment-reads.md). Observations are sequential and can
 change after verification.
 

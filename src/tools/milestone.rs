@@ -1,3 +1,5 @@
+use crate::models::list_page::{ListOptions, ListView};
+use crate::tools::list_page::{ListKind, ListObservation, ListScope};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
@@ -7,7 +9,7 @@ use crate::models::milestone::{CreateMilestone, UpdateMilestone};
 use crate::models::milestone_date::MilestoneDate;
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{
-    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+    from_gb_error, read_only_error, success, validation_error, ToolResult,
 };
 use crate::tools::validation::{
     error, issue_state, list_state, repository_fields, required_optional_trimmed, required_trimmed,
@@ -22,6 +24,18 @@ pub struct ListMilestonesParams {
     pub repo: String,
     #[schemars(description = "Filter by state: open, closed, or all (default: open)")]
     pub state: Option<String>,
+    #[schemars(
+        description = "Maximum returned items: 1..100, default 50; byte limit may return fewer"
+    )]
+    pub limit: Option<u64>,
+    #[schemars(
+        description = "Server-issued continuation; reuse identical filters, view and limit before expiry"
+    )]
+    pub cursor: Option<String>,
+    #[schemars(
+        description = "summary (default) omits/previews fields explicitly; full returns complete model fields within byte limits"
+    )]
+    pub view: Option<ListView>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -93,7 +107,7 @@ struct DeleteMilestoneResult {
 #[tool_router(router = tool_router_milestone, vis = "pub")]
 impl GitBucketMcpServer {
     #[tool(
-        description = "List milestones for a GitBucket repository",
+        description = "List milestones for a GitBucket repository. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -114,14 +128,23 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
-        match self
-            .client
-            .list_milestones(&owner, &repo, state.as_deref())
-            .await
-        {
-            Ok(milestones) => success_list("milestones", &milestones),
-            Err(err) => from_gb_error(err),
-        }
+        self.list_response(
+            ListScope::new(ListKind::Milestones, &owner, Some(&repo)).state(state.as_deref()),
+            ListOptions {
+                limit: params.limit,
+                cursor: params.cursor,
+                view: params.view,
+            },
+            async {
+                ListObservation::new(
+                    self.client
+                        .list_milestones(&owner, &repo, state.as_deref())
+                        .await?,
+                    None,
+                )
+            },
+        )
+        .await
     }
 
     #[tool(
@@ -341,6 +364,9 @@ mod tests {
                 owner: " ".to_string(),
                 repo: "repo".to_string(),
                 state: None,
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 
@@ -396,6 +422,9 @@ mod tests {
                 owner: "  alice  ".to_string(),
                 repo: "  project  ".to_string(),
                 state: Some("closed".to_string()),
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 

@@ -69,6 +69,51 @@ rejects lossy standard web content and inline arguments; and verifies read-only
 listing/reads and blocked comments without changing conversation contents. It
 leaves its unique Issue/PR/branch fixtures in the disposable repository.
 
+## List response pages (P11)
+
+```bash
+cargo test --test list_page_test
+cargo test --test review_comment_test
+```
+
+Ten HTTP/MCP tests cover all seven REST list tools, unchanged array keys,
+0/1/49/50/51/99/100/101 boundaries, default/maximum limits and complete identity
+sets across continuations. They assert that unpaged sources are read once and
+cached pages do not repeat upstream requests. Invalid limits, unissued/malformed
+or foreign cursors, other targets/object numbers/filters/views/limits fail before
+HTTP; replayed cursors are stable. Fresh observations see changed data while
+continuations keep the collected values and report non-atomic consistency.
+
+Huge Issue/PR content and repeated head/base repositories are omitted in
+summaries with explicit metadata, while detail getters retain full data.
+Comment previews are UTF-8-safe prefixes with truncation markers; full view
+preserves the original Markdown. Escaping-heavy full comment lists hit the byte
+bound before the count bound, and every serialized CallToolResult (including
+both MCP representations) stays within 64 KiB. Later source failures do not
+become partial successes. A separate Web/MCP test traverses review comments
+without refetching and preserves partial coverage on every page.
+
+Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
+and rejecting a later unpageable item before issuing any partial result/cursor.
+Existing schema/annotations/read-only tests cover all 32 tools. Full metadata
+fixture tests request `view: "full"`; getters and API list contracts are unchanged.
+
+The two existing large-list live E2Es now explicitly follow MCP cursors, validate
+page byte size/ranges/observation identity and compare every created identifier.
+The Issue fixture also contains a large Japanese Markdown body: summary pages
+omit it, detail get preserves it and full-list view rejects the oversized item.
+Run against the dedicated disposable setup below:
+
+```bash
+cargo test --test e2e_test test_e2e_list_ -- --ignored --nocapture
+```
+
+Live validation passed all 23 existing E2Es on each official 4.44.0/4.48.0 image
+under the standard profile. The review stdio probe also passed owner/GUEST reads
+and P10 posting checks, using full-view continuation to compare observed HTML
+models. The [paging contract](docs/list-continuation.md) defines default summary
+fields, cache/expiry bounds and the limits of source completeness.
+
 ## Review comment reads (P09)
 
 `tests/review_comment_test.rs` covers the real HTTP adapter and MCP tool dispatch:

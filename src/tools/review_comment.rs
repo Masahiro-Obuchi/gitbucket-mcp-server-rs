@@ -1,3 +1,5 @@
+use crate::models::list_page::{ListOptions, ListView};
+use crate::tools::list_page::{ListKind, ListObservation, ListScope};
 use crate::{
     models::review_comment::storage_id,
     server::GitBucketMcpServer,
@@ -18,6 +20,18 @@ pub struct ListPullRequestReviewCommentsParams {
     pub repo: String,
     #[schemars(description = "Positive pull request number")]
     pub pull_number: u64,
+    #[schemars(
+        description = "Maximum returned items: 1..100, default 50; byte limit may return fewer"
+    )]
+    pub limit: Option<u64>,
+    #[schemars(
+        description = "Server-issued continuation; reuse identical filters, view and limit before expiry"
+    )]
+    pub cursor: Option<String>,
+    #[schemars(
+        description = "summary (default) omits/previews fields explicitly; full returns complete model fields within byte limits"
+    )]
+    pub view: Option<ListView>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -110,7 +124,7 @@ impl GitBucketMcpServer {
         }
     }
     #[tool(
-        description = "Read commit/file/line comments observed on a PR Web conversation page. Returns HTML and partial coverage, not complete stored history or raw Markdown. Requires standard profile and matching PAT/Web credentials.",
+        description = "Read commit/file/line comments observed on a PR Web conversation page. Summary by default; full view includes observed HTML. Coverage remains partial, without complete stored history or raw Markdown. Requires standard profile and matching PAT/Web credentials. Paged response (default 50, max 100) with has_more/next_cursor/range; continue the same observation before expiry",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -129,14 +143,23 @@ impl GitBucketMcpServer {
         if params.pull_number == 0 {
             return validation_error("pull_number must be positive");
         }
-        match self
-            .client
-            .list_pull_request_review_comments(&owner, &repo, params.pull_number)
-            .await
-        {
-            Ok(result) => success(&result),
-            Err(error) => from_gb_error(error),
-        }
+        self.list_response(
+            ListScope::new(ListKind::ReviewComments, &owner, Some(&repo))
+                .numbered(params.pull_number),
+            ListOptions {
+                limit: params.limit,
+                cursor: params.cursor,
+                view: params.view,
+            },
+            async {
+                let observed = self
+                    .client
+                    .list_pull_request_review_comments(&owner, &repo, params.pull_number)
+                    .await?;
+                ListObservation::new(observed.comments, Some(observed.coverage))
+            },
+        )
+        .await
     }
 
     #[tool(

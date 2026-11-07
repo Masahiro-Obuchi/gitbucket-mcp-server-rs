@@ -4,7 +4,10 @@ The server provides two read tools for commit/file/line comments observed on a
 GitBucket PR conversation page. Ordinary Issue/PR conversation comments remain
 available through `list_issue_comments`; the storage namespaces are separate.
 P10 adds a separate [posting tool](review-comment-posts.md); the read contract
-below remains unchanged, including HTML-only bodies and partial coverage.
+below retains HTML-only bodies and partial coverage. P11 adds
+[list paging and summary defaults](list-continuation.md): use `view: "full"`
+and follow cursors for the observed models below. Summary pages omit bodies
+with explicit `_list.omitted_fields`; get still returns the full model.
 
 ## Inputs and setup
 

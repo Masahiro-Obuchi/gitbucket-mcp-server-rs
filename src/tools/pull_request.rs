@@ -1,3 +1,5 @@
+use crate::models::list_page::{ListOptions, ListView};
+use crate::tools::list_page::{ListKind, ListObservation, ListScope};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
@@ -7,7 +9,7 @@ use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, UpdatePullRequest};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{
-    from_gb_error, read_only_error, success, success_list, validation_error, ToolResult,
+    from_gb_error, read_only_error, success, validation_error, ToolResult,
 };
 use crate::tools::validation::{
     error, issue_state, list_state, repository_fields, required_optional_trimmed, required_text,
@@ -23,6 +25,18 @@ pub struct ListPullRequestsParams {
     pub repo: String,
     #[schemars(description = "Filter by state: open, closed, or all (default: open)")]
     pub state: Option<String>,
+    #[schemars(
+        description = "Maximum returned items: 1..100, default 50; byte limit may return fewer"
+    )]
+    pub limit: Option<u64>,
+    #[schemars(
+        description = "Server-issued continuation; reuse identical filters, view and limit before expiry"
+    )]
+    pub cursor: Option<String>,
+    #[schemars(
+        description = "summary (default) omits/previews fields explicitly; full returns complete model fields within byte limits"
+    )]
+    pub view: Option<ListView>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -101,7 +115,7 @@ pub struct AddPullRequestCommentParams {
 #[tool_router(router = tool_router_pull_request, vis = "pub")]
 impl GitBucketMcpServer {
     #[tool(
-        description = "List pull requests in a GitBucket repository",
+        description = "List pull requests in a GitBucket repository. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -122,14 +136,23 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
-        match self
-            .client
-            .list_pull_requests(&owner, &repo, state.as_deref())
-            .await
-        {
-            Ok(prs) => success_list("pull_requests", &prs),
-            Err(e) => from_gb_error(e),
-        }
+        self.list_response(
+            ListScope::new(ListKind::PullRequests, &owner, Some(&repo)).state(state.as_deref()),
+            ListOptions {
+                limit: params.limit,
+                cursor: params.cursor,
+                view: params.view,
+            },
+            async {
+                ListObservation::new(
+                    self.client
+                        .list_pull_requests(&owner, &repo, state.as_deref())
+                        .await?,
+                    None,
+                )
+            },
+        )
+        .await
     }
 
     #[tool(
@@ -356,6 +379,9 @@ mod tests {
                 owner: "owner".to_string(),
                 repo: "repo".to_string(),
                 state: Some("merged".to_string()),
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 
@@ -533,6 +559,9 @@ mod tests {
                 owner: " owner ".to_string(),
                 repo: " repo ".to_string(),
                 state: Some("closed".to_string()),
+                limit: None,
+                cursor: None,
+                view: None,
             }))
             .await;
 

@@ -77,11 +77,29 @@ class McpReviewClient:
             return message["result"]
 
     def call(self, name, args):
+        args = dict(args)
+        if name == "list_pull_request_review_comments":
+            # This probe compares complete observed models, including rendered
+            # bodies. Production list defaults deliberately return summaries.
+            args["view"] = "full"
         result = self.rpc("tools/call", {"name": name, "arguments": args})
         if result.get("isError"):
             kind = result.get("structuredContent", {}).get("kind", "unknown")
             raise RuntimeError("MCP review tool failed: " + kind)
-        return result["structuredContent"]
+        data = result["structuredContent"]
+        if name == "list_pull_request_review_comments":
+            observed = data["range"]["observation_id"]
+            while data["has_more"]:
+                args["cursor"] = data["next_cursor"]
+                page = self.rpc("tools/call", {"name": name, "arguments": args})
+                assert not page.get("isError")
+                page = page["structuredContent"]
+                assert page["range"]["observation_id"] == observed
+                assert page["range"]["source_complete"] is False
+                assert page["coverage"] == data["coverage"]
+                data["comments"].extend(page["comments"])
+                data["has_more"], data["next_cursor"] = page["has_more"], page["next_cursor"]
+        return data
 
     def close(self):
         if self.process.stdin and not self.process.stdin.closed:
