@@ -69,6 +69,58 @@ rejects lossy standard web content and inline arguments; and verifies read-only
 listing/reads and blocked comments without changing conversation contents. It
 leaves its unique Issue/PR/branch fixtures in the disposable repository.
 
+## Pull request merges (P12)
+
+```bash
+cargo test --test merge_test
+```
+
+Eight HTTP/MCP tests cover merge/squash/rebase wire names, ordinary merge versus
+explicit expected-head preflight, zero-HTTP atomic/invalid inputs, draft/unknown
+draft and false mergeability, preflight races, native policy rejection and no
+strategy fallback. They check native/canonical result IDs and observable PR/
+parent/base-tip verification, with unknown mergeability retained rather than
+reported as true. Ignored SHA/racing head fixtures do not acquire atomic
+guarantees. Failed verification, actual socket disconnects after saving and
+whole-call deadlines retain target/result-commit evidence without replay.
+An exact native-result parser unit test rejects arbitrary SHA substrings.
+
+Existing API tests include wrapped 404 classification after merge preflight;
+the longer merge request-budget regression still verifies the complete service.
+Content tests verify exact message transmission without claiming REST exposes
+the full stored message. MCP schemas reject removed `sha`, native-name aliases
+and unknown arguments; read-only checks still cover all 16 mutations.
+
+Against the dedicated disposable stock GitBucket setup below:
+
+```bash
+cargo build --locked
+python3 scripts/e2e/probe_merges.py \
+  --allow-disposable-writes --version-label 4.48.0 \
+  --mcp-binary target/debug/gitbucket-mcp-server \
+  --output /tmp/gitbucket-p12-observations
+```
+
+The probe requires explicit disposable writes and a root-context HTTP loopback
+URL. It creates its own private repository and slash-containing base/head
+branches, checks each two-commit strategy through actual stdio MCP, and compares
+Git parent IDs, commit counts and merge/squash message suffixes. Its owner-only
+Web setup enables all three strategies, then restricts the new fixture repo to
+merge-commit and checks definite squash rejection without branch/PR mutation.
+Unrelated settings fields are preserved. Five guard/message refusals plus policy,
+draft and read-only rejection give eight negative cases. A separate raw native
+PUT proves the wrong `sha` is ignored and records the exact stock result format.
+Only safe observations are written; credentials, subprocesses and temporary Git
+workspaces are released on failure. The dedicated Docker volume must be removed
+afterward, as in the [Docker flow](#docker-e2e-flow).
+
+All these checks and the existing 23 live E2Es passed on each official 4.44.0 and
+4.48.0 image with the standard profile. Existing owner/GUEST review reads and
+P10 posting checks also passed. Three offline Python checks validate form
+preservation, rejection of malformed/ambiguous layouts and the explicit write
+flag. Native blob provenance and the unverified message/rebase/atomic guarantees
+are documented in [the merge contract](docs/pull-request-merges.md).
+
 ## List response pages (P11)
 
 ```bash

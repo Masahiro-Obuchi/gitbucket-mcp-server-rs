@@ -115,6 +115,25 @@ For pull request work:
 2. Use `update_pull_request` for title, body, base branch, or state changes.
 3. Use `merge_pull_request` only after explicit user confirmation.
 
+Choose `merge_method` explicitly when a strategy matters: `merge` (default),
+`squash` or `rebase`. GitBucket enforces its repository allowlist; do not switch
+strategy automatically after rejection. Rebase cannot use `commit_message` and
+rejects it rather than ignoring supplied text.
+
+For a reviewed head, use `expected_head_sha` with explicit `head_guard: "preflight"`
+and accept the documented race window. Ordinary `head_guard: "none"` is the
+default without that constraint. `atomic` is unsupported before HTTP; never
+downgrade it implicitly or send the ignored legacy `sha` field as a condition.
+Draft/unknown draft and explicitly false mergeability are rejected. Null
+mergeability remains unknown, with native conflict checks at merge time.
+
+Success reports canonical `sha`, `requested_merge_method` and scoped verification
+of PR state, commit parents and base tip. It does not prove complete rebase
+equivalence or full message readback, and squash/rebase do not prove the original
+head is a parent. Inspect `operation.target` (observed head, base branch, captured
+`result_commit`) after any unknown/partial result or cancellation. Never repeat,
+change strategy or rewind branches automatically after a possibly saved merge.
+
 For labels and milestones:
 
 1. Use `list_labels` or `list_milestones` before creating if duplicate names are possible.

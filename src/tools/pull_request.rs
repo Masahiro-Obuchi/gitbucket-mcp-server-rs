@@ -6,7 +6,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::models::comment::CreateComment;
-use crate::models::pull_request::{CreatePullRequest, MergePullRequest, UpdatePullRequest};
+use crate::models::pull_request::{
+    CreatePullRequest, MergeHeadGuard, MergeMethod, MergePullRequest, UpdatePullRequest,
+};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{
     from_gb_error, read_only_error, success, validation_error, ToolResult,
@@ -95,8 +97,22 @@ pub struct MergePullRequestParams {
     pub repo: String,
     #[schemars(description = "Pull request number")]
     pub pull_number: u64,
-    #[schemars(description = "Merge commit message")]
+    #[schemars(
+        description = "Optional merge/squash message text, sent unchanged with a native prefix; no full REST readback. Rebase rejects this field."
+    )]
     pub commit_message: Option<String>,
+    #[schemars(
+        description = "merge (default), squash or rebase; merge maps to GitBucket merge-commit, repository policy remains enforced by the server"
+    )]
+    pub merge_method: Option<MergeMethod>,
+    #[schemars(
+        description = "Full lowercase SHA-1 of the reviewed head; requires explicit head_guard=preflight"
+    )]
+    pub expected_head_sha: Option<String>,
+    #[schemars(
+        description = "none (default) is ordinary merge; preflight requires expected_head_sha and accepts a race window; atomic is unsupported before HTTP"
+    )]
+    pub head_guard: Option<MergeHeadGuard>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -285,7 +301,7 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "Merge a pull request in a GitBucket repository",
+        description = "Merge once using merge/squash/rebase, then verify PR state, result commit parents and base tip. Optional expected_head_sha requires explicit head_guard=preflight with a race window; atomic is unsupported before HTTP. Unknown mergeability remains unknown; draft/unknown draft is rejected. No retry or strategy fallback.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -307,9 +323,16 @@ impl GitBucketMcpServer {
 
         let body = MergePullRequest {
             commit_message: params.commit_message,
-            sha: None,
-            merge_method: None,
+            expected_head_sha: params.expected_head_sha,
+            merge_method: params.merge_method.unwrap_or_default(),
+            head_guard: params.head_guard.unwrap_or_default(),
         };
+        if params.pull_number == 0 {
+            return validation_error("pull_number must be positive");
+        }
+        if let Err(error) = body.validate() {
+            return from_gb_error(error);
+        }
         match self
             .client
             .merge_pull_request(&owner, &repo, params.pull_number, &body)
@@ -620,6 +643,9 @@ mod tests {
                 repo: " repo ".to_string(),
                 pull_number: 7,
                 commit_message: Some("  merge message  ".to_string()),
+                merge_method: None,
+                expected_head_sha: None,
+                head_guard: None,
             }))
             .await;
 

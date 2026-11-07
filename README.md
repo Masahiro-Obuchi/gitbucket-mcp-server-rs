@@ -227,7 +227,7 @@ For example, an Issue title verified before a body timeout returns:
 }
 ```
 
-Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover Issue/PR updates, label/milestone writes and verified deletion. Other creates, comments and merges can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment targets use `parent_number`; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target.
+Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover Issue/PR updates, PR merge results, label/milestone writes and verified deletion. Other creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment targets use `parent_number`; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Merge targets retain the observed head, base branch and captured `result_commit`.
 
 Pre-write preparation/authentication errors retain their normal error kinds. Low-level Rust helpers and custom adapters without service progress can omit target/route/fields; they remain conservative about uncertain writes. There are no automatic retries or rollbacks. Inspect partial/unknown/unverified results before deciding what to send next, and correct rejected input/permissions before retrying.
 
@@ -510,6 +510,26 @@ For standard Issue web updates, failures while reading the issue after a write a
 return `operation_unknown` or `operation_partial`, including HTTP 403/404 responses. Failures before a
 fallback write, such as missing web credentials or sign-in failure, retain their
 original error.
+
+`merge_pull_request` accepts optional `merge_method`: `merge` (default), `squash`
+or `rebase`; native repository policy remains enforced by GitBucket. The normal
+`head_guard: "none"` default has no reviewed-head constraint. To compare a
+reviewed commit, explicitly send `head_guard: "preflight"` with its full lowercase
+SHA-1 as `expected_head_sha`. A race window remains; `atomic` is unsupported and
+rejected before HTTP. The native API ignores `sha`, so that field is not sent.
+
+Draft/unknown draft and explicitly unmergeable PRs are rejected before a write;
+null mergeability stays unknown. Rebase rejects `commit_message` because the
+server ignores it. Merge/squash send the original message text, with GitBucket's
+native prefix; the REST commit route used here does not expose the full message.
+
+After one PUT, the service checks closed/merged PR state, the result commit's
+parents and the base tip. Success returns canonical `sha`, `merged: true`,
+`requested_merge_method` and scoped `verification`. Squash/rebase do not claim
+that the expected original head is provably in the resulting history. Any failed
+or interrupted verification retains known IDs and observations without replay.
+See [the merge contract](docs/pull-request-merges.md) and
+[migration notes](RELEASE.md#unreleased-p12-verified-pull-request-merges).
 
 ### User
 

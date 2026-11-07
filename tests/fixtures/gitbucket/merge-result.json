@@ -1,0 +1,20 @@
+{
+  "sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "merged": true,
+  "message": "Pull Request successfully merged",
+  "requested_merge_method": "merge",
+  "verification": {
+    "head_guard": "none",
+    "atomic_head_guard": false,
+    "expected_head_sha": null,
+    "observed_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "base_sha_before": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mergeable_before": null,
+    "pr_state_verified": true,
+    "base_ref_verified": true,
+    "commit_parents_verified": true,
+    "merged_head_verified": true,
+    "commit_message_verified": false,
+    "repository_policy_preflight_verified": false
+  }
+}

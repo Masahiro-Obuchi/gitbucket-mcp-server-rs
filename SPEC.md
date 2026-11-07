@@ -103,7 +103,7 @@ Requirements:
 - Operation status also has internal `verified`; it is never exposed as a successful error. Original resource payloads are preserved on successful tool calls. Definite REST rejection means HTTP 4xx except 408; a rejected later attempt does not erase earlier verified fields.
 - Locators carry resource kind, owner/repository, available number or label name/requested name, optional comment parent number, creation candidates or unexpected observed number. They omit secrets, URL credentials, titles and bodies. Unknown owner/creation IDs remain absent. Candidate IDs do not assert which resource was created.
 - Pre-write validation, preparation and authentication errors retain their original kinds. After a mutation begins, the operation service packages failures with all available progress. The MCP per-call write tracker retains the same progress handle when it drops the service future on timeout/cancellation; no background writes, automatic rollback or retries are started.
-- Built-in writes have operation/target context. Detailed field evidence covers Issue/PR updates, label/milestone writes and deletion. Remaining create/comment/merge operations and low-level/custom adapters may have no field evidence. Custom adapters without tracking retain conservative unknown outcomes with no invented target, route or verified field.
+- Built-in writes have operation/target context. Detailed field evidence covers Issue/PR updates, PR merge observations, label/milestone writes and deletion. Remaining create/comment operations and low-level/custom adapters may have no field evidence. Custom adapters without tracking retain conservative unknown outcomes with no invented target, route or verified field. Merges retain an observed head and captured result_commit locator across later failures.
 - The old two operation error variants and `outcome_unknown`/`update_not_verified` kinds are removed. Consumers must use the new outcome model; no compatibility aliases are supported.
 
 ## 5. GitBucket API Contract
@@ -292,8 +292,25 @@ trigger fallback, and uncertain responses do not trigger automatic replay.
 - `get_pull_request(owner, repo, pull_number)`
 - `create_pull_request(owner, repo, title, head, base, body?)`
 - `update_pull_request(owner, repo, pull_number, state?, title?, body?, base?)`
-- `merge_pull_request(owner, repo, pull_number, commit_message?)`
+- `merge_pull_request(owner, repo, pull_number, commit_message?, merge_method?, expected_head_sha?, head_guard?)`
 - `add_pull_request_comment(owner, repo, pull_number, body)`
+
+Merge methods are typed `merge` (default), `squash`, `rebase`; `merge` maps to
+native `merge-commit`. `head_guard` defaults to `none`. A reviewed expected SHA
+requires explicit `preflight`; `atomic` is unsupported before HTTP because the
+verified native API ignores `sha`. Required SHAs are full lowercase SHA-1s;
+invalid combinations and rebase messages are rejected before HTTP.
+
+Preparation requires open/unmerged state, explicit draft=false and unchanged
+metadata before one PUT. False mergeability rejects; null stays unknown and
+GitBucket still checks conflicts/policy. The service never changes strategy on
+rejection. Post-write reads check PR state/identity/revisions/base, result commit
+parent shape and target tip. Success has canonical `sha`, true `merged`, the
+requested method and scoped verification flags. Atomicity, full-message readback
+and complete squash/rebase replay equivalence are not claimed. Result commit IDs
+and field observations survive later read failures, deadlines and cancellation.
+The [merge contract](docs/pull-request-merges.md) defines exact native result
+normalization, parent checks, policy/unknown fields and reconciliation behavior.
 
 `update_pull_request` requires at least one change. Omitted title/body values are
 preserved by fetching missing content before constructing GitBucket's coupled

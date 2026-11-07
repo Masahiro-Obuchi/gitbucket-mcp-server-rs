@@ -25,6 +25,7 @@ mod milestone_write;
 pub(crate) mod outcome;
 pub mod profile;
 pub mod pull_request;
+mod pull_request_merge;
 mod pull_request_update;
 pub mod repository;
 pub mod review_comment;

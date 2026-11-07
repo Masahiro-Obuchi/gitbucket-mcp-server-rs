@@ -61,3 +61,36 @@ pub async fn web_identity(server: &MockServer, prefix: &str, login: &str) {
         .mount(server)
         .await;
 }
+
+/// Synthetic REST merge reads for transport regressions; the write remains owned by each test.
+#[allow(dead_code)]
+pub async fn merge_reads(server: &MockServer, number: u64) {
+    use serde_json::json;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use wiremock::{
+        matchers::{method, path},
+        Mock, ResponseTemplate,
+    };
+    let reads = Arc::new(AtomicUsize::new(0));
+    Mock::given(method("GET")).and(path(format!("/api/v3/repos/owner/repo/pulls/{number}")))
+        .respond_with(move |_:&wiremock::Request| {
+            let after=reads.fetch_add(1,Ordering::SeqCst)>=2;
+            ResponseTemplate::new(200).set_body_json(json!({"number":number,"title":"PR","state":if after{"closed"}else{"open"},"merged":after,"draft":false,"head":{"ref":"feature","sha":"b".repeat(40)},"base":{"ref":"main","sha":"a".repeat(40)}}))
+        }).mount(server).await;
+    let reads = Arc::new(AtomicUsize::new(0));
+    Mock::given(method("GET")).and(path("/api/v3/repos/owner/repo/branches/main"))
+        .respond_with(move |_:&wiremock::Request|ResponseTemplate::new(200).set_body_json(json!({"name":"main","commit":{"sha":if reads.fetch_add(1,Ordering::SeqCst)==0{"a".repeat(40)}else{"c".repeat(40)}}}))).mount(server).await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/api/v3/repos/owner/repo/commits/{}",
+            "c".repeat(40)
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"sha":"c".repeat(40),"parents":[{"sha":"a".repeat(40)},{"sha":"b".repeat(40)}]}),
+        ))
+        .mount(server)
+        .await;
+}

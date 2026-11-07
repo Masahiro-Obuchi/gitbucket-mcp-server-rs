@@ -190,6 +190,17 @@ impl Operation {
             .candidate_numbers = numbers;
     }
 
+    pub(crate) fn result_commit(&self, sha: &str) {
+        self.0
+            .lock()
+            .expect("operation progress")
+            .outcome
+            .target
+            .as_mut()
+            .expect("service target")
+            .result_commit = Some(sha.into());
+    }
+
     pub(crate) fn failure(&self, error: GbMcpError) -> GbMcpError {
         let cause = match error {
             GbMcpError::OperationFailed { cause, .. } => cause,

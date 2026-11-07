@@ -1521,11 +1521,12 @@ async fn test_update_pull_request_missing_pr_does_not_fallback_on_404() {
 async fn test_merge_pull_request() {
     let server = TestServer::start().await;
     let client = server.client();
+    common::merge_reads(&server.mock_server, 3).await;
 
     Mock::given(method("PUT"))
         .and(path("/api/v3/repos/owner/repo/pulls/3/merge"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "sha": "merged123",
+            "sha": "cccccccccccccccccccccccccccccccccccccccc",
             "merged": true,
             "message": "Pull Request successfully merged"
         })))
@@ -1534,20 +1535,22 @@ async fn test_merge_pull_request() {
 
     let body = gitbucket_mcp_server::models::pull_request::MergePullRequest {
         commit_message: Some("Merge PR".to_string()),
-        sha: None,
-        merge_method: None,
+        expected_head_sha: None,
+        merge_method: Default::default(),
+        head_guard: Default::default(),
     };
     let result = client
         .merge_pull_request("owner", "repo", 3, &body)
         .await
         .unwrap();
-    assert_eq!(result.merged, Some(true));
+    assert!(result.merged);
 }
 
 #[tokio::test]
 async fn test_merge_pull_request_maps_wrapped_404_to_api_error() {
     let server = TestServer::start().await;
     let client = server.client();
+    common::merge_reads(&server.mock_server, 9999).await;
 
     Mock::given(method("PUT"))
         .and(path("/api/v3/repos/owner/repo/pulls/9999/merge"))
@@ -1560,8 +1563,9 @@ async fn test_merge_pull_request_maps_wrapped_404_to_api_error() {
 
     let body = gitbucket_mcp_server::models::pull_request::MergePullRequest {
         commit_message: Some("Merge PR".to_string()),
-        sha: None,
-        merge_method: None,
+        expected_head_sha: None,
+        merge_method: Default::default(),
+        head_guard: Default::default(),
     };
     let err = client
         .merge_pull_request("owner", "repo", 9999, &body)

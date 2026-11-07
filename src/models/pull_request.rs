@@ -82,21 +82,101 @@ pub(crate) struct GitBucketPullRequestContent<'a> {
     pub body: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema, PartialEq, Eq,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeMethod {
+    #[default]
+    Merge,
+    Squash,
+    Rebase,
+}
+impl MergeMethod {
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::Merge => "merge-commit",
+            Self::Squash => "squash",
+            Self::Rebase => "rebase",
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema, PartialEq, Eq,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeHeadGuard {
+    #[default]
+    None,
+    Preflight,
+    Atomic,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MergePullRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sha: Option<String>,
+    pub expected_head_sha: Option<String>,
+    pub merge_method: MergeMethod,
+    pub head_guard: MergeHeadGuard,
+}
+impl MergePullRequest {
+    pub fn validate(&self) -> crate::error::Result<()> {
+        use crate::error::GbMcpError;
+        if self.head_guard == MergeHeadGuard::Atomic {
+            return Err(GbMcpError::Unsupported("GitBucket's verified REST contract does not enforce atomic expected-head conditions; no HTTP request was sent".into()));
+        }
+        match (self.head_guard,self.expected_head_sha.as_deref()) {
+            (MergeHeadGuard::None,None)=>{},
+            (MergeHeadGuard::Preflight,Some(sha)) if canonical_sha(sha)=>{},
+            _=>return Err(GbMcpError::InvalidInput("expected_head_sha requires explicit head_guard=preflight and a full lowercase SHA-1; preflight requires that SHA".into())),
+        }
+        if self.merge_method == MergeMethod::Rebase && self.commit_message.is_some() {
+            return Err(GbMcpError::Unsupported("GitBucket rebase ignores commit_message; omit it instead of silently losing supplied content".into()));
+        }
+        Ok(())
+    }
+}
+pub(crate) fn canonical_sha(sha: &str) -> bool {
+    sha.len() == 40
+        && sha
+            .bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct GitBucketMergeRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub merge_method: Option<String>,
+    pub commit_message: Option<&'a str>,
+    pub merge_method: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MergeVerification {
+    pub head_guard: MergeHeadGuard,
+    pub atomic_head_guard: bool,
+    pub expected_head_sha: Option<String>,
+    pub observed_head_sha: String,
+    pub base_sha_before: String,
+    pub mergeable_before: Option<bool>,
+    pub pr_state_verified: bool,
+    pub base_ref_verified: bool,
+    pub commit_parents_verified: bool,
+    pub merged_head_verified: bool,
+    pub commit_message_verified: bool,
+    pub repository_policy_preflight_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MergeResult {
-    pub sha: Option<String>,
-    pub merged: Option<bool>,
+    pub sha: String,
+    pub merged: bool,
     pub message: Option<String>,
+    pub requested_merge_method: MergeMethod,
+    pub verification: MergeVerification,
 }
 
 #[cfg(test)]
@@ -171,25 +251,24 @@ mod tests {
     fn test_serialize_merge_pull_request_minimal() {
         let merge = MergePullRequest {
             commit_message: None,
-            sha: None,
-            merge_method: None,
+            expected_head_sha: None,
+            merge_method: Default::default(),
+            head_guard: Default::default(),
         };
 
         let json = serde_json::to_value(&merge).unwrap();
         let obj = json.as_object().unwrap();
-        assert!(obj.is_empty());
+        assert_eq!(obj.len(), 2);
+        assert_eq!(obj["merge_method"], "merge");
+        assert_eq!(obj["head_guard"], "none");
     }
 
     #[test]
     fn test_deserialize_merge_result() {
-        let json = r#"{
-            "sha": "merged123",
-            "merged": true,
-            "message": "Pull Request successfully merged"
-        }"#;
+        let json = include_str!("../../tests/fixtures/gitbucket/merge-result.json");
 
         let result: MergeResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.merged, Some(true));
-        assert_eq!(result.sha, Some("merged123".to_string()));
+        assert!(result.merged);
+        assert_eq!(result.sha, "c".repeat(40));
     }
 }

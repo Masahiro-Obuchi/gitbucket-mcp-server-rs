@@ -78,6 +78,8 @@ pub struct OperationTarget {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub old_line: Option<u64>,
@@ -98,6 +100,7 @@ impl OperationTarget {
             candidate_numbers: Vec::new(),
             observed_number: None,
             commit: None,
+            result_commit: None,
             path: None,
             old_line: None,
             new_line: None,

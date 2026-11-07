@@ -323,11 +323,10 @@ impl Default for MockApi {
             comments_url: None,
             statuses_url: None,
         };
-        let merge_result = MergeResult {
-            sha: Some("merged-sha".to_string()),
-            merged: Some(true),
-            message: Some("Pull Request successfully merged".to_string()),
-        };
+        let merge_result: MergeResult = serde_json::from_str(include_str!(
+            "../tests/fixtures/gitbucket/merge-result.json"
+        ))
+        .unwrap();
 
         Self {
             response_delay: std::time::Duration::ZERO,
