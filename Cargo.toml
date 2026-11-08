@@ -2,6 +2,7 @@
 name = "gitbucket-mcp-server"
 version = "0.2.3"
 edition = "2021"
+rust-version = "1.88"
 description = "A Model Context Protocol (MCP) server for GitBucket"
 license = "MIT"
 repository = "https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs"
@@ -49,6 +50,7 @@ wiremock = "0.6"
 tokio-test = "0.4"
 assert-json-diff = "2"
 serial_test = "3.4.0"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

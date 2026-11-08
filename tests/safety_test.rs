@@ -563,14 +563,17 @@ fn startup_stderr_never_contains_malformed_toml_or_invalid_url_secrets() {
         (format!("token = \"{SECRET}"), "https://example.test".into()),
         (String::new(), format!("https://user:{SECRET}@example.test")),
     ] {
-        std::fs::write(&config, contents).unwrap();
-        let result = std::process::Command::new(env!("CARGO_BIN_EXE_gitbucket-mcp-server"))
+        std::fs::write(&config, &contents).unwrap();
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_gitbucket-mcp-server"));
+        command
             .env_clear()
             .env("GITBUCKET_MCP_CONFIG_DIR", dir.path())
-            .env("GITBUCKET_TOKEN", SECRET)
-            .env("GITBUCKET_URL", url)
-            .output()
-            .unwrap();
+            .env("GITBUCKET_URL", url);
+        // A needed malformed file must fail; complete env deliberately skips it.
+        if contents.is_empty() {
+            command.env("GITBUCKET_TOKEN", SECRET);
+        }
+        let result = command.output().unwrap();
         assert!(!result.status.success());
         assert!(!String::from_utf8_lossy(&result.stderr).contains(SECRET));
         assert!(result.stdout.is_empty());

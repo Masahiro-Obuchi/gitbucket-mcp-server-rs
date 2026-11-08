@@ -91,6 +91,9 @@ impl HttpSettings {
 
     pub(crate) fn configure(&self, builder: ClientBuilder) -> ClientBuilder {
         builder
+            // Keep REST and cookie sessions on the same native-root CA policy,
+            // even when a transitive dependency enables reqwest's default TLS.
+            .use_rustls_tls()
             .connect_timeout(self.connect_timeout)
             .timeout(self.request_timeout)
             // No transparent retry, including HTTP/2 protocol-level retries.

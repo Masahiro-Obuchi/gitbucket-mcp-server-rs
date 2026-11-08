@@ -13,7 +13,7 @@ pub struct Config {
     pub gitbucket_password: Option<String>,
 }
 
-/// TOML file structure (`~/.config/gitbucket-mcp-server/config.toml`).
+/// TOML file structure (under the platform config directory by default).
 ///
 /// ```toml
 /// url = "https://gitbucket.example.com"
@@ -25,19 +25,24 @@ pub struct ConfigFile {
     pub url: Option<String>,
     #[serde(default)]
     pub token: Option<String>,
-    // Kept for migration detection only. Web fallback credentials are env-only.
+    // Recognized only to reject unsupported file credentials with a clear error.
     #[serde(default)]
     pub username: Option<String>,
-    // Kept for migration detection only. Web fallback credentials are env-only.
+    // Recognized only to reject unsupported file credentials with a clear error.
     #[serde(default)]
     pub password: Option<String>,
 }
 
 /// Return the config directory path.
 ///
-/// Priority: `GITBUCKET_MCP_CONFIG_DIR` env var → `~/.config/gitbucket-mcp-server/`
+/// Priority: `GITBUCKET_MCP_CONFIG_DIR` env var → platform config dir / `gitbucket-mcp-server`.
 pub fn config_dir() -> Result<PathBuf> {
-    if let Ok(dir) = std::env::var("GITBUCKET_MCP_CONFIG_DIR") {
+    if let Some(dir) = std::env::var_os("GITBUCKET_MCP_CONFIG_DIR") {
+        if dir.is_empty() {
+            return Err(GbMcpError::Config(
+                "GITBUCKET_MCP_CONFIG_DIR must not be empty".into(),
+            ));
+        }
         return Ok(PathBuf::from(dir));
     }
     let base = dirs::config_dir()
@@ -95,7 +100,7 @@ impl ConfigFile {
                 "Failed to parse config file{position}; check TOML syntax and field types"
             ))
         })?;
-        config.validate_file_web_credentials(path)?;
+        config.validate_file_web_credentials()?;
         Ok(config)
     }
 
@@ -107,7 +112,7 @@ impl ConfigFile {
 
     /// Save config to a specific TOML file path, creating parent directories if needed.
     pub fn save_to(&self, path: &std::path::Path) -> Result<()> {
-        self.validate_file_web_credentials(path)?;
+        self.validate_file_web_credentials()?;
 
         if let Some(dir) = path.parent() {
             if !dir.exists() {
@@ -133,12 +138,11 @@ impl ConfigFile {
         self.save_to(&path)
     }
 
-    fn validate_file_web_credentials(&self, path: &std::path::Path) -> Result<()> {
+    fn validate_file_web_credentials(&self) -> Result<()> {
         if self.username.is_some() || self.password.is_some() {
-            return Err(GbMcpError::Config(format!(
-                "Config file {} must not contain username/password. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD via environment variables instead.",
-                path.display()
-            )));
+            return Err(GbMcpError::Config(
+                "Config file must not contain username/password. Set GITBUCKET_USERNAME and GITBUCKET_PASSWORD via environment variables instead.".into()
+            ));
         }
 
         Ok(())
@@ -188,94 +192,56 @@ impl std::fmt::Debug for ConfigFile {
 }
 
 impl Config {
-    /// Load configuration.
-    ///
-    /// Priority (highest wins):
-    /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`, optional web creds
-    /// 2. TOML config file: `~/.config/gitbucket-mcp-server/config.toml`
+    /// Resolve env values first. Read TOML only if URL or token is absent.
+    /// Explicit invalid env values fail instead of falling back to file values.
     pub fn load() -> Result<Self> {
-        let file_config = ConfigFile::load()?;
-        Self::resolve(file_config)
+        Self::load_using(ConfigFile::load)
     }
 
-    /// Load configuration with an explicit config file path.
-    ///
-    /// Priority (highest wins):
-    /// 1. Environment variables: `GITBUCKET_URL`, `GITBUCKET_TOKEN`, optional web creds
-    /// 2. Specified TOML config file
+    /// Resolve against an explicit path, without opening it when env is complete.
     pub fn load_with_file(config_path: &std::path::Path) -> Result<Self> {
-        let file_config = ConfigFile::load_from(config_path)?;
-        Self::resolve(file_config)
+        Self::load_using(|| ConfigFile::load_from(config_path))
     }
 
-    /// Resolve config from file values + env overrides.
-    fn resolve(file_config: ConfigFile) -> Result<Self> {
-        let gitbucket_url = required_config_value(
-            "GITBUCKET_URL",
-            file_config.url,
-            "GITBUCKET_URL is required (set via environment variable or config.toml)",
+    fn load_using(file_loader: impl FnOnce() -> Result<ConfigFile>) -> Result<Self> {
+        let url = optional_env("GITBUCKET_URL")?
+            .map(|value| validate_required_value("GITBUCKET_URL", value))
+            .transpose()?;
+        let token = optional_env("GITBUCKET_TOKEN")?
+            .map(|value| validate_required_value("GITBUCKET_TOKEN", value))
+            .transpose()?;
+        let (gitbucket_username, gitbucket_password) = resolve_optional_web_credentials(
+            optional_env("GITBUCKET_USERNAME")?,
+            optional_env("GITBUCKET_PASSWORD")?,
         )?;
-        let gitbucket_token = required_config_value(
-            "GITBUCKET_TOKEN",
-            file_config.token,
-            "GITBUCKET_TOKEN is required (set via environment variable or config.toml)",
-        )?;
-
-        let gitbucket_username = std::env::var("GITBUCKET_USERNAME").ok();
-        let gitbucket_password = std::env::var("GITBUCKET_PASSWORD").ok();
-
-        let (gitbucket_username, gitbucket_password) =
-            resolve_optional_web_credentials(gitbucket_username, gitbucket_password)?;
-
+        let file = if url.is_some() && token.is_some() {
+            ConfigFile::default()
+        } else {
+            file_loader()?
+        };
+        let gitbucket_url = url.or(file.url).ok_or_else(|| {
+            GbMcpError::Config("GITBUCKET_URL is required (environment or config.toml)".into())
+        })?;
+        let gitbucket_token = token.or(file.token).ok_or_else(|| {
+            GbMcpError::Config("GITBUCKET_TOKEN is required (environment or config.toml)".into())
+        })?;
         Ok(Self {
-            gitbucket_url,
-            gitbucket_token,
-            gitbucket_username,
-            gitbucket_password,
-        })
-    }
-
-    /// Load from environment variables only (legacy, for backward compatibility).
-    pub fn from_env() -> Result<Self> {
-        let gitbucket_url = required_env_value(
-            "GITBUCKET_URL",
-            "GITBUCKET_URL environment variable is required",
-        )?;
-        let gitbucket_token = required_env_value(
-            "GITBUCKET_TOKEN",
-            "GITBUCKET_TOKEN environment variable is required",
-        )?;
-
-        let gitbucket_username = std::env::var("GITBUCKET_USERNAME").ok();
-        let gitbucket_password = std::env::var("GITBUCKET_PASSWORD").ok();
-        let (gitbucket_username, gitbucket_password) =
-            resolve_optional_web_credentials(gitbucket_username, gitbucket_password)?;
-
-        Ok(Self {
-            gitbucket_url,
-            gitbucket_token,
+            gitbucket_url: validate_required_value("GITBUCKET_URL", gitbucket_url)?,
+            gitbucket_token: validate_required_value("GITBUCKET_TOKEN", gitbucket_token)?,
             gitbucket_username,
             gitbucket_password,
         })
     }
 }
 
-fn required_config_value(
-    env_name: &str,
-    file_value: Option<String>,
-    missing_message: &'static str,
-) -> Result<String> {
-    let value = std::env::var(env_name)
-        .ok()
-        .or(file_value)
-        .ok_or_else(|| GbMcpError::Config(missing_message.to_string()))?;
-    validate_required_value(env_name, value)
-}
-
-fn required_env_value(env_name: &str, missing_message: &'static str) -> Result<String> {
-    let value =
-        std::env::var(env_name).map_err(|_| GbMcpError::Config(missing_message.to_string()))?;
-    validate_required_value(env_name, value)
+fn optional_env(name: &str) -> Result<Option<String>> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err(GbMcpError::Config(format!("{name} must be valid UTF-8")))
+        }
+    }
 }
 
 fn validate_required_value(name: &str, value: String) -> Result<String> {
@@ -325,16 +291,158 @@ mod tests {
         env::remove_var("GITBUCKET_MCP_CONFIG_DIR");
     }
 
-    // --- from_env tests (run serially due to env var usage) ---
+    fn load_isolated() -> Result<Config> {
+        let tmp = tempfile::tempdir().unwrap();
+        Config::load_with_file(&tmp.path().join("missing.toml"))
+    }
 
     #[test]
     #[serial]
-    fn test_from_env_success() {
+    fn complete_env_does_not_open_or_validate_unused_files_or_directory_overrides() {
+        clear_env();
+        env::set_var("GITBUCKET_URL", "https://env.example.test");
+        env::set_var("GITBUCKET_TOKEN", "env-token");
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        for text in [
+            "token = { broken",
+            "url = 'file'\ntoken = 'file'\nusername = 'unsupported'\npassword = 'unsupported'",
+        ] {
+            std::fs::write(&path, text).unwrap();
+            let config = Config::load_with_file(&path).unwrap();
+            assert_eq!(config.gitbucket_url, "https://env.example.test");
+            assert_eq!(config.gitbucket_token, "env-token");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        }
+        assert!(Config::load_with_file(tmp.path()).is_ok());
+        env::set_var("GITBUCKET_MCP_CONFIG_DIR", "");
+        assert!(Config::load().is_ok());
+        env::remove_var("GITBUCKET_TOKEN");
+        assert!(Config::load()
+            .unwrap_err()
+            .to_string()
+            .contains("CONFIG_DIR must not be empty"));
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn both_partial_env_directions_and_file_only_use_needed_values_and_reject_bad_toml() {
+        clear_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        for (url, token) in [
+            (Some("https://env.example.test"), None),
+            (None, Some("env-token")),
+            (None, None),
+        ] {
+            clear_env();
+            if let Some(value) = url {
+                env::set_var("GITBUCKET_URL", value);
+            }
+            if let Some(value) = token {
+                env::set_var("GITBUCKET_TOKEN", value);
+            }
+            std::fs::write(
+                &path,
+                "url = 'https://file.example.test'\ntoken = 'file-token'",
+            )
+            .unwrap();
+            let config = Config::load_with_file(&path).unwrap();
+            assert_eq!(
+                config.gitbucket_url,
+                url.unwrap_or("https://file.example.test")
+            );
+            assert_eq!(config.gitbucket_token, token.unwrap_or("file-token"));
+            std::fs::write(&path, "token = [ broken").unwrap();
+            assert!(Config::load_with_file(&path).is_err());
+        }
+        std::fs::write(
+            &path,
+            "url = 'https://file.example.test'\ntoken = 'file-token'",
+        )
+        .unwrap();
+        for key in ["GITBUCKET_URL", "GITBUCKET_TOKEN"] {
+            clear_env();
+            env::set_var(key, "  ");
+            assert!(Config::load_with_file(&path)
+                .unwrap_err()
+                .to_string()
+                .contains("must not be empty"));
+        }
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn web_env_pairs_are_always_validated_even_when_toml_is_unused() {
+        clear_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "not TOML").unwrap();
+        env::set_var("GITBUCKET_URL", "https://env.example.test");
+        env::set_var("GITBUCKET_TOKEN", "token");
+        for (username, password) in [
+            (Some("alice"), None),
+            (None, Some("secret")),
+            (Some(""), Some("secret")),
+            (Some("alice"), Some(" ")),
+        ] {
+            env::remove_var("GITBUCKET_USERNAME");
+            env::remove_var("GITBUCKET_PASSWORD");
+            if let Some(v) = username {
+                env::set_var("GITBUCKET_USERNAME", v);
+            }
+            if let Some(v) = password {
+                env::set_var("GITBUCKET_PASSWORD", v);
+            }
+            let error = Config::load_with_file(&path).unwrap_err().to_string();
+            assert!(!error.contains("TOML"));
+            assert!(!error.contains("secret"));
+        }
+        env::set_var("GITBUCKET_USERNAME", "alice");
+        env::set_var("GITBUCKET_PASSWORD", " original password ");
+        let config = Config::load_with_file(&path).unwrap();
+        assert_eq!(
+            config.gitbucket_password.as_deref(),
+            Some(" original password ")
+        );
+        clear_env();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn non_unicode_env_values_fail_instead_of_falling_back() {
+        use std::os::unix::ffi::OsStringExt;
+        for key in [
+            "GITBUCKET_URL",
+            "GITBUCKET_TOKEN",
+            "GITBUCKET_USERNAME",
+            "GITBUCKET_PASSWORD",
+        ] {
+            clear_env();
+            env::set_var("GITBUCKET_URL", "https://env.example.test");
+            env::set_var("GITBUCKET_TOKEN", "token");
+            env::set_var(key, std::ffi::OsString::from_vec(vec![255]));
+            assert!(load_isolated()
+                .unwrap_err()
+                .to_string()
+                .contains("must be valid UTF-8"));
+        }
+        clear_env();
+    }
+
+    // --- env resolution tests (serial due to process environment usage) ---
+
+    #[test]
+    #[serial]
+    fn test_load_environment_success() {
         clear_env();
         env::set_var("GITBUCKET_URL", "https://gitbucket.example.com");
         env::set_var("GITBUCKET_TOKEN", "test-token-123");
 
-        let config = Config::from_env().unwrap();
+        let config = load_isolated().unwrap();
         assert_eq!(config.gitbucket_url, "https://gitbucket.example.com");
         assert_eq!(config.gitbucket_token, "test-token-123");
         assert!(config.gitbucket_username.is_none());
@@ -344,11 +452,11 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_from_env_missing_url() {
+    fn test_load_environment_missing_url() {
         clear_env();
         env::set_var("GITBUCKET_TOKEN", "test-token");
 
-        let result = Config::from_env();
+        let result = load_isolated();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GITBUCKET_URL"));
         clear_env();
@@ -356,11 +464,11 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_from_env_missing_token() {
+    fn test_load_environment_missing_token() {
         clear_env();
         env::set_var("GITBUCKET_URL", "https://gitbucket.example.com");
 
-        let result = Config::from_env();
+        let result = load_isolated();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GITBUCKET_TOKEN"));
         clear_env();
@@ -368,12 +476,12 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_from_env_empty_url() {
+    fn test_load_environment_empty_url() {
         clear_env();
         env::set_var("GITBUCKET_URL", "  ");
         env::set_var("GITBUCKET_TOKEN", "test-token");
 
-        let result = Config::from_env();
+        let result = load_isolated();
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -384,12 +492,12 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_from_env_empty_token() {
+    fn test_load_environment_empty_token() {
         clear_env();
         env::set_var("GITBUCKET_URL", "https://gitbucket.example.com");
         env::set_var("GITBUCKET_TOKEN", "");
 
-        let result = Config::from_env();
+        let result = load_isolated();
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -668,14 +776,14 @@ password = "secret-pass"
 
     #[test]
     #[serial]
-    fn test_from_env_with_optional_web_credentials() {
+    fn test_load_environment_with_optional_web_credentials() {
         clear_env();
         env::set_var("GITBUCKET_URL", "https://gitbucket.example.com");
         env::set_var("GITBUCKET_TOKEN", "test-token-123");
         env::set_var("GITBUCKET_USERNAME", "alice");
         env::set_var("GITBUCKET_PASSWORD", "secret-pass");
 
-        let config = Config::from_env().unwrap();
+        let config = load_isolated().unwrap();
         assert_eq!(config.gitbucket_username.as_deref(), Some("alice"));
         assert_eq!(config.gitbucket_password.as_deref(), Some("secret-pass"));
 
