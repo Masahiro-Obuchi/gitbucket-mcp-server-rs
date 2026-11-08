@@ -78,15 +78,7 @@ impl GitBucketClient {
         body: &MergePullRequest,
     ) -> Result<MergeResult> {
         super::url_safety::repository(owner, repo)?;
-        let operation = Operation::new(
-            "merge_pull_request",
-            OperationTarget::new(ResourceKind::PullRequest, owner, repo).numbered(number),
-            Route::Rest,
-            &[],
-        );
-        operation
-            .run(self.put_merge(&format!("/repos/{owner}/{repo}/pulls/{number}/merge"), body))
-            .await
+        super::pull_request_merge::merge(self, owner, repo, number, body).await
     }
 
     /// Add a comment to a pull request (uses the issues comments endpoint).

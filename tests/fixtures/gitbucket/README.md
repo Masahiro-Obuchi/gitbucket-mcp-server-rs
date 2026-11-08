@@ -1,8 +1,11 @@
 # Response contract fixtures
 
-These are synthetic test values shaped from the official GitBucket 4.44.0 and
-4.48.0 response models. They contain no instance data or credentials. They are
-not claimed to be captured HTTP responses.
+Issue and PR fixtures are synthetic values shaped from the official GitBucket
+4.44.0/4.48.0 response models. `merge-result.json` is a synthetic normalized MCP
+P12 success, including scoped verification; it is not the native merge response.
+All contain no instance data or credentials and are not captured HTTP responses.
+Native merge formats and source provenance are documented in the
+[merge contract](../../../docs/pull-request-merges.md).
 
 The Issue, PR and milestone source files are identical in the two tags.
 Repository models differ as recorded below:

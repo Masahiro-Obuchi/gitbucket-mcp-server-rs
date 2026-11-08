@@ -357,11 +357,12 @@ async fn errors_keep_safe_status_and_wrapped_404_still_allows_api_profile() {
 #[tokio::test]
 async fn merge_has_a_longer_explicit_request_budget() {
     let server = MockServer::start().await;
+    common::merge_reads(&server, 1).await;
     Mock::given(method("PUT"))
         .and(path("/api/v3/repos/owner/repo/pulls/1/merge"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(json!({"merged":true,"message":"ok"}))
+                .set_body_json(json!({"merged":true,"sha":"c".repeat(40),"message":"ok"}))
                 .set_delay(Duration::from_millis(400)),
         )
         .expect(1)
@@ -374,13 +375,14 @@ async fn merge_has_a_longer_explicit_request_budget() {
             1,
             &gitbucket_mcp_server::models::pull_request::MergePullRequest {
                 commit_message: None,
-                merge_method: None,
-                sha: None,
+                merge_method: Default::default(),
+                expected_head_sha: None,
+                head_guard: Default::default(),
             },
         )
         .await
         .unwrap();
-    assert_eq!(result.merged, Some(true));
+    assert!(result.merged);
 }
 
 async fn web(server: &MockServer, policy: HttpSettings) -> GitBucketWebSession {

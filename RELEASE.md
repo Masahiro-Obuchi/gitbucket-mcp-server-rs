@@ -2,6 +2,27 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P12 verified pull request merges
+
+- Expose `merge_method` (`merge` default / `squash` / `rebase`) and explicit
+  `head_guard` (`none` default / `preflight` / unsupported `atomic`). A reviewed
+  `expected_head_sha` requires preflight; atomic requests fail before HTTP.
+  GitBucket's ignored `sha` is not sent or treated as an atomic condition.
+- Check PR identity/state/draft, observed revisions and base tip before one PUT.
+  Verify PR closed/merged state, canonical result commit/parent shape and target
+  tip afterward. Unknown mergeability stays null. Policy rejection is preserved
+  without another strategy; rebase rejects ignored custom messages before HTTP.
+- Normalize stock 4.44.0 ObjectId / 4.48.0 MergeResult string forms into a
+  canonical SHA only with exact grammar and independent reads. `MergeResult`
+  now has required string `sha`, boolean `merged`, `requested_merge_method` and
+  `MergeVerification`. It describes observable results, not an atomic guard,
+  complete rebase equivalence or full commit-message readback.
+- Rust `MergePullRequest` replaces `sha` with `expected_head_sha`, typed
+  `MergeMethod` and `MergeHeadGuard`; update struct literals/custom adapters.
+  `OperationTarget` gains optional `result_commit`; retained across interrupted
+  verification. No legacy aliases, automatic retries or rollback are added.
+  See [the contract](docs/pull-request-merges.md).
+
 ## Unreleased P11 bounded list responses
 
 - All eight MCP lists now default to summary pages of at most 50 items. Optional

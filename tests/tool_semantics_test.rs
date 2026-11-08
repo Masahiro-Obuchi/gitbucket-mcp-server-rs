@@ -128,6 +128,7 @@ async fn blank_comments_are_rejected_without_http() {
 #[tokio::test]
 async fn optional_markdown_and_commit_messages_reach_http_unchanged() {
     let http = TestServer::start().await;
+    common::merge_reads(&http.mock_server, 7).await;
     let text = "    indented code\n\nA hard break  \n";
     Mock::given(method("GET"))
         .and(path("/api/v3/repos/owner/repo/milestones/7"))
@@ -143,7 +144,7 @@ async fn optional_markdown_and_commit_messages_reach_http_unchanged() {
         Mock::given(method(verb)).respond_with(|request: &wiremock::Request| {
             let body: Value = serde_json::from_slice(&request.body).unwrap();
             let value = if request.url.path().ends_with("/merge") {
-                json!({"merged":true,"sha":"merged-sha","message":"merged"})
+                json!({"merged":true,"sha":"c".repeat(40),"message":"merged"})
             } else if request.url.path().ends_with("/user/repos") {
                 json!({"name":"repo","full_name":"owner/repo","private":false,"description":body["description"]})
             } else {

@@ -296,11 +296,8 @@ impl Default for IntegrationMockApi {
             comments_url: None,
             statuses_url: None,
         };
-        let merge_result = MergeResult {
-            sha: Some("merged-sha".to_string()),
-            merged: Some(true),
-            message: Some("Pull Request successfully merged".to_string()),
-        };
+        let merge_result: MergeResult =
+            serde_json::from_str(include_str!("fixtures/gitbucket/merge-result.json")).unwrap();
 
         Self {
             calls: Mutex::new(vec![]),
@@ -1499,8 +1496,8 @@ async fn test_mcp_call_tool_merge_pull_request_trims_commit_message_and_serializ
             assert_eq!(repo, "repo");
             assert_eq!(*number, 7);
             assert_eq!(body.commit_message.as_deref(), Some("  merge message  "));
-            assert_eq!(body.sha, None);
-            assert_eq!(body.merge_method, None);
+            assert_eq!(body.expected_head_sha, None);
+            assert_eq!(body.merge_method, Default::default());
         }
         calls => panic!("unexpected calls: {calls:?}"),
     }
