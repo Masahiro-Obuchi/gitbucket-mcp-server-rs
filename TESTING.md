@@ -12,6 +12,8 @@ This repository uses layered tests so failures can be isolated quickly:
 - `tests/operation_outcome_test.rs` verifies partial progress, target/route/cause information and cancellation/deadline preservation over actual HTTP mocks and MCP dispatch.
 - `tests/web_session_test.rs` covers verified PAT/cookie identities, expired sessions, strict redirects, partial updates and deletion verification.
 - `tests/mcp_server_test.rs` verifies MCP tool registration and tool calls over an in-memory transport, including structured MCP success/error payloads.
+- `tests/cli_test.rs` starts the built binary to verify configuration-free CLI,
+  local/explicit-HTTP diagnostics, real stdio initialization and shared CA trust.
 - `tests/tool_semantics_test.rs` checks all tool schemas and unknown-argument
   rejection before HTTP, inline-argument refusal, original Markdown/commit text,
   response metadata, unknown vs empty/false values, closure dates, annotations,
@@ -24,7 +26,7 @@ Use these commands during normal development:
 
 ```bash
 # All non-ignored tests
-cargo test
+cargo test --locked
 
 # Fast checks that do not require wiremock port binding or a live GitBucket
 cargo test --lib
@@ -34,8 +36,44 @@ cargo test --test mcp_server_test
 cargo test --test e2e_test
 
 # Lint with the same strictness as CI
-cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --locked --all-targets --all-features -- -D warnings
 ```
+
+## Configuration, CLI and minimum Rust (P13)
+
+```bash
+cargo test --locked --lib config::tests
+cargo test --locked --test cli_test
+rustup toolchain install 1.88.0 --profile minimal
+cargo +1.88.0 build --locked
+cargo +1.88.0 check --locked --all-targets --all-features
+```
+
+Configuration tests isolate and serialize environment changes. They cover full,
+partial and absent URL/token env values against valid/missing/malformed TOML,
+explicit blank/invalid UTF-8 rejection, paired Web credentials and unused paths.
+Existing Unix file tests continue to check private atomic replacement and
+symlink/non-regular rejection.
+
+The ten subprocess tests check help/version before invalid config/runtime/logging,
+argument exit codes, local diagnostics without any HTTP, explicit PAT identity
+GETs without password sign-in, status/identity failures without secret output,
+and actual stdin/stdout JSON-RPC. Readiness must wait for both initialization
+messages; malformed initialization cannot echo the client's private payload.
+Tests need loopback port binding but no external GitBucket or real credentials.
+
+The local TLS server uses the synthetic localhost identity in
+[`tests/fixtures/tls`](tests/fixtures/tls/README.md). An untrusted connection fails;
+`SSL_CERT_FILE` plus an isolated `SSL_CERT_DIR` then trusts the test CA. The same
+process proves diagnostics, a REST write and a verified Web cookie session use
+that CA policy. No TLS verification bypass is used. Certificates and the server
+key are public test fixtures; the CA signing key is discarded.
+
+The locked graph includes dependencies requiring Rust 1.88 (including
+`cookie_store`, `darling` and `time`). The minimum is checked by an actual locked
+build and all-targets/all-features check on Linux, rather than inferred from the
+crate's edition. Stable CI runs the complete normal suite. Keep minimum checks
+when changing the lockfile; they do not claim cross-platform MSRV execution.
 
 ## MCP input and model semantics
 

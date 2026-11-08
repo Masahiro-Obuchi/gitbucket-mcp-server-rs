@@ -24,9 +24,24 @@ Out of scope:
 ## 3. Runtime Model
 
 - The server runs as a stdio MCP server.
-- `stdout` is reserved for MCP protocol traffic.
+- With no command, `stdout` is reserved for MCP protocol traffic.
 - Logs must be written to `stderr`.
 - The server advertises MCP tool capability and exposes the implementation name `gitbucket-mcp-server`.
+- Startup reports waiting for MCP initialization; readiness is reported only after
+  `initialize` and `notifications/initialized`. Neither startup nor that handshake
+  performs GitBucket authentication or proves upstream availability.
+- Single commands `--help`/`-h` and `--version`/`-V` exit before configuration,
+  logging and async-runtime setup. `--check-config` validates all startup settings
+  and client construction without HTTP. `--check-connection` adds only a PAT
+  `GET /api/v3/user`, requires a nonblank login and equality with any configured
+  Web username, and never submits a password or validates a Web session.
+- Diagnostic successes are safe JSON on stdout; errors/logs use stderr and omit
+  identity, private URL and secrets. Dependency tracing is disabled for diagnostics.
+  Exit codes: success 0, configuration/runtime/connection failure 1, invalid or
+  multiple commands 2. MCP clients launch the server with no command.
+- The declared minimum Rust is 1.88, based on the locked dependency graph.
+  Linux CI runs a Rust 1.88.0 locked build/all-targets/all-features check and
+  stable tests/Clippy/format checks.
 
 ## 4. Configuration
 
@@ -35,7 +50,10 @@ Configuration sources:
 1. Environment variables
 2. TOML config file
 
-Environment variables override file values.
+Each environment value overrides its file value. If URL and token both come
+from the environment, the file path is not resolved and the file is not opened.
+Otherwise the file fills absent values; an invalid explicit env value never
+falls back. Optional Web credentials are validated regardless of file use.
 
 Supported variables:
 
@@ -45,7 +63,9 @@ Supported variables:
 - `GITBUCKET_PASSWORD`
 - `GITBUCKET_MCP_CONFIG_DIR`
 
-Default config path:
+Default config path uses the platform config directory (Linux respects
+`XDG_CONFIG_HOME`; macOS uses `~/Library/Application Support`; Windows uses
+`%APPDATA%`). For Linux without an XDG override:
 
 ```text
 ~/.config/gitbucket-mcp-server/config.toml
@@ -63,12 +83,22 @@ Requirements:
 - `GITBUCKET_URL` and `GITBUCKET_TOKEN` are required unless supplied by config file.
 - `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are optional, but must be supplied together when used.
 - `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` are environment-variable only; `config.toml` must not contain `username` or `password`.
-- Empty values are invalid.
+- Blank values and non-UTF-8 URL/token/Web env values are invalid. Password
+  whitespace is preserved after nonblank validation. Config directory paths use
+  the OS representation; an empty explicit override fails only if a file is needed.
 - Missing config files are treated as “not configured yet”.
-- Malformed or unreadable config files must fail startup with a configuration error.
+- Malformed or unreadable config files fail if the file is needed. Full env
+  configuration ignores unused files, including unsupported file Web credentials.
 - Config saves use a private temporary file and atomic replacement; Unix files use `0600` even when replacing a permissive file. Symlink/non-regular destinations are rejected.
 - Unix loads open without following symlinks, reject non-regular files, and warn about group/other permissions without modifying the file. Parent directories must be trusted. Non-Unix deployments must manage OS ACLs.
 - Config/credential Debug output is redacted. TOML parse errors report position and a generic explanation without source text.
+- Rust callers use `Config::load` or `load_with_file`; the separate `from_env`
+  entry point has been removed. `ConfigFile` load/save operations explicitly
+  requested by library callers still inspect their supplied path and credentials.
+- All production HTTP clients explicitly select Rustls with native roots.
+  `SSL_CERT_FILE`/`SSL_CERT_DIR`, when present, replace platform root lookup with
+  those certificate sources. Custom roots do not bypass hostname/time checks.
+  No production env/CLI setting disables TLS verification.
 
 ### Upstream API profiles
 

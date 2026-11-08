@@ -19,7 +19,7 @@ This is an unofficial community project and is not affiliated with the GitBucket
 
 ## Requirements
 
-- Rust 1.70+
+- Rust 1.88+ when building from source (prebuilt binaries do not require Rust)
 - A GitBucket instance with a Personal Access Token
 
 ## Installation
@@ -78,26 +78,31 @@ cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs -
 ```bash
 git clone https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs.git
 cd gitbucket-mcp-server-rs
-cargo build --release
+cargo build --release --locked
 ```
 
 The binary will be at `target/release/gitbucket-mcp-server`.
 If you want to use it directly from your shell or MCP client config, copy it to a directory on `PATH`, for example `~/.local/bin/`.
 
+The locked dependency graph requires Rust 1.88. CI builds with Rust 1.88.0 and
+checks all targets/features on Linux, alongside stable formatting, Clippy and
+tests. To reproduce the minimum-version check, see [TESTING.md](./TESTING.md#configuration-cli-and-minimum-rust-p13).
+
 ## Configuration
 
-Configuration can be provided via a **TOML config file** and/or **environment variables**. Environment variables take priority over the config file.
+Configuration can be provided via a **TOML config file** and/or **environment variables**. Each environment value takes priority over its file value. When both `GITBUCKET_URL` and `GITBUCKET_TOKEN` are set, the server does not resolve or open the config file, so an unused malformed or unreadable file cannot block startup. With either variable absent, it reads the file to fill only missing values; malformed or unreadable files then fail. Explicit blank/invalid environment values fail instead of falling back. Web credentials are always validated as a pair, including when the file is unused.
 
 ### Config File
 
-Create `~/.config/gitbucket-mcp-server/config.toml`:
+Create `config.toml` in the platform config directory: `$XDG_CONFIG_HOME/gitbucket-mcp-server` (usually `~/.config/gitbucket-mcp-server`) on Linux, `~/Library/Application Support/gitbucket-mcp-server` on macOS, or `%APPDATA%\gitbucket-mcp-server` on Windows:
 
 ```toml
 url = "https://gitbucket.example.com"
 token = "your-personal-access-token"
 ```
 
-The server does not create a config file on startup. Before editing it on Unix, create the directory and file privately:
+The server does not create a config file on startup. Before editing it, create
+the directory and file privately. For Linux's default path:
 
 ```bash
 (umask 077; mkdir -p ~/.config/gitbucket-mcp-server; touch ~/.config/gitbucket-mcp-server/config.toml)
@@ -106,7 +111,7 @@ chmod 600 ~/.config/gitbucket-mcp-server/config.toml
 
 The library's save method atomically replaces regular files with a `0600` file, including existing `0644` files. On Unix, loading rejects symlinks and non-regular files, and warns about group/other permissions without changing the file. Save rejects symlink destinations. Keep parent directories under your control. On non-Unix systems, restrict access using the OS's ACL controls; Unix mode bits are not an ACL guarantee. Web fallback credentials are intentionally **not** read from `config.toml`; set `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` via environment variables only.
 
-The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` environment variable.
+The config directory can be overridden with the `GITBUCKET_MCP_CONFIG_DIR` environment variable for local use/tests. An empty override fails when the file is needed; the override is unused when URL and token both come from the environment. Paths use the OS-native representation. URL/token/Web environment values must be valid UTF-8 and nonblank; passwords retain their original bytes rather than being trimmed.
 
 GitBucket URLs accept HTTP(S), a host (including IPv6), an optional port and a context path. A missing scheme defaults to HTTPS. Embedded credentials, query strings, fragments, dot segments, backslashes, and escaped path separators are rejected rather than silently normalized to another target. Put the PAT in `GITBUCKET_TOKEN`. REST and web redirects must stay within the configured origin and context path; configure the final instance URL if a proxy redirects to a different host or context.
 
@@ -182,6 +187,13 @@ The profile is selected explicitly, not detected from a version string or failed
 Label create/update inputs contain only supported fields. `description` is absent from their schema and Rust request types. Supplying it, even as null or combined with name/color changes, returns an invalid-parameters error before HTTP. Other unknown label-write arguments are rejected as well.
 
 Before web sign-in, the PAT's `/api/v3/user` login must equal `GITBUCKET_USERNAME`. After sign-in, the server calls the same endpoint using only the web cookie and requires the same login; it repeats that cookie check before each resource write. PAT headers are never added to web requests. An expired or different session stops the operation. There is no impersonation option. Password-based GitBucket sign-in is required for web routes; SSO/MFA challenges and account-setup redirects are unsupported. REST-only operations continue to use the PAT.
+
+PAT-only use includes repository/branch/user reads, Issue creation and ordinary
+comments, PR creation/update/merge and ordinary comments, label creation/rename/
+deletion and REST-valid milestone writes. Under `standard`, only the Web rows
+in the table above require the password pair; this includes review-comment
+reads. Configuring Web credentials does not cause startup sign-in. `rest-only`
+preserves REST errors for operations the stock server does not implement.
 
 Web requests do not automatically follow redirects. Sign-in follows recognized landing pages using GET; each resource write follows only its operation's known read URL after 301/302/303. The server rejects 307/308 without replaying credentials or form bodies. Jetty's URL session IDs are removed from recognized redirects; authentication uses cookies. Authentication forms, validation errors and unexpected response shapes are errors, even with HTTP 200. Label lookup uses an HTML parser and exact decoded label names within repository-specific rows.
 
@@ -261,7 +273,7 @@ Rust callers can pass `api::http::HttpSettings` to `GitBucketClient::new_with_we
 ### Priority
 
 1. **Environment variables** (highest priority)
-2. **TOML config file** (`~/.config/gitbucket-mcp-server/config.toml`)
+2. **TOML config file** (platform config directory, only if URL/token is absent)
 
 ### Creating a Personal Access Token
 
@@ -275,7 +287,7 @@ Rust callers can pass `api::http::HttpSettings` to `GitBucketClient::new_with_we
 
 ```bash
 # Option 1: Using config file (recommended)
-# First, create ~/.config/gitbucket-mcp-server/config.toml with url and token
+# First, create config.toml in the platform config directory with url and token
 gitbucket-mcp-server
 
 # Option 2: Using environment variables
@@ -287,7 +299,49 @@ export GITBUCKET_PASSWORD="secret-pass"   # required for standard web operations
 gitbucket-mcp-server
 ```
 
-At startup the server prints a short readiness message to `stderr`, for example `gitbucket-mcp-server ready`, while `stdout` remains reserved for MCP protocol traffic.
+With no arguments, the server prints `waiting for MCP initialization` to
+`stderr` and waits for an MCP client on stdin/stdout. It reports
+`gitbucket-mcp-server ready (MCP initialized)` only after the client's
+`initialize` request and `notifications/initialized` notification. This confirms
+the protocol handshake; GitBucket connectivity is checked on explicit request
+or during tool calls. In server mode, stdout contains only MCP protocol traffic.
+
+### CLI diagnostics
+
+```bash
+gitbucket-mcp-server --help
+gitbucket-mcp-server --version
+gitbucket-mcp-server --check-config
+gitbucket-mcp-server --check-connection
+```
+
+Help/version work without configuration, logging setup or a Tokio runtime.
+`--check-config` validates local configuration, URL/header construction, HTTP
+limits, API profile and access mode without HTTP. `--check-connection` additionally
+performs only an authenticated REST `GET /api/v3/user`; it rejects an empty login
+or a mismatch with a configured Web username. It never submits the Web password
+or proves Web-session authentication, repository permissions or write access.
+Diagnostic success is one JSON object on stdout; errors go to stderr. Neither
+prints credential values, user identity or private instance URLs. Diagnostic
+logging ignores `RUST_LOG` to keep dependency traces out of these commands.
+Exit codes are 0 for success, 1 for configuration/runtime/connection errors, and
+2 for unknown or combined commands. Run diagnostics separately from an MCP client.
+
+### HTTPS and custom certificate authorities
+
+REST, Web sessions and connection diagnostics all use Rustls with native
+certificate roots. Install a private CA in the OS trust store used by the server
+process, or set `SSL_CERT_FILE` to a PEM CA bundle and/or `SSL_CERT_DIR` to a
+directory of CA certificates in that process's environment. These are Rustls
+native-root overrides: when either is set, those specified sources replace the
+platform root lookup. Include every CA you need, including public roots if
+applicable. The certificate must still match the configured hostname and be
+valid; configuring a CA does not disable verification.
+
+There is no production CLI/env option to skip TLS verification.
+`GITBUCKET_E2E_INSECURE_TLS` belongs only to the live test harness. For a local
+trusted-CA example and trust-failure regression, see
+[TESTING.md](./TESTING.md#configuration-cli-and-minimum-rust-p13).
 
 For a post-install smoke check, see [VERIFICATION.md](./VERIFICATION.md).
 

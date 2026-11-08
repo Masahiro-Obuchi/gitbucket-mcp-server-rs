@@ -12,9 +12,36 @@ Use this skill when the user wants to inspect or modify GitBucket data through `
 The MCP server runs over stdio. The client configuration should launch `gitbucket-mcp-server` with either:
 
 - `GITBUCKET_URL` and `GITBUCKET_TOKEN` in the environment, or
-- `~/.config/gitbucket-mcp-server/config.toml` containing `url` and `token`.
+- the platform config directory's `gitbucket-mcp-server/config.toml` containing
+  `url` and `token` (usually `~/.config` on Linux; overridable with
+  `GITBUCKET_MCP_CONFIG_DIR` for local use/tests).
+
+Environment values override file values individually. Complete URL/token env
+configuration does not read the file; partial env needs a valid file to fill
+missing values. Web credentials are env-only, nonblank and supplied as a pair.
+
+Use `--help`/`--version` without configuration. For diagnosis, run
+`--check-config` separately from the MCP client; it performs no HTTP.
+`--check-connection` additionally reads only the PAT identity, checks any Web
+username matches, and never submits the password or validates Web/write access.
+Neither diagnostic prints identity, secrets or instance URLs. Launch the actual
+MCP server without flags: direct startup waits for the client's initialize /
+initialized handshake before reporting ready on stderr. Stdout is protocol-only
+in server mode.
+
+REST, Web and diagnostics share Rustls CA trust. Install private CAs in the OS
+trust store or set `SSL_CERT_FILE`/`SSL_CERT_DIR` in the server environment. These
+overrides replace platform roots; include all needed CAs. The production CLI
+does not offer a TLS verification bypass.
 
 Web operations require both `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` and `GITBUCKET_API_PROFILE=standard`. The standard upstream contract is verified on 4.44.0 and 4.48.0. The default `rest-only` does not write through Web, even with credentials present. No failed REST write triggers another write route; never infer API absence from a 404. Web credentials are separate from Git-over-HTTP credentials.
+
+PAT-only operations include repository/branch/user reads, Issue creation and
+ordinary comments, PR creation/update/merge and ordinary comments, label
+creation/rename/deletion and REST-valid milestone writes. Under standard, Issue
+updates, same-name label color changes, restricted milestone titles and PR
+review-comment reads/posts need Web authentication. See the README profile table
+for exact routing and constraints; credentials alone do not enable Web use.
 
 Never reveal tokens, passwords, or private instance URLs in responses.
 

@@ -2,6 +2,28 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P13 configuration, CLI and minimum Rust
+
+- Raise `rust-version` and source-build documentation to 1.88, the minimum
+  required by the existing locked dependency graph. Linux CI builds/checks with
+  1.88.0 and tests/lints on stable, using `--locked`. Production dependency
+  versions are unchanged; TLS process tests add an already-locked dev dependency.
+- Full URL/token environment configuration skips the config path and TOML file.
+  Partial env still fills missing values from TOML and fails on invalid used
+  files. Blank/invalid-UTF-8 environment credentials fail without fallback.
+  Web credentials remain env-only and paired, and Unix atomic `0600` saves and
+  file protections are preserved. Rust `Config::from_env` is removed; migrate
+  to `Config::load` or `load_with_file` with the same resolution rules.
+- Add configuration-free help/version, local `--check-config`, and explicit
+  `--check-connection` (PAT identity GET only, no password sign-in). Success
+  diagnostics are JSON without secrets, identity or private URLs. MCP readiness
+  now follows the completed initialize/initialized handshake; direct launch
+  waits for an MCP client. See [VERIFICATION.md](VERIFICATION.md).
+- Explicitly use Rustls across REST and Web clients. Install private CA roots in
+  the platform store or supply `SSL_CERT_FILE`/`SSL_CERT_DIR`; these overrides
+  replace platform root discovery. TLS verification remains required by the
+  production CLI. See [README.md](README.md#https-and-custom-certificate-authorities).
+
 ## Unreleased P12 verified pull request merges
 
 - Expose `merge_method` (`merge` default / `squash` / `rebase`) and explicit
