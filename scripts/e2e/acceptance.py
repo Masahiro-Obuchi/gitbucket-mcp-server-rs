@@ -22,10 +22,35 @@ from runtime import read_runtime
 
 REPO = Path(__file__).resolve().parents[2]
 PAGING_TESTS = ("test_e2e_list_paged_resources_over_25_items", "test_e2e_list_unpaged_resources_over_100_items")
+PROCESS_GROUP_GRACE_SECONDS = 5
 
 
 class StageFailed(Exception):
     """No child output/argv in public exceptions."""
+
+
+def terminate_process_group(child):
+    # The group can outlive its leader, including after an otherwise successful
+    # stage. Reap the leader while allowing every group member a bounded grace.
+    try:
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + PROCESS_GROUP_GRACE_SECONDS
+        while time.monotonic() < deadline:
+            child.poll()
+            try:
+                os.killpg(child.pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    finally:
+        child.wait(timeout=5)
 
 
 def execute(args, env, log, timeout=900):
@@ -36,13 +61,7 @@ def execute(args, env, log, timeout=900):
             if child.wait(timeout=timeout):
                 raise StageFailed()
         finally:
-            if child.poll() is None:
-                os.killpg(child.pid, signal.SIGTERM)
-                try:
-                    child.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(child.pid, signal.SIGKILL)
-                    child.wait(timeout=5)
+            terminate_process_group(child)
 
 
 def diagnostics(binary, env, scratch):

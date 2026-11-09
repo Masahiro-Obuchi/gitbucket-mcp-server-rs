@@ -84,8 +84,10 @@ changed area, add e.g. `--domains-json '["merge"]'`.
 The runner creates its own disposable account/repositories and ignores external
 GitBucket URL/token/image overrides. Opt-in is required because these contracts
 write data. Its `finally` cleanup removes the dedicated container, volume and
-runtime credentials. Timeout/cancellation terminates the active child process
-group; the workflow also has an unconditional teardown step as a second attempt.
+runtime credentials. After each stage, including failure, timeout and cancellation,
+the runner terminates the entire child process group even if its leader has
+already exited. Members still running after a five-second SIGTERM grace receive
+SIGKILL. The workflow also has an unconditional teardown step as a second attempt.
 A cleanup failure fails acceptance. Hard termination of the runner/host can
 prevent local cleanup; use `down.sh` with the same project/root if needed.
 

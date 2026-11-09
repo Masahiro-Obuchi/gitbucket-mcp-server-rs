@@ -5,9 +5,11 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -68,6 +70,56 @@ class AcceptanceTests(unittest.TestCase):
             self.assertNotIn("private-", str(error.exception))
             with self.assertRaises(subprocess.TimeoutExpired):
                 acceptance.execute([sys.executable, "-c", "import time; time.sleep(60)"], os.environ, log, timeout=0.05)
+
+    @unittest.skipUnless(hasattr(os, "killpg"), "requires POSIX process groups")
+    def test_stage_exit_failure_and_timeout_stop_term_ignoring_descendants(self):
+        worker = """import json, os, signal, sys, time
+from pathlib import Path
+ready, gate, survived = map(Path, sys.argv[1:4])
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pending = ready.with_suffix('.tmp')
+pending.write_text(json.dumps([os.getpid(), os.getpgrp()]))
+pending.rename(ready)
+while True:
+    if gate.exists():
+        survived.write_text('descendant still running')
+    time.sleep(0.01)
+"""
+        parent = f"""import subprocess, sys, time
+from pathlib import Path
+subprocess.Popen([sys.executable, '-c', {worker!r}, *sys.argv[1:4]])
+while not Path(sys.argv[1]).exists():
+    time.sleep(0.01)
+if sys.argv[4] == 'timeout':
+    time.sleep(60)
+sys.exit(1 if sys.argv[4] == 'failure' else 0)
+"""
+        for mode in ("success", "failure", "timeout"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                ready, gate, survived = (root / name for name in ("ready", "gate", "survived"))
+                try:
+                    with patch.object(acceptance, "PROCESS_GROUP_GRACE_SECONDS", 0.05):
+                        args = [sys.executable, "-c", parent, str(ready), str(gate), str(survived), mode]
+                        if mode == "success":
+                            acceptance.execute(args, os.environ, root / "child.log", timeout=2)
+                        else:
+                            error = acceptance.StageFailed if mode == "failure" else subprocess.TimeoutExpired
+                            with self.assertRaises(error):
+                                acceptance.execute(args, os.environ, root / "child.log", timeout=2)
+                    self.assertTrue(ready.exists(), "descendant must be ready before stage completion")
+                    gate.touch()
+                    deadline = time.monotonic() + 1
+                    while not survived.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertFalse(survived.exists(), "stage left a running descendant")
+                finally:
+                    if ready.exists():
+                        _, group = json.loads(ready.read_text())
+                        try:
+                            os.killpg(group, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
 
     def fake_run(self, failed=None, empty_suite=False):
         temporary = tempfile.TemporaryDirectory()
