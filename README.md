@@ -344,6 +344,8 @@ trusted-CA example and trust-failure regression, see
 [TESTING.md](./TESTING.md#configuration-cli-and-minimum-rust-p13).
 
 For a post-install smoke check, see [VERIFICATION.md](./VERIFICATION.md).
+For PR/nightly/release gates, the tested version matrix and deployment acceptance,
+see [docs/acceptance.md](./docs/acceptance.md).
 
 ### Claude Desktop
 
@@ -756,10 +758,16 @@ cargo clippy --all-targets --all-features -- -D warnings
 GitHub Actions runs the following on every push and pull request:
 
 - `cargo fmt --all --check`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- `cargo test`
+- `cargo clippy --locked --all-targets --all-features -- -D warnings`
+- `cargo test --locked`
+- Rust 1.88.0 locked build/check, shell syntax and all Python tests
 
-The separate `E2E` workflow is reserved for `workflow_dispatch` and nightly runs. It boots a disposable GitBucket with Docker, exports `GITBUCKET_E2E_*`, runs `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the stack down afterward. The ignored suite covers repository create-path, label create/read/update/delete lifecycle, milestone lifecycle, issue flows, issue web fallback, and pull request write paths.
+PRs also run affected Docker contract domains on 4.48.0 after fast checks;
+docs-only changes skip live checks. `Required checks` aggregates required results.
+Nightly/manual `E2E` runs all domains on 4.44.0 and 4.48.0. The shared runner
+checks existing E2Es, actual stdio review/post/merge probes and PAT-only startup,
+then removes the disposable stack. Only a safe summary artifact is uploaded.
+See [the acceptance policy](docs/acceptance.md) for the scope and reproduction.
 
 The `Release` workflow runs on `v*` tags and publishes prebuilt binary archives to GitHub Releases.
 
@@ -842,7 +850,9 @@ cargo test --test e2e_test -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```
 
-The same bootstrap flow is also automated in GitHub Actions through `.github/workflows/e2e.yml`. Use the regular `CI` workflow for fast feedback and the `E2E` workflow for full Docker-backed smoke coverage.
+The same bootstrap flow is automated by the shared contract runner. `CI` provides
+fast checks plus selected PR domains; `E2E` provides the full supported-version
+matrix. Release packaging uses the same full acceptance matrix.
 
 The bootstrap script starts a disposable GitBucket bound to `127.0.0.1`, creates a validation user, issues a personal access token, and provisions the repository. It writes shell-quoted `runtime.env` and a separate `runtime.env.json`, both mode `0600`, in the mode `0700` runtime directory. Both contain test credentials. Source only the generated shell file; CI imports JSON with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, not by stripping `export` from the shell file. Bootstrap removes its temporary cookie/response files on failure. Use `down.sh` to remove the stack and default runtime directory after testing.
 
