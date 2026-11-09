@@ -2,6 +2,22 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P14 regression and acceptance gates
+
+- PR changes select live contract domains on official GitBucket 4.48.0 after
+  fast checks; docs-only changes skip live checks. Unknown/shared code and CI/
+  harness/dependency changes select all domains. `Required checks` aggregates
+  stable/MSRV and required live results for a stable branch-protection target.
+- Nightly/manual and release runs test official 4.44.0 and 4.48.0 through the
+  shared disposable runner. Existing E2Es, stdio review/post/merge probes and
+  PAT-only startup checks run without external deployment credentials.
+- Release packaging/publication requires stable checks, script tests, Rust
+  1.88.0 locked checks and both full matrix entries. No release is created by
+  this implementation. Safe summary artifacts contain source/image identity and
+  stage results; raw diagnostics/runtime credentials are never uploaded.
+- See [the acceptance policy](docs/acceptance.md) for reproduction, scope limits,
+  cleanup behavior and separately authorized staged production acceptance.
+
 ## Unreleased P13 configuration, CLI and minimum Rust
 
 - Raise `rust-version` and source-build documentation to 1.88, the minimum
@@ -141,8 +157,9 @@ Before tagging:
 
 ```bash
 cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked
+python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
 ```
 
 5. Confirm the CI workflow is green on `main`.
@@ -160,7 +177,8 @@ Pushing the tag starts `.github/workflows/release.yml`.
 The workflow:
 
 1. runs formatting, clippy, and tests;
-2. validates E2E scripts, boots Docker GitBucket, and runs E2E tests;
+2. validates all acceptance scripts and the minimum Rust version, then runs full
+   Docker contract acceptance on official GitBucket 4.44.0 and 4.48.0;
 3. verifies that the tag matches `Cargo.toml`;
 4. builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows;
 5. packages archives with `README.md`, `LICENSE`, and `VERIFICATION.md`;

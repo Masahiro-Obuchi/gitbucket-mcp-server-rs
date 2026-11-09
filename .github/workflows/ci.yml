@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -48,3 +51,55 @@ jobs:
         run: cargo build --locked
       - name: Check all targets on the minimum Rust version
         run: cargo check --locked --all-targets --all-features
+
+  contract-plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      domains: ${{ steps.plan.outputs.domains }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select changed contract domains
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/e2e/ci_plan.py --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
+  contracts:
+    needs: [rust, msrv, contract-plan]
+    if: needs.contract-plan.outputs.run == 'true'
+    uses: ./.github/workflows/contract-e2e.yml
+    with:
+      version: '4.48.0'
+      domains: ${{ needs.contract-plan.outputs.domains }}
+
+  required-checks:
+    name: Required checks
+    if: always()
+    needs: [rust, msrv, contract-plan, contracts]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require fast checks and every selected live contract
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          MSRV_RESULT: ${{ needs.msrv.result }}
+          PLAN_RESULT: ${{ needs.contract-plan.result }}
+          CONTRACT_REQUIRED: ${{ needs.contract-plan.outputs.run }}
+          CONTRACT_RESULT: ${{ needs.contracts.result }}
+        run: |
+          test "$RUST_RESULT" = success
+          test "$MSRV_RESULT" = success
+          if [ "$EVENT_NAME" = pull_request ]; then
+            test "$PLAN_RESULT" = success
+            if [ "$CONTRACT_REQUIRED" = true ]; then
+              test "$CONTRACT_RESULT" = success
+            else
+              test "$CONTRACT_REQUIRED" = false
+              test "$CONTRACT_RESULT" = skipped
+            fi
+          fi

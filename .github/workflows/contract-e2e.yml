@@ -1,0 +1,47 @@
+name: Contract E2E
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      domains:
+        type: string
+        default: '["core", "paging", "review", "merge", "startup"]'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: GitBucket ${{ inputs.version }} contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CONTRACT_VERSION: ${{ inputs.version }}
+      CONTRACT_DOMAINS: ${{ inputs.domains }}
+      GITBUCKET_E2E_COMPOSE_PROJECT: gb-contract-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Set disposable runtime path
+        run: echo "GITBUCKET_E2E_ROOT=$RUNNER_TEMP/gitbucket-contract-runtime" >> "$GITHUB_ENV"
+      - name: Run selected disposable contracts
+        run: >-
+          python3 scripts/e2e/acceptance.py --allow-disposable-writes
+          --version "$CONTRACT_VERSION" --domains-json "$CONTRACT_DOMAINS"
+          --runtime-root "$GITBUCKET_E2E_ROOT" --project "$GITBUCKET_E2E_COMPOSE_PROJECT"
+          --output "$RUNNER_TEMP/contract-report"
+      - name: Ensure disposable resources are removed
+        if: always()
+        run: bash scripts/e2e/down.sh
+      - name: Upload safe contract summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts-${{ inputs.version }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/contract-report/summary.json
+          if-no-files-found: error
+          retention-days: 14

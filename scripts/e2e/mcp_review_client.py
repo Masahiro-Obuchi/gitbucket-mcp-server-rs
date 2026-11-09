@@ -10,15 +10,16 @@ import time
 
 
 class McpReviewClient:
-    def __init__(self, binary, url, token, username, password, *, read_only=True):
+    def __init__(self, binary, url, token, username, password, *, read_only=True, web_auth=True):
         self.config = tempfile.TemporaryDirectory(prefix="gitbucket-mcp-review-")
         env = {k: v for k, v in os.environ.items() if not k.startswith("GITBUCKET_")}
         env.update({
             "GITBUCKET_URL": url, "GITBUCKET_TOKEN": token,
-            "GITBUCKET_USERNAME": username, "GITBUCKET_PASSWORD": password,
             "GITBUCKET_API_PROFILE": "standard", "GITBUCKET_READ_ONLY": "true" if read_only else "false",
             "GITBUCKET_MCP_CONFIG_DIR": self.config.name,
         })
+        if web_auth:
+            env.update({"GITBUCKET_USERNAME": username, "GITBUCKET_PASSWORD": password})
         self.process = subprocess.Popen([str(Path(binary).resolve())], stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                         text=True, encoding="utf-8", bufsize=1, env=env)

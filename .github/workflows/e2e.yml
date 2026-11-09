@@ -10,35 +10,11 @@ permissions:
 
 jobs:
   docker-e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Validate E2E scripts
-        run: |
-          bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
-          python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
-
-      - name: Start Docker GitBucket and bootstrap E2E data
-        run: ./scripts/e2e/bootstrap.sh
-
-      - name: Load E2E runtime environment
-        run: python3 scripts/e2e/runtime.py github "$GITHUB_ENV"
-
-      - name: Run E2E tests
-        env:
-          GITBUCKET_E2E_API_PROFILE: standard
-        run: cargo test --test e2e_test -- --ignored --nocapture
-
-      - name: Tear down Docker GitBucket
-        if: always()
-        run: ./scripts/e2e/down.sh
+    name: GitBucket ${{ matrix.version }} acceptance
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['4.44.0', '4.48.0']
+    uses: ./.github/workflows/contract-e2e.yml
+    with:
+      version: ${{ matrix.version }}

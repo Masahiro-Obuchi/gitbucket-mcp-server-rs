@@ -13,7 +13,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -42,10 +42,15 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --locked
+
+      - name: Validate acceptance scripts
+        run: |
+          bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
+          python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
 
       - name: Read package version
         id: version
@@ -92,46 +97,36 @@ jobs:
           echo "value=${should_publish}" >> "$GITHUB_OUTPUT"
 
   release-e2e:
-    name: Release E2E
+    name: Release GitBucket ${{ matrix.version }} acceptance
     needs: release-checks
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['4.44.0', '4.48.0']
+    permissions:
+      contents: read
+    uses: ./.github/workflows/contract-e2e.yml
+    with:
+      version: ${{ matrix.version }}
+
+  release-msrv:
+    name: Release Rust 1.88.0
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Validate E2E scripts
-        run: |
-          bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
-          python3 scripts/e2e/test_runtime.py
-
-      - name: Start Docker GitBucket and bootstrap E2E data
-        run: ./scripts/e2e/bootstrap.sh
-
-      - name: Load E2E runtime environment
-        run: python3 scripts/e2e/runtime.py github "$GITHUB_ENV"
-
-      - name: Run E2E tests
-        env:
-          GITBUCKET_E2E_API_PROFILE: standard
-        run: cargo test --test e2e_test -- --ignored --nocapture
-
-      - name: Tear down Docker GitBucket
-        if: always()
-        run: ./scripts/e2e/down.sh
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv-1.88.0
+      - run: cargo build --locked
+      - run: cargo check --locked --all-targets --all-features
 
   build-release-assets:
     name: Package ${{ matrix.target }}
     needs:
       - release-checks
       - release-e2e
+      - release-msrv
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -215,10 +210,13 @@ jobs:
 
   publish-github-release:
     name: Publish GitHub Release
+    permissions:
+      contents: write
     if: needs.release-checks.outputs.should_publish == 'true'
     needs:
       - release-checks
       - release-e2e
+      - release-msrv
       - build-release-assets
     runs-on: ubuntu-latest
 

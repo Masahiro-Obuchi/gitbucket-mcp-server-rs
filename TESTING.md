@@ -524,16 +524,28 @@ the default runtime directory by `down.sh`. If `GITBUCKET_E2E_ENV_FILE` points
 outside that directory, remove both custom files explicitly. Docker's port is
 bound to `127.0.0.1` by default.
 
-For a fresh disposable 4.48.0 stack, set `GITBUCKET_E2E_IMAGE=ghcr.io/gitbucket/gitbucket:4.48.0` for bootstrap and explicitly set `GITBUCKET_E2E_API_PROFILE=standard` for the tests. Stop/remove any previous stack first or use separate Compose project, port and runtime-directory overrides. Image choice does not infer the profile; both tested versions use the same `standard` contract. The E2E client defaults to `rest-only` when no profile is supplied; tests requiring web operations need an appropriate explicit profile. The shared standard profile is tested against both versions with the full 22-case suite.
+For a fresh disposable 4.48.0 stack, set `GITBUCKET_E2E_IMAGE=ghcr.io/gitbucket/gitbucket:4.48.0` for bootstrap and explicitly set `GITBUCKET_E2E_API_PROFILE=standard` for the tests. Stop/remove any previous stack first or use separate Compose project, port and runtime-directory overrides. Image choice does not infer the profile; both tested versions use the same `standard` contract. The E2E client defaults to `rest-only` when no profile is supplied; tests requiring web operations need an appropriate explicit profile. The shared standard profile is tested against both versions with the full 23-case suite.
 
 ## GitHub Actions E2E
 
-GitHub Actions keeps Docker-backed E2E separate from the fast `CI` workflow:
+The [P14 acceptance policy](docs/acceptance.md) defines evidence layers, domain
+selection, supported scope, safe reports and staged deployment checks.
 
-- `.github/workflows/ci.yml` runs `fmt`, `clippy`, `cargo test`, shell syntax checks, and Python runtime-file tests on every push and pull request.
-- `.github/workflows/e2e.yml` runs on `workflow_dispatch` and a nightly schedule.
+- `.github/workflows/ci.yml` runs fmt, locked Clippy/tests, MSRV, shell syntax and
+  all Python tests on pushes/PRs. PRs also select affected live domains on 4.48.0;
+  docs-only changes skip Docker. `Required checks` aggregates required results.
+- `.github/workflows/e2e.yml` runs the full matrix (4.44.0 and 4.48.0) nightly and
+  on `workflow_dispatch`; failed entries do not cancel the other version.
+- Release checks gate packaging/publication on stable/MSRV and that same full matrix.
 
-The E2E and release workflows explicitly select the standard profile for their default Docker image. The `E2E` workflow validates the scripts, runs `./scripts/e2e/bootstrap.sh`, imports `runtime.env.json` with `python3 scripts/e2e/runtime.py github "$GITHUB_ENV"`, executes `cargo test --test e2e_test -- --ignored --nocapture`, and always tears the Docker stack down.
+All callers reuse `.github/workflows/contract-e2e.yml` and
+`scripts/e2e/acceptance.py`, explicitly selecting the standard profile and
+loopback official images. Full acceptance runs the 23 existing E2Es once plus
+the actual stdio review/post/merge probes and PAT-only startup checks. Runtime
+credentials stay private and are not imported into GitHub's shared env file.
+The artifact contains only an allowlisted `summary.json`; raw logs, runtime
+files, cookies and probe HTML/JSON are discarded. Cleanup runs in the runner
+and again in an always-run workflow step. See the policy for local reproduction.
 
 ## Adding Tests
 
