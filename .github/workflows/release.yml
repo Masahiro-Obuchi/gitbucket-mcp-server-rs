@@ -141,7 +141,7 @@ jobs:
             target: x86_64-apple-darwin
             archive_ext: tar.gz
             binary_name: gitbucket-mcp-server
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
             archive_ext: tar.gz
             binary_name: gitbucket-mcp-server

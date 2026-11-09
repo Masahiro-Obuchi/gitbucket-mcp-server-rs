@@ -15,6 +15,9 @@ This project publishes GitHub Releases from version tags. The release workflow b
   1.88.0 locked checks and both full matrix entries. No release is created by
   this implementation. Safe summary artifacts contain source/image identity and
   stage results; raw diagnostics/runtime credentials are never uploaded.
+- Build Apple Silicon archives on `macos-15`; the previous `macos-14` runner
+  was retired by GitHub on November 2, 2026 and cannot start jobs. See the
+  [official retirement notice](https://github.com/actions/runner-images/issues/13518).
 - See [the acceptance policy](docs/acceptance.md) for reproduction, scope limits,
   cleanup behavior and separately authorized staged production acceptance.
 
