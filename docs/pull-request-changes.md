@@ -57,6 +57,11 @@ are unavailable (`binary_payloads_available: false`). Combined diffs, encoded
 Git binary payloads, non-UTF-8 path escapes, ambiguous paths, unknown headers,
 duplicate file blocks and incomplete hunks are unsupported, not empty success.
 Headers over 16 KiB are also rejected to bound path parsing work.
+Index IDs, absent sides and mode headers must agree. Changed object IDs require
+text hunks or a binary marker, except for empty-file additions/deletions identified
+by the empty-blob ID. Rename/mode headers alone do not excuse missing content.
+Every patch line must end in LF, including a file's no-newline marker. These
+structural checks cannot detect an upstream omission of entire complete blocks.
 
 Git quoted/octal paths are decoded; whitespace and Unicode identities are kept.
 The raw patch text remains unchanged, including quoted headers, CR in content
@@ -122,4 +127,5 @@ and response bounds. The disposable `scripts/e2e/probe_changes.py` uses the actu
 stdio binary to compare 28 commits and their full messages with Git, preserve
 an observation across head advance, verify file metadata against Git numstat,
 reconstruct the native Web patch, check path selection and read a merged PR.
+Empty-file additions/deletions, symlink changes and a gitlink addition are included.
 It is part of the core domain in [acceptance](acceptance.md).

@@ -69,8 +69,9 @@ def run(binary):
         git("config", "user.email", "changes@example.test")
         git("config", "commit.gpgsign", "false")
         git("config", "core.quotepath", "false")
-        for name, body in {"review.txt": "alpha\nold\nomega\n", "gone.txt": "remove\n", "old name.txt": "unchanged rename\n", "script.sh": "echo ok\n"}.items():
+        for name, body in {"review.txt": "alpha\nold\nomega\n", "gone.txt": "remove\n", "empty gone.txt": "", "old name.txt": "unchanged rename\n", "script.sh": "echo ok\n"}.items():
             (checkout / name).write_text(body)
+        (checkout / "link").symlink_to("review.txt")
         (checkout / "image.bin").write_bytes(b"\x00old binary\xff")
         git("add", ".")
         git("commit", "-m", "Seed change fixtures")
@@ -79,6 +80,10 @@ def run(binary):
         git("checkout", "-b", "feature/changes")
         (checkout / "review.txt").write_text("alpha\nnew\nomega\n")
         (checkout / "gone.txt").unlink()
+        (checkout / "empty gone.txt").unlink()
+        (checkout / "empty new.txt").touch()
+        (checkout / "link").unlink()
+        (checkout / "link").symlink_to("new name.txt")
         (checkout / "old name.txt").rename(checkout / "new name.txt")
         (checkout / "script.sh").chmod(0o755)
         (checkout / "image.bin").write_bytes(b"\x00new binary\xfe")
@@ -86,6 +91,8 @@ def run(binary):
         (checkout / "tab\tfile.txt").write_text("tab path\n")
         (checkout / "large.txt").write_text("".join("日本語 line " + str(i) + "\n" for i in range(2500)))
         git("add", ".")
+        (checkout / "submodule").mkdir()
+        git("update-index", "--add", "--cacheinfo", "160000," + base_sha + ",submodule")
         git("commit", "-m", "Changes 日本語\n\n    code\nhard break  \nend")
         for i in range(26):
             (checkout / "tick.txt").write_text(str(i) + "\n")
@@ -142,6 +149,12 @@ def run(binary):
         assert next(f for f in files if f["new_path"] == "image.bin")["binary"]
         assert next(f for f in files if f["old_path"] == "gone.txt")["new_path"] is None
         assert next(f for f in files if f["new_path"] == "script.sh")["new_mode"] == "100755"
+        for path, side, expected_mode in [("empty gone.txt", "old", "100644"), ("empty new.txt", "new", "100644"),
+                                          ("link", "new", "120000"), ("submodule", "new", "160000")]:
+            observed_file = next(f for f in files if f[side + "_path"] == path)
+            assert observed_file[side + "_mode"] == expected_mode
+            if path.startswith("empty "):
+                assert observed_file["hunks"] == 0 and observed_file["additions"] == observed_file["deletions"] == 0
         status, native = web.request("GET", "/" + target + "/patch/" + base_sha + "..." + head)
         assert status == 200
         diff_args = {"owner": user, "repo": repo, "pull_number": number, "limit": 1}

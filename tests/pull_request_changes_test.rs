@@ -287,6 +287,41 @@ async fn malformed_sources_races_and_http_body_bounds_never_return_partial_succe
     ));
 }
 #[tokio::test]
+async fn truncated_change_blocks_and_unterminated_patch_lines_are_errors() {
+    let added = "diff --git a/new.txt b/new.txt\nnew file mode 100644\nindex 0000000..3e75765\n";
+    let deleted =
+        "diff --git a/old.txt b/old.txt\ndeleted file mode 100644\nindex 3367afd..0000000\n";
+    let renamed = "diff --git a/old.txt b/new.txt\nsimilarity index 90%\nrename from old.txt\nrename to new.txt\nindex 3367afd..3e75765 100644\n";
+    let renamed_before_index = renamed.split("index 3367afd").next().unwrap();
+    let mode_and_content =
+        "diff --git a/script b/script\nold mode 100644\nnew mode 100755\nindex 3367afd..3e75765\n";
+    let unterminated = patch("x", "new").trim_end_matches('\n').to_owned();
+    for raw in [
+        added,
+        deleted,
+        renamed,
+        renamed_before_index,
+        mode_and_content,
+        &unterminated,
+    ] {
+        let (_http, api) = fixture(raw.into(), false).await;
+        assert!(
+            matches!(
+                api.list_pull_request_files("owner", "repo", 1).await,
+                Err(GbMcpError::Unsupported(_))
+            ),
+            "truncated file list succeeded for {raw:?}"
+        );
+        assert!(
+            matches!(
+                api.get_pull_request_diff("owner", "repo", 1, None).await,
+                Err(GbMcpError::Unsupported(_))
+            ),
+            "truncated diff succeeded for {raw:?}"
+        );
+    }
+}
+#[tokio::test]
 async fn commit_cursor_is_cached_bound_to_tool_target_and_view_and_summary_is_explicit() {
     let (http, api) = fixture(String::new(), false).await;
     let message = "日本語".repeat(2000);

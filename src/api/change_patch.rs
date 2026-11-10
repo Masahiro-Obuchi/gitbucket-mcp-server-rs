@@ -27,6 +27,46 @@ fn mode(value: Option<&str>) -> Result<Option<String>> {
         })
         .transpose()
 }
+struct PatchIndex<'a> {
+    old: &'a str,
+    new: &'a str,
+    mode: Option<String>,
+}
+fn index(value: Option<&str>) -> Result<Option<PatchIndex<'_>>> {
+    value
+        .map(|value| {
+            let (ids, file_mode) = value
+                .split_once(' ')
+                .map_or((value, None), |(ids, file_mode)| (ids, Some(file_mode)));
+            let (old, new) = ids.split_once("..").ok_or_else(bad)?;
+            if [old, new].iter().any(|id| {
+                id.is_empty() || id.len() > 40 || !id.bytes().all(|b| b.is_ascii_hexdigit())
+            }) {
+                return Err(bad());
+            }
+            Ok(PatchIndex {
+                old,
+                new,
+                mode: mode(file_mode)?,
+            })
+        })
+        .transpose()
+}
+fn empty_blob(id: &str) -> bool {
+    // Native headers abbreviate object IDs, including the SHA-1 of an empty blob.
+    id.len() >= 7 && "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391".starts_with(id)
+}
+fn similarity(value: Option<&str>) -> Result<Option<u8>> {
+    value
+        .map(|v| {
+            v.strip_suffix('%')
+                .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(|s| s.parse::<u8>().ok())
+                .filter(|score| *score <= 100)
+                .ok_or_else(bad)
+        })
+        .transpose()
+}
 fn header_paths(header: &str) -> Result<Vec<(String, String)>> {
     if header.len() > 16 * 1024 {
         return Err(bad());
@@ -102,6 +142,11 @@ pub(super) fn parse(patch: &str) -> Result<Vec<FileBlock<'_>>> {
     if patch.is_empty() {
         return Ok(vec![]);
     }
+    // Even a source file without a final LF has a terminated patch line followed
+    // by the no-newline marker. An unterminated patch line is a truncated source.
+    if !patch.ends_with('\n') {
+        return Err(bad());
+    }
     let (mut starts, mut offset) = (Vec::new(), 0);
     for line in patch.split_inclusive('\n') {
         if line.starts_with("diff --git ") {
@@ -132,6 +177,10 @@ pub(super) fn parse(patch: &str) -> Result<Vec<FileBlock<'_>>> {
             || copy.0.is_some() != copy.1.is_some()
             || (rename.0.is_some() && copy.0.is_some())
         {
+            return Err(bad());
+        }
+        let similarity = similarity(one(meta, "similarity index ")?)?;
+        if similarity.is_some() != (rename.0.is_some() || copy.0.is_some()) {
             return Err(bad());
         }
         let added = one(meta, "new file mode ")?;
@@ -200,16 +249,37 @@ pub(super) fn parse(patch: &str) -> Result<Vec<FileBlock<'_>>> {
         if !seen.insert((old.clone(), new.clone())) {
             return Err(bad());
         }
-        let index_mode = one(meta, "index ")?.and_then(|v| v.split_once(' ').map(|(_, m)| m));
+        let index = index(one(meta, "index ")?)?;
+        let index_mode = index.as_ref().and_then(|i| i.mode.as_deref());
+        let old_mode_header = one(meta, "old mode ")?;
+        let new_mode_header = one(meta, "new mode ")?;
+        if old_mode_header.is_some() != new_mode_header.is_some()
+            || ((added.is_some() || deleted.is_some()) && old_mode_header.is_some())
+            || index_mode.is_some_and(|m| {
+                [added, deleted, old_mode_header, new_mode_header]
+                    .into_iter()
+                    .flatten()
+                    .any(|header| header != m)
+            })
+        {
+            return Err(bad());
+        }
+        if index.as_ref().is_some_and(|i| {
+            old.is_none() != i.old.bytes().all(|b| b == b'0')
+                || new.is_none() != i.new.bytes().all(|b| b == b'0')
+        }) || (index.is_none() && (added.is_some() || deleted.is_some()))
+        {
+            return Err(bad());
+        }
         let old_mode = if old.is_none() {
             None
         } else {
-            mode(deleted.or(one(meta, "old mode ")?).or(index_mode))?
+            mode(deleted.or(old_mode_header).or(index_mode))?
         };
         let new_mode = if new.is_none() {
             None
         } else {
-            mode(added.or(one(meta, "new mode ")?).or(index_mode))?
+            mode(added.or(new_mode_header).or(index_mode))?
         };
         let binary = meta
             .iter()
@@ -246,7 +316,27 @@ pub(super) fn parse(patch: &str) -> Result<Vec<FileBlock<'_>>> {
             return Err(bad());
         }
         let (count, add, del) = hunks(&lines[first..])?;
-        if count > 0 && old_header.is_none() {
+        if count > 0
+            && (old_header.is_none()
+                || index.is_none()
+                || (add == 0 && del == 0)
+                || (added.is_some() && del != 0)
+                || (deleted.is_some() && add != 0))
+        {
+            return Err(bad());
+        }
+        // Mode/rename metadata does not make missing content complete. Changed
+        // object IDs need hunks or a binary marker; only empty adds/deletes can
+        // legitimately have different IDs and no content lines.
+        if count == 0
+            && !binary
+            && (similarity.is_some_and(|score| score < 100)
+                || index.as_ref().is_some_and(|i| {
+                    i.old != i.new
+                        && !(added.is_some() && empty_blob(i.new)
+                            || deleted.is_some() && empty_blob(i.old))
+                }))
+        {
             return Err(bad());
         }
         if count == 0
@@ -310,7 +400,12 @@ mod tests {
     #[test]
     fn empty_added_and_deleted_files_modes_symlinks_and_gitlinks_are_explicit() {
         for (label, mode) in [("new file mode", "100644"), ("deleted file mode", "100755")] {
-            let patch = format!("diff --git a/empty b/empty\n{label} {mode}\nindex 000..e69de29\n");
+            let ids = if label == "new file mode" {
+                "000..e69de29"
+            } else {
+                "e69de29..000"
+            };
+            let patch = format!("diff --git a/empty b/empty\n{label} {mode}\nindex {ids}\n");
             let b = parse(&patch).unwrap();
             assert_eq!(b[0].file.hunks, 0);
             assert_eq!(b[0].file.old_path.is_none(), label == "new file mode");
@@ -320,6 +415,33 @@ mod tests {
             let p = TEXT.replace("100644", mode);
             assert_eq!(parse(&p).unwrap()[0].file.new_mode.as_deref(), Some(mode));
         }
+    }
+    #[test]
+    fn index_mode_and_absent_side_metadata_must_be_consistent() {
+        for patch in [
+            TEXT.replace("123..456", "not-an-index"),
+            TEXT.replace("123..456", "123..xyz"),
+            TEXT.replace("123..456", "000..456"),
+            TEXT.replace("index 123..456 100644", "old mode 100644"),
+            TEXT.replace(
+                "index 123..456 100644",
+                "old mode 100644\nnew mode 100755\nindex 123..456 100644",
+            ),
+            "diff --git a/empty b/empty\nnew file mode 100644\n".into(),
+            "diff --git a/empty b/empty\ndeleted file mode 100644\nindex 0000000..e69de29\n".into(),
+            "diff --git a/old b/new\nsimilarity index broken\nrename from old\nrename to new\n"
+                .into(),
+        ] {
+            assert!(parse(&patch).is_err(), "{patch}");
+        }
+        let mode_and_content = TEXT.replace(
+            "index 123..456 100644",
+            "old mode 100644\nnew mode 100755\nindex 123..456",
+        );
+        let blocks = parse(&mode_and_content).unwrap();
+        assert_eq!(blocks[0].file.old_mode.as_deref(), Some("100644"));
+        assert_eq!(blocks[0].file.new_mode.as_deref(), Some("100755"));
+        assert_eq!(blocks[0].file.additions, Some(1));
     }
     #[test]
     fn quoted_paths_copy_rename_and_unquoted_ambiguous_spaces_keep_exact_identity() {
