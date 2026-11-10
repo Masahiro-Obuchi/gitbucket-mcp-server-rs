@@ -40,6 +40,28 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn list_pull_request_commits<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestCommits>;
+
+    fn list_pull_request_files<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestFiles>;
+
+    fn get_pull_request_diff<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        path: Option<&'a str>,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestDiff>;
+
     fn add_pull_request_review_comment<'a>(
         &'a self,
         owner: &'a str,
@@ -206,3 +228,6 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
         body: &'a CreateComment,
     ) -> ApiFuture<'a, Comment>;
 }
+
+mod change_patch;
+pub mod pull_request_changes;

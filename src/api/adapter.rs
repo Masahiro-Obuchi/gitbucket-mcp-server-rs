@@ -11,6 +11,40 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn list_pull_request_commits<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestCommits> {
+        Box::pin(async move {
+            GitBucketClient::list_pull_request_commits(self, owner, repo, number).await
+        })
+    }
+
+    fn list_pull_request_files<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestFiles> {
+        Box::pin(async move {
+            GitBucketClient::list_pull_request_files(self, owner, repo, number).await
+        })
+    }
+
+    fn get_pull_request_diff<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        path: Option<&'a str>,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestDiff> {
+        Box::pin(async move {
+            GitBucketClient::get_pull_request_diff(self, owner, repo, number, path).await
+        })
+    }
+
     fn add_pull_request_review_comment<'a>(
         &'a self,
         owner: &'a str,

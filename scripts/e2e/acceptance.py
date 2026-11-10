@@ -172,6 +172,8 @@ def run(version, domains, output, runtime_root, target, port, project):
                 command("core", cargo + ["--", "--ignored", *[item for name in PAGING_TESTS for item in ("--skip", name)]], test_run=True)
             elif "paging" in domains:
                 command("paging", cargo + ["test_e2e_list_", "--", "--ignored"], test_run=True)
+            if "core" in domains:
+                command("changes", [sys.executable, "scripts/e2e/probe_changes.py", "--allow-disposable-writes", "--mcp-binary", str(binary)])
             if "review" in domains:
                 command("review", [sys.executable, "scripts/e2e/probe_inline_comments.py", "--allow-disposable-writes",
                                    "--version-label", version, "--output", str(scratch / "reviews"),

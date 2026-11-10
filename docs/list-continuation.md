@@ -1,10 +1,12 @@
 # Bounded MCP lists and continuations (P11)
 
-All eight MCP list tools return pages, retaining the existing array keys:
-repositories, branches, issues, issue comments, labels, milestones, pull requests
-and PR review comments. There are still 32 tools, including 16 reads. Direct
-`GitBucketClient` / `GitBucketApi` lists retain their Vec return types and
-existing upstream traversal contracts.
+All ten MCP list tools return pages: repositories, branches, issues, issue
+comments, labels, milestones, pull requests, PR review comments, PR commits and
+PR files. The server exposes 35 tools, including 19 reads. The diff getter also
+uses chunk continuations described in [the change contract](pull-request-changes.md).
+Existing GitBucketClient / GitBucketApi lists retain their Vec return types and
+upstream traversal. New PR change reads return typed observations with comparison
+metadata; they share the cache and response bounds below.
 
 ## Input and migration
 

@@ -333,6 +333,46 @@ impl IntegrationMockApi {
 }
 
 impl GitBucketApi for IntegrationMockApi {
+    fn list_pull_request_commits<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::pull_request_changes::PullRequestCommits> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store PR change observations".into(),
+            ))
+        })
+    }
+
+    fn list_pull_request_files<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::pull_request_changes::PullRequestFiles> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store PR change observations".into(),
+            ))
+        })
+    }
+
+    fn get_pull_request_diff<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _path: Option<&'a str>,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::pull_request_changes::PullRequestDiff> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store PR change observations".into(),
+            ))
+        })
+    }
+
     fn add_pull_request_review_comment<'a>(
         &'a self,
         owner: &'a str,
@@ -873,6 +913,9 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "get_milestone",
         "get_pull_request",
         "get_pull_request_review_comment",
+        "get_pull_request_diff",
+        "list_pull_request_commits",
+        "list_pull_request_files",
         "get_repository",
         "get_user",
         "list_branches",

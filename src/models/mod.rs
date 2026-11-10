@@ -10,3 +10,5 @@ pub mod repository;
 pub mod review_comment;
 pub mod review_post;
 pub mod user;
+
+pub mod pull_request_changes;

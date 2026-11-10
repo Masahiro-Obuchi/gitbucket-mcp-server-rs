@@ -2,6 +2,20 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 PR change reads
+
+- Add three read tools: list_pull_request_commits (PAT-only unpaged REST),
+  list_pull_request_files and get_pull_request_diff (standard verified Web patch).
+  The server exposes 35 tools / 19 read-only tools. Existing write tools are unchanged.
+- Preserve stored base/head, exact commit messages, file paths/modes/statuses and
+  patch text. Binary payload omissions and upstream rename limitations are explicit.
+  Diff text uses bounded UTF-8 chunks and the existing cursor/cache limits.
+- Public GitBucketApi adapters must implement the three new required methods;
+  return the new models in models::pull_request_changes. There are no default
+  compatibility shims. See [the contract](docs/pull-request-changes.md).
+- Core acceptance now runs a real stdio/Git change-read probe in both supported
+  GitBucket versions, including 28 commits, head advance, exact diff and merged PR.
+
 ## Unreleased P14 regression and acceptance gates
 
 - PR changes select live contract domains on official GitBucket 4.48.0 after

@@ -50,7 +50,8 @@ fn compact(value: &mut Value, path: &str, omitted: &mut Vec<String>, truncated: 
                         | "url"
                         | "author"
                         | "default_branch"
-                ) || key.ends_with("_url");
+                ) || key.ends_with("_url")
+                    || key.ends_with("_path");
                 if let Value::String(text) = child {
                     if !identity && text.len() > 1024 {
                         let mut end = 1024;
@@ -91,6 +92,28 @@ pub(super) fn project(kind: ListKind, mut value: Value) -> Value {
             "default_branch",
             "owner",
             "open_issues_count",
+        ],
+        ListKind::PullRequestCommits => &["sha", "commit", "author", "committer", "parents", "url"],
+        ListKind::PullRequestFiles => &[
+            "old_path",
+            "new_path",
+            "status",
+            "old_mode",
+            "new_mode",
+            "binary",
+            "hunks",
+            "additions",
+            "deletions",
+            "patch_bytes",
+        ],
+        ListKind::PullRequestDiff => &[
+            "file_index",
+            "old_path",
+            "new_path",
+            "start_byte",
+            "end_byte",
+            "file_patch_bytes",
+            "text",
         ],
         ListKind::Branches => &["name", "commit"],
         ListKind::Labels => &["name", "color", "description", "url"],

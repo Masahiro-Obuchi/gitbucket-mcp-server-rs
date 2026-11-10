@@ -39,7 +39,7 @@ Web operations require both `GITBUCKET_USERNAME` and `GITBUCKET_PASSWORD` and `G
 PAT-only operations include repository/branch/user reads, Issue creation and
 ordinary comments, PR creation/update/merge and ordinary comments, label
 creation/rename/deletion and REST-valid milestone writes. Under standard, Issue
-updates, same-name label color changes, restricted milestone titles and PR
+updates, same-name label color changes, restricted milestone titles, PR files/diff and PR
 review-comment reads/posts need Web authentication. See the README profile table
 for exact routing and constraints; credentials alone do not enable Web use.
 
@@ -68,6 +68,7 @@ Pull request tools:
 
 - `list_pull_requests`
 - `get_pull_request`
+- `list_pull_request_commits`, `list_pull_request_files`, `get_pull_request_diff`
 - `create_pull_request`
 - `update_pull_request`
 - `merge_pull_request`
@@ -137,6 +138,17 @@ For issue work:
 3. Use `add_issue_comment` when the user asks to reply without changing issue fields.
 
 For pull request work:
+
+Use list_pull_request_commits for the stored PR base/head range (PAT-only REST).
+Use list_pull_request_files and get_pull_request_diff with the standard profile
+and matching PAT/Web credentials. File status follows upstream patch headers;
+renames may appear as delete/add, and binary markers have no binary bytes.
+Diff text is returned in full UTF-8 chunks with per-file byte offsets; follow
+has_more/next_cursor to completion and concatenate in file/chunk order. An
+individual page may be an incomplete hunk. The path selector preserves exact
+old/new paths. Cursors bind target/path/limit and describe the original cached
+observation; restart for fresh revisions/permissions. These tools are reads and
+are available in read-only mode. See the repository's change-read contract.
 
 1. Use `get_pull_request` before updating or merging unless the user already gave exact state.
 2. Use `update_pull_request` for title, body, base branch, or state changes.

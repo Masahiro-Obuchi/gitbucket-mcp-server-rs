@@ -14,7 +14,7 @@ This is an unofficial community project and is not affiliated with the GitBucket
 - **Labels**: List, view, create, update, and delete repository labels
 - **Milestones**: List, view, create, update, and delete repository milestones
 - **Issue Tracking**: List, view, create, update issues; manage comments
-- **Pull Requests**: List, view, create, update, merge PRs; add comments
+- **Pull Requests**: List, view, create, update, merge PRs; read commits/files/diff and add comments
 - **User Info**: Get authenticated user and look up other users
 
 ## Requirements
@@ -144,7 +144,7 @@ Git commands prompt for a username or password.
 
 ### Read-only access
 
-Set `GITBUCKET_READ_ONLY=true` to register only the 16 list/get tools. The server
+Set `GITBUCKET_READ_ONLY=true` to register only the 19 list/get tools. The server
 also rejects write calls with `read_only_error` before any HTTP or authentication
 requests, including calls to a known write name and direct Rust tool handlers.
 The setting is env-only; values other than `true` or `false` fail startup.
@@ -173,6 +173,7 @@ Under `standard`, operations select the following routes:
 | Operation | Route |
 | --- | --- |
 | PR update; label rename; milestone delete | REST |
+| PR file list/diff | Pinned stored-base/head Web patch; binary payloads unavailable |
 | PR review-comment list/get | Web conversation page; HTML and partial coverage only |
 | PR review-comment creation | One Web POST after pinned diff/head checks, followed by own raw/commit/PR verification |
 | Ordinary Issue update | Web; the standard REST Issue PATCH is unavailable |
@@ -537,9 +538,14 @@ concurrent edits. Operation routes follow the API profile above.
 
 ### Pull Requests
 
+PR commits/files/diff are documented in [the change-read contract](docs/pull-request-changes.md). Commits use PAT-only REST. Files/diff require the standard profile and matching Web credentials; binary bytes are unavailable and rename detection follows upstream headers. Diff chunks use the existing response/cache bounds and can be continued without refetching the PR.
+
 | Tool | Description |
 |------|-------------|
 | `list_pull_requests` | List pull requests (filterable by state) |
+| `list_pull_request_commits` | Read the stored PR commit range using PAT-only REST |
+| `list_pull_request_files` | Read file metadata from the standard Web patch |
+| `get_pull_request_diff` | Read exact patch text through bounded UTF-8 chunk continuations |
 | `get_pull_request` | Get PR details |
 | `create_pull_request` | Create a new pull request |
 | `update_pull_request` | Update PR state, title, body, or base branch |
@@ -652,8 +658,10 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
 | `list_pull_request_review_comments` | `comments` (also returns `coverage`) |
+| `list_pull_request_commits` | `commits` (also `comparison`) |
+| `list_pull_request_files` | `files` (also `comparison`) |
 
-All eight list tools accept optional `limit` (default 50, maximum 100), `cursor`
+All ten list tools accept optional `limit` (default 50, maximum 100), `cursor`
 and `view` (`summary` by default, or `full`). Every page adds `has_more`,
 `next_cursor` and `range`. Follow cursors with identical target, filters, limit
 and view until `has_more` is false. Cursors expire after five minutes and can be
