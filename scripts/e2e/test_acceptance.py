@@ -178,9 +178,9 @@ sys.exit(1 if sys.argv[4] == 'failure' else 0)
     def test_full_success_and_failures_always_cleanup_and_publish_only_allowlisted_summary(self):
         passed, report, calls = self.fake_run()
         self.assertTrue(passed)
-        self.assertEqual(calls, ["build", "bootstrap", "core-and-paging", "review", "merge", "cleanup"])
+        self.assertEqual(calls, ["build", "bootstrap", "core-and-paging", "changes", "review", "merge", "cleanup"])
         self.assertTrue(all(s["passed"] for s in report["stages"]))
-        for failed in ["build", "bootstrap", "core-and-paging", "review", "merge"]:
+        for failed in ["build", "bootstrap", "core-and-paging", "changes", "review", "merge"]:
             with self.subTest(failed=failed):
                 passed, report, calls = self.fake_run(failed)
                 self.assertFalse(passed)

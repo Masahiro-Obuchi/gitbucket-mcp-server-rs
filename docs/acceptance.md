@@ -44,7 +44,7 @@ domains or moving implementation files. Fast tests always run.
 
 | Domain | Live checks |
 | --- | --- |
-| `core` | Existing E2E target excluding the two large-list tests: repository/branch/user, labels, milestones, Issue/PR writes, retained fields, exact content, read-only enforcement; includes explicit PAT-only milestone and standard Web paths |
+| `core` | Existing E2E target excluding the two large-list tests: repository/branch/user, labels, milestones, Issue/PR writes, retained fields, exact content, read-only enforcement; includes explicit PAT-only milestone and standard Web paths, plus the actual stdio PR-change probe (28 commits, head advance, files/diff and merged PR) |
 | `paging` | List E2Es, including 26+ Issue/PR and 101 unpaged resources, MCP cursor traversal, explicit summary omission and full/detail content |
 | `review` | Existing inline probe with actual stdio owner/GUEST reads across initial/head-add/history-rewrite/post-merge snapshots, three verified MCP posts and rejection paths |
 | `merge` | Existing merge probe: merge/squash/rebase, independent Git parent/tip checks, policy/draft/head/read-only rejection and native ignored-SHA behavior |

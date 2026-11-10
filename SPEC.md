@@ -164,7 +164,7 @@ Requirements:
 
 All tools return MCP tool results.
 
-All eight list tools accept `limit?` (1..100, default 50), `cursor?` and
+All ten list tools accept `limit?` (1..100, default 50), `cursor?` and
 `view?` (`summary` default / `full`). Array keys remain with `has_more`,
 `next_cursor` and `range`. Summary omissions and UTF-8-safe 1024-byte display
 previews are explicit in per-item `_list` metadata; Issue/PR bodies and repeated
@@ -196,7 +196,7 @@ successful partial traversal. API lists retain their Vec-returning contracts.
   List/get tools are read-only; create/comment/fork tools are additive;
   update/delete/merge tools are destructive. Reads and deletes have idempotent
   hints; other writes conservatively do not. All tools interact with external data.
-- `GITBUCKET_READ_ONLY=true` registers only the 16 read tools and rejects all other
+- `GITBUCKET_READ_ONLY=true` registers only the 19 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
   The default is false; this env-only setting accepts only true/false. Rust server
   constructors use read/write mode until `with_access_mode(AccessMode::ReadOnly)`
@@ -236,7 +236,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 32 tools: 16 reads and 16 writes. The standard
+The normal server advertises 35 tools: 19 reads and 16 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -317,6 +317,16 @@ Concurrent-edit atomicity is not guaranteed. HTTP 403/422 rejections do not
 trigger fallback, and uncertain responses do not trigger automatic replay.
 
 ### 6.5 Pull Request Tools
+
+P15 adds list_pull_request_commits, list_pull_request_files and get_pull_request_diff.
+The [change-read contract](docs/pull-request-changes.md) defines their required
+models, explicit source/profile/authentication, stored base/head observations,
+unsupported/omitted content, UTF-8 chunk reconstruction and cached continuations.
+Commits use one unpaged REST response. Files/diff use the standard Web patch
+without speculative REST requests. All three are reads registered in read-only
+mode. Cursors retain the original observation rather than refreshing revisions.
+
+### Existing PR tools
 
 - `list_pull_requests(owner, repo, state?)`
 - `get_pull_request(owner, repo, pull_number)`

@@ -377,7 +377,7 @@ async fn readonly_mcp_tools_return_coverage_and_namespaced_lookup_results() {
     .await;
     let client = mcp(GitBucketMcpServer::new(api).with_access_mode(AccessMode::ReadOnly)).await;
     let tools = client.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 16);
+    assert_eq!(tools.len(), 19);
     for (name, extra) in [
         ("list_pull_request_review_comments", json!({})),
         (

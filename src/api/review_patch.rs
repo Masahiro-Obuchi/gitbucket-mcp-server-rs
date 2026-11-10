@@ -12,7 +12,7 @@ fn unsupported() -> GbMcpError {
     )
 }
 
-fn git_path(header: &str, prefix: &str) -> Result<Option<String>> {
+pub(super) fn git_path(header: &str, prefix: &str) -> Result<Option<String>> {
     let raw = if header.starts_with('"') {
         let mut bytes = Vec::new();
         let mut iter = header.as_bytes()[1..].iter().copied();
@@ -65,7 +65,7 @@ fn git_path(header: &str, prefix: &str) -> Result<Option<String>> {
         .ok_or_else(unsupported)
 }
 
-fn range(value: &str) -> Result<(u64, u64)> {
+pub(super) fn range(value: &str) -> Result<(u64, u64)> {
     let (start, count) = value.split_once(',').unwrap_or((value, "1"));
     let parse = |v: &str| {
         if !v.is_empty() && v.bytes().all(|c| c.is_ascii_digit()) {

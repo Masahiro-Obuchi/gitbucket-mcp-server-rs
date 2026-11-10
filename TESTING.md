@@ -20,6 +20,20 @@ This repository uses layered tests so failures can be isolated quickly:
   and every write blocked through both MCP and direct Rust handlers in read-only mode.
 - `tests/e2e_test.rs` runs ignored smoke tests against a real GitBucket instance, including repository create-path coverage, label create/read/update/delete lifecycle coverage, milestone lifecycle coverage, Issue write paths, issue web fallback coverage, and pull request create/comment/merge coverage.
 
+## PR change reads (P15)
+
+Run cargo test --locked --test pull_request_changes_test plus the parser unit
+suite. The tests cover unpaged commit reads, full messages/unknown linked users,
+file kinds, exact Unicode/raw patch chunks, source and MCP response limits,
+wrong identities, read conflicts and cursor/filter binding with no continuation
+HTTP. Global schema/annotation/read-only tests include all three new tools.
+
+The core acceptance domain runs scripts/e2e/probe_changes.py through actual
+stdio against a fresh private repository. It compares 28 commits/full messages
+with Git, advances head during a cached read, compares text/mode/binary/deletion/
+rename/tab/Unicode file metadata with Git, reconstructs the native patch and
+reads after merge. See [the contract](docs/pull-request-changes.md).
+
 ## Common Commands
 
 Use these commands during normal development:
@@ -86,7 +100,7 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 32 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 35 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
@@ -185,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 32 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 35 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate

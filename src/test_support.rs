@@ -361,6 +361,46 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn list_pull_request_commits<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestCommits> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store PR change observations".into(),
+            ))
+        })
+    }
+
+    fn list_pull_request_files<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestFiles> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store PR change observations".into(),
+            ))
+        })
+    }
+
+    fn get_pull_request_diff<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _path: Option<&'a str>,
+    ) -> ApiFuture<'a, crate::models::pull_request_changes::PullRequestDiff> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store PR change observations".into(),
+            ))
+        })
+    }
+
     fn add_pull_request_review_comment<'a>(
         &'a self,
         owner: &'a str,

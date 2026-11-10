@@ -37,6 +37,9 @@ pub(crate) enum ListKind {
     PullRequests,
     Comments,
     ReviewComments,
+    PullRequestCommits,
+    PullRequestFiles,
+    PullRequestDiff,
 }
 impl ListKind {
     fn field(self) -> &'static str {
@@ -48,6 +51,9 @@ impl ListKind {
             Self::Issues => "issues",
             Self::PullRequests => "pull_requests",
             Self::Comments | Self::ReviewComments => "comments",
+            Self::PullRequestCommits => "commits",
+            Self::PullRequestFiles => "files",
+            Self::PullRequestDiff => "chunks",
         }
     }
 }
@@ -59,6 +65,7 @@ pub(crate) struct ListScope {
     repo: Option<String>,
     number: Option<u64>,
     state: String,
+    path: Option<String>,
 }
 impl ListScope {
     pub(crate) fn new(kind: ListKind, owner: &str, repo: Option<&str>) -> Self {
@@ -68,10 +75,15 @@ impl ListScope {
             repo: repo.map(str::to_owned),
             number: None,
             state: "open".into(),
+            path: None,
         }
     }
     pub(crate) fn numbered(mut self, number: u64) -> Self {
         self.number = Some(number);
+        self
+    }
+    pub(crate) fn path(mut self, path: Option<&str>) -> Self {
+        self.path = path.map(str::to_owned);
         self
     }
     pub(crate) fn state(mut self, state: Option<&str>) -> Self {
@@ -86,6 +98,10 @@ pub(crate) struct ListObservation {
     source_complete: bool,
 }
 impl ListObservation {
+    pub(crate) fn with_metadata<T: Serialize>(mut self, key: &str, value: &T) -> Result<Self> {
+        self.extra.insert(key.into(), serde_json::to_value(value)?);
+        Ok(self)
+    }
     pub(crate) fn new<T: Serialize>(
         items: Vec<T>,
         coverage: Option<ReviewCoverage>,

@@ -9,3 +9,5 @@ pub mod response;
 pub mod review_comment;
 pub mod user;
 pub mod validation;
+
+pub mod pull_request_changes;
