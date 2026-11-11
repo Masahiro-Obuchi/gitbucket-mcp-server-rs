@@ -577,6 +577,9 @@ author after a developer edits another author's comment, HTML links,
 ID and repository validation, rejection without fallback, exact stored-text
 mismatch, post-write GET failures, ID-shaped error statuses, observed absence and lost repository visibility. The shared MCP tests check registration, strict schemas, annotations
 and enforced read-only access including direct handlers.
+Editing requires a matching conversation-comment GET before PATCH; preflight
+401/403/404/500 and foreign IDs are tested to send no PATCH, while post-write
+failures retain their operation evidence.
 
 The core acceptance `changes` stage also calls
 [`probe_comment_items.py`](scripts/e2e/probe_comment_items.py) using its fresh
@@ -584,5 +587,8 @@ private PR fixture. Actual stdio clients with PAT-only `rest-only` configuration
 check Issue and PR comments, full raw text, owner/GUEST authors, GUEST own edits
 and deletion, developer edits of another author's comment, denied writes to
 others' comments, read-only rejection, wrong repository and repeated deletion.
+It also uses the merged PR's timeline entry, confirms that native PATCH accepts
+it despite its ordinary-comment GET returning 404, and verifies that the MCP
+edit rejects that ID without changing the entry's body.
 Both supported official Docker versions run these checks; private probe logs and
 credentials follow the acceptance runner's disposal policy.

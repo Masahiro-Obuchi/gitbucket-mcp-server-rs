@@ -29,6 +29,22 @@ async fn get(http: &TestServer, response: ResponseTemplate) {
         .await;
 }
 
+async fn edit_reads(http: &TestServer, before: Value, after: ResponseTemplate) {
+    let reads = std::sync::atomic::AtomicUsize::new(0);
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .respond_with(move |_: &wiremock::Request| {
+            if reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                ResponseTemplate::new(200).set_body_json(&before)
+            } else {
+                after.clone()
+            }
+        })
+        .expect(2)
+        .mount(&http.mock_server)
+        .await;
+}
+
 #[tokio::test]
 async fn get_preserves_raw_body_author_dates_and_html_link() {
     let http = TestServer::start().await;
@@ -51,6 +67,52 @@ async fn get_preserves_raw_body_author_dates_and_html_link() {
 }
 
 #[tokio::test]
+async fn edit_requires_a_readable_conversation_comment_before_sending_patch() {
+    for status in [401, 403, 404, 500] {
+        let http = TestServer::start().await;
+        get(&http, ResponseTemplate::new(status)).await;
+        Mock::given(method("PATCH"))
+            .and(path(ROUTE))
+            .respond_with(ResponseTemplate::new(200).set_body_json(comment("editor", RAW)))
+            .expect(0)
+            .mount(&http.mock_server)
+            .await;
+        let result = http
+            .client()
+            .update_issue_comment("owner", "repo", 7, &UpdateComment { body: RAW.into() })
+            .await;
+        assert!(
+            matches!(result, Err(GbMcpError::Api { status: actual, .. }) if actual == status),
+            "failed preflight must not send a PATCH or acquire write evidence: {result:?}"
+        );
+        let requests = http.mock_server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "GET");
+    }
+}
+
+#[tokio::test]
+async fn edit_rejects_a_foreign_preflight_identity_without_sending_patch() {
+    let http = TestServer::start().await;
+    let mut foreign = comment("author", RAW);
+    foreign["id"] = json!(8);
+    get(&http, ResponseTemplate::new(200).set_body_json(foreign)).await;
+    Mock::given(method("PATCH"))
+        .and(path(ROUTE))
+        .respond_with(ResponseTemplate::new(200).set_body_json(comment("editor", RAW)))
+        .expect(0)
+        .mount(&http.mock_server)
+        .await;
+    assert!(matches!(
+        http.client()
+            .update_issue_comment("owner", "repo", 7, &UpdateComment { body: RAW.into() })
+            .await,
+        Err(GbMcpError::Other(_))
+    ));
+    assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn update_returns_get_author_instead_of_upstream_patch_editor() {
     for profile in [ApiProfile::RestOnly, ApiProfile::Standard] {
         let http = TestServer::start().await;
@@ -62,8 +124,9 @@ async fn update_returns_get_author_instead_of_upstream_patch_editor() {
             .expect(1)
             .mount(&http.mock_server)
             .await;
-        get(
+        edit_reads(
             &http,
+            comment("original-author", "before edit"),
             ResponseTemplate::new(200).set_body_json(comment("original-author", RAW)),
         )
         .await;
@@ -76,8 +139,10 @@ async fn update_returns_get_author_instead_of_upstream_patch_editor() {
         assert_eq!(result.user.unwrap().login, "original-author");
         assert_eq!(result.body.as_deref(), Some(RAW));
         let requests = http.mock_server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].method.as_str(), "PATCH");
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].method.as_str(), "GET");
+        assert_eq!(requests[1].method.as_str(), "PATCH");
+        assert_eq!(requests[2].method.as_str(), "GET");
         assert!(requests.iter().all(|r| r.url.query().is_none()));
     }
 }
@@ -91,8 +156,9 @@ async fn update_mismatch_has_target_and_field_evidence_without_retry() {
         .expect(1)
         .mount(&http.mock_server)
         .await;
-    get(
+    edit_reads(
         &http,
+        comment("author", RAW),
         ResponseTemplate::new(200).set_body_json(comment("author", "concurrent replacement")),
     )
     .await;
@@ -114,6 +180,11 @@ async fn update_mismatch_has_target_and_field_evidence_without_retry() {
 async fn rejected_edits_do_not_verify_or_fallback() {
     for status in [401, 403, 404] {
         let http = TestServer::start().await;
+        get(
+            &http,
+            ResponseTemplate::new(200).set_body_json(comment("author", RAW)),
+        )
+        .await;
         Mock::given(method("PATCH"))
             .and(path(ROUTE))
             .respond_with(ResponseTemplate::new(status))
@@ -129,7 +200,7 @@ async fn rejected_edits_do_not_verify_or_fallback() {
             panic!("missing write evidence")
         };
         assert_eq!(outcome.status, OutcomeStatus::NotApplied);
-        assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 1);
+        assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 2);
     }
 }
 
@@ -143,7 +214,7 @@ async fn failed_post_edit_get_is_unknown_even_for_404() {
             .expect(1)
             .mount(&http.mock_server)
             .await;
-        get(&http, ResponseTemplate::new(status)).await;
+        edit_reads(&http, comment("author", RAW), ResponseTemplate::new(status)).await;
         let error = http
             .client()
             .update_issue_comment("owner", "repo", 7, &UpdateComment { body: RAW.into() })
@@ -409,6 +480,11 @@ async fn single_get_rejects_a_different_comment_identity() {
 #[tokio::test]
 async fn patch_foreign_identity_retains_the_intended_and_observed_comment_ids() {
     let http = TestServer::start().await;
+    get(
+        &http,
+        ResponseTemplate::new(200).set_body_json(comment("author", RAW)),
+    )
+    .await;
     let mut foreign = comment("editor", RAW);
     foreign["id"] = json!(8);
     Mock::given(method("PATCH"))
@@ -429,7 +505,7 @@ async fn patch_foreign_identity_retains_the_intended_and_observed_comment_ids() 
     assert_eq!(target.number, Some(7));
     assert_eq!(target.observed_number, Some(8));
     assert_eq!(outcome.status, OutcomeStatus::Unknown);
-    assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 1);
+    assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -446,13 +522,13 @@ async fn mcp_update_and_delete_return_verified_observations() {
     Mock::given(method("GET"))
         .and(path(ROUTE))
         .respond_with(move |_: &wiremock::Request| {
-            if reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 2 {
+            if reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 3 {
                 ResponseTemplate::new(200).set_body_json(comment("author", RAW))
             } else {
                 ResponseTemplate::new(404)
             }
         })
-        .expect(3)
+        .expect(4)
         .mount(&http.mock_server)
         .await;
     visible_repository(&http, 200).await;

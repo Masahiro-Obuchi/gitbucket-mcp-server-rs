@@ -5,7 +5,7 @@ import secrets
 from urllib.parse import quote
 
 from mcp_review_client import McpReviewClient
-from probe_inline_comments import Http
+from probe_inline_comments import Http, Parser
 
 
 def verify_comment_items(binary, base, owner, token, repo, pull_number):
@@ -76,3 +76,39 @@ def verify_comment_items(binary, base, owner, token, repo, pull_number):
             assert client_.call("delete_issue_comment", args) == {"deleted": True, "comment_id": target["id"]}
             error(reader, "get_issue_comment", args, "api_error", 404)
             error(client_, "delete_issue_comment", args, "api_error", 404)
+
+
+def verify_system_comment_edit(binary, base, owner, token, repo, pull_number, web):
+    """A native merge timeline entry must never be edited as an ordinary comment."""
+    api = Http(base, token=token)
+    target = quote(owner, safe="") + "/" + quote(repo, safe="")
+    rest = "/api/v3/repos/" + target
+    ordinary_ids = {c["id"] for c in api.json("GET", rest + f"/issues/{pull_number}/comments")}
+
+    def system_body():
+        status, page = web.request("GET", "/" + target + f"/pull/{pull_number}")
+        assert status == 200
+        cards = [n for n in Parser(page).root.nodes()
+                 if "issue-comment-box" in n.attrs.get("class", "").split()
+                 and re.fullmatch(r"comment-\d+", n.attrs.get("id", ""))
+                 and int(n.attrs["id"].removeprefix("comment-")) not in ordinary_ids]
+        assert len(cards) == 1
+        identifier = int(cards[0].attrs["id"].removeprefix("comment-"))
+        content = next(n for n in cards[0].nodes() if n.attrs.get("id") == "commentContent-" + str(identifier))
+        return identifier, content.text().strip()
+
+    system_id, _ = system_body()
+    hidden_path = rest + "/issues/comments/" + str(system_id)
+    assert api.request("GET", hidden_path)[0] == 404
+    native_body = "Native PATCH reaches a merge timeline entry"
+    assert api.json("PATCH", hidden_path, {"body": native_body})["id"] == system_id
+    assert system_body() == (system_id, native_body)
+    writer = McpReviewClient(binary, base, token, "", "", read_only=False, web_auth=False, profile="rest-only")
+    try:
+        result = writer.rpc("tools/call", {"name": "update_issue_comment", "arguments": {
+            "owner": owner, "repo": repo, "comment_id": system_id, "body": "must not overwrite system entries"}})
+        assert result["isError"] and result["structuredContent"]["kind"] == "api_error"
+        assert result["structuredContent"]["status"] == 404
+        assert system_body() == (system_id, native_body)
+    finally:
+        writer.close()

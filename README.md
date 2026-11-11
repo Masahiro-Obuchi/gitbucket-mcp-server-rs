@@ -610,7 +610,8 @@ and `delete_issue_comment(...)` operate on ordinary Issue **and PR** conversatio
 comments, using the repository-scoped numeric ID returned by comment creation or
 `list_issue_comments`. IDs must be 1..2147483647. They use PAT-only REST under
 both profiles. Editing replaces the complete nonblank Markdown body without
-trimming, then GETs the stored comment to verify the exact text and return the
+trimming. Editing first checks that the ID is a readable conversation comment,
+then GETs the stored comment after PATCH to verify the exact text and return the
 original author. GitBucket permits the author or a repository developer to edit
 or delete. Deletion checks that the comment exists before sending one DELETE, then requires
 a subsequent comment GET returning 404 and a successful repository-visibility

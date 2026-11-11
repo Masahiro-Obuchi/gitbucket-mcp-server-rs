@@ -135,6 +135,10 @@ impl GitBucketClient {
         );
         operation
             .run(async {
+                // The native PATCH accepts system timeline entries that its
+                // conversation-comment GET deliberately hides. Establish the
+                // supported target before sending a potentially saved edit.
+                self.get_issue_comment(owner, repo, comment_id).await?;
                 let path = format!("/repos/{owner}/{repo}/issues/comments/{comment_id}");
                 let updated: Comment = self.patch(&path, body).await?;
                 operation.identity(updated.id)?;
@@ -166,7 +170,8 @@ impl GitBucketClient {
                 self.get_issue_comment(owner, repo, comment_id).await?;
                 let path = format!("/repos/{owner}/{repo}/issues/comments/{comment_id}");
                 let sent = self.delete_comment_once(&path, comment_id).await;
-                // A 4xx different from this ID is a definite REST rejection.
+                // A 4xx different from this ID is a definite REST rejection;
+                // http::mutation already treats HTTP 408 as uncertain.
                 // Protocol errors (e.g. HTTP 001) and ID-shaped statuses can
                 // follow deletion, so inspect the effect without a second write.
                 if let Err(crate::error::GbMcpError::Api { status: 400..=499, .. }) = &sent {

@@ -8,7 +8,8 @@ This project publishes GitHub Releases from version tags. The release workflow b
   Issue and PR conversation comments. The server exposes 38 tools / 20 reads.
   All three use PAT-only REST in both profiles.
 - Edit verifies the complete stored body and returns the original author via
-  GET, avoiding upstream PATCH's editor attribution. Delete verifies preflight existence,
+  GET, avoiding upstream PATCH's editor attribution. A preflight GET prevents
+  PATCH from editing non-conversation timeline entries. Delete verifies preflight existence,
   post-write absence and repository visibility despite upstream ID-shaped HTTP
   statuses. Failures retain comment ID and field evidence.
 - Custom `GitBucketApi` adapters must implement three new required methods.
@@ -116,7 +117,7 @@ This project publishes GitHub Releases from version tags. The release workflow b
 
 - Add `add_pull_request_review_comment` for one changed line on an open PR's
   exact current head under the standard profile. The server advertises 32 tools,
-  including 16 reads. Read-only mode hides and rejects all 18 writes.
+  including 16 reads. Read-only mode hides and rejects all 16 writes.
 - Require explicit `head_guard: "preflight"`, accepting its race window;
   `atomic` is unsupported before HTTP. Lossy outer body/path whitespace, control
   characters, historical/context/file-wide positions and unsupported diffs are

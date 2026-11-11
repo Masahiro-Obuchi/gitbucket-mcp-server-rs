@@ -436,7 +436,7 @@ The following are intentionally deferred and may be specified later:
 
 The three comment item tools apply to both Issue and PR conversation comments.
 The numeric ID is scoped by repository, not by parent Issue/PR number. They use
-PAT-only REST under both profiles. Exact body, original author, dates and HTML links survive the detail model. Update verifies the stored body
+PAT-only REST under both profiles. Exact body, original author, dates and HTML links survive the detail model. Update first verifies the ID through the conversation-comment GET to exclude system timeline entries, then verifies the stored body
 with a follow-up GET because upstream PATCH reports the editor as user. Delete checks existence before one request, then verifies a follow-up 404 and
 continued repository visibility; upstream can emit the deleted ID as HTTP status. No automatic retry or Web
 fallback is sent. Writes retain comment ID and body/existence evidence on failure.

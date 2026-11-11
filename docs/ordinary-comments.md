@@ -27,6 +27,11 @@ parent is inferred from a URL. Detail getters do not preview or truncate text.
 Lists still default to explicit summary projections; request `view: full` when
 the complete cached body is needed. Existing HTTP limits apply to detail reads.
 
+The edit first GETs the exact ID as a readable conversation comment. The native
+PATCH can also mutate system timeline entries that the GET endpoint hides;
+failed preflight reads or mismatched IDs therefore stop before PATCH. This check
+is sequential and cannot exclude a later change to the target or permissions.
+Preflight failures retain their normal error kinds because no write was attempted.
 The edit replaces the entire body. MCP rejects blank text and sends other text
 unchanged, including leading spaces, indentation, Unicode, trailing Markdown
 hard-break spaces and final newlines. It sends one JSON PATCH with only `body`,
@@ -53,8 +58,9 @@ the configured HTTP request timeout expires (30 seconds by default). A saved del
 failure, 401 or 404. The client never follows a write redirect.
 
 The client first GETs the exact comment; a missing/inaccessible comment stops
-before DELETE. It sends one DELETE. A 4xx different from the requested ID is a
-definite rejection under the verified contract. Success codes and statuses equal
+before DELETE. It sends one DELETE. A 4xx different from the requested ID, except
+408, is a definite rejection under the verified contract. HTTP 408 remains uncertain.
+Success codes and statuses equal
 to the ID require verification; protocol/transport failures and other uncertain
 responses also allow read-only verification. A later comment GET must return
 404 and a repository GET must return the same visible `full_name` before
@@ -93,6 +99,11 @@ Git blob `3e8892e69535fc368bed73f94f8ec83f399e2434`. It defines GET/PATCH/DELETE
 PATCH response identity and the raw Int deletion return. The malformed HTTP
 status and the saved effect were observed directly against a disposable official
 4.48.0 server.
+The [IssuesService GET filter](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/IssuesService.scala)
+includes `comment`, `close_comment` and `reopen_comment`, while the PATCH path
+uses the broader `getComment` lookup. The [comment service](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/HandleCommentService.scala)
+only deletes `comment` actions through REST: close/reopen-with-comment entries
+can be read and edited but their deletion is rejected by the native endpoint.
 
 `GitBucketApi` adds three required methods; custom adapters must implement them.
 `UpdateComment` is the explicit replacement-body model. Existing comment

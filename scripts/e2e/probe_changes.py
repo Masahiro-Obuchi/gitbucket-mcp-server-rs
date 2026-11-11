@@ -170,10 +170,11 @@ def run(binary):
         chosen, _ = collect(client, "get_pull_request_diff", {**diff_args, "path": "日本 & file.txt"})
         assert len({c["file_index"] for c in chosen}) == 1
         assert all(c["new_path"] == "日本 & file.txt" for c in chosen)
-        from probe_comment_items import verify_comment_items
+        from probe_comment_items import verify_comment_items, verify_system_comment_edit
         verify_comment_items(binary, base, user, token, repo, number)
         merged = api.json("PUT", rest + f"/pulls/{number}/merge", {"merge_method": "merge-commit"})
         assert merged["merged"]
+        verify_system_comment_edit(binary, base, user, token, repo, number, web)
         after, observed = collect(client, "list_pull_request_files", {**args, "limit": 2})
         assert after == files and observed["stored_base_sha"] == base_sha and observed["head_sha"] == head
     print(json.dumps({"passed": True, "commits": 28, "files": len(files), "diff_chunks": len(chunks),
