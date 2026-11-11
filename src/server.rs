@@ -49,6 +49,7 @@ fn is_read_tool(name: &str) -> bool {
             | "list_issues"
             | "get_issue"
             | "list_issue_comments"
+            | "get_issue_comment"
             | "list_pull_requests"
             | "get_pull_request"
             | "list_pull_request_review_comments"

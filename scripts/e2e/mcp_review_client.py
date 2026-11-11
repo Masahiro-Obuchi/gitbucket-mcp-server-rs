@@ -10,12 +10,12 @@ import time
 
 
 class McpReviewClient:
-    def __init__(self, binary, url, token, username, password, *, read_only=True, web_auth=True):
+    def __init__(self, binary, url, token, username, password, *, read_only=True, web_auth=True, profile="standard"):
         self.config = tempfile.TemporaryDirectory(prefix="gitbucket-mcp-review-")
         env = {k: v for k, v in os.environ.items() if not k.startswith("GITBUCKET_")}
         env.update({
             "GITBUCKET_URL": url, "GITBUCKET_TOKEN": token,
-            "GITBUCKET_API_PROFILE": "standard", "GITBUCKET_READ_ONLY": "true" if read_only else "false",
+            "GITBUCKET_API_PROFILE": profile, "GITBUCKET_READ_ONLY": "true" if read_only else "false",
             "GITBUCKET_MCP_CONFIG_DIR": self.config.name,
         })
         if web_auth:
@@ -31,7 +31,7 @@ class McpReviewClient:
                                     "clientInfo": {"name": "review-contract-probe", "version": "1"}})
             self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
             tools = self.rpc("tools/list", {})["tools"]
-            assert len(tools) == (19 if read_only else 35)
+            assert len(tools) == (20 if read_only else 38)
             for name in ["list_pull_request_review_comments", "get_pull_request_review_comment"]:
                 tool = next(t for t in tools if t["name"] == name)
                 assert tool["annotations"]["readOnlyHint"] is True

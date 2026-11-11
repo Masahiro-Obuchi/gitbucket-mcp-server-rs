@@ -2,6 +2,22 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 ordinary comment operations
+
+- Add `get_issue_comment`, `update_issue_comment` and `delete_issue_comment` for
+  Issue and PR conversation comments. The server exposes 38 tools / 20 reads.
+  All three use PAT-only REST in both profiles.
+- Edit verifies the complete stored body and returns the original author via
+  GET, avoiding upstream PATCH's editor attribution. Delete verifies preflight existence,
+  post-write absence and repository visibility despite upstream ID-shaped HTTP
+  statuses. Failures retain comment ID and field evidence.
+- Custom `GitBucketApi` adapters must implement three new required methods.
+  `UpdateComment` represents complete replacement text; no aliases/default shims
+  or runtime configuration/dependencies are added.
+- Core acceptance checks actual stdio owner/GUEST permissions, Issue/PR raw text,
+  other-author edits and verified deletion on both supported GitBucket versions.
+  See [the contract](docs/ordinary-comments.md).
+
 ## Unreleased P15 PR change reads
 
 - Add three read tools: list_pull_request_commits (PAT-only unpaged REST),
@@ -100,7 +116,7 @@ This project publishes GitHub Releases from version tags. The release workflow b
 
 - Add `add_pull_request_review_comment` for one changed line on an open PR's
   exact current head under the standard profile. The server advertises 32 tools,
-  including 16 reads. Read-only mode hides and rejects all 16 writes.
+  including 16 reads. Read-only mode hides and rejects all 18 writes.
 - Require explicit `head_guard: "preflight"`, accepting its race window;
   `atomic` is unsupported before HTTP. Lossy outer body/path whitespace, control
   characters, historical/context/file-wide positions and unsupported diffs are

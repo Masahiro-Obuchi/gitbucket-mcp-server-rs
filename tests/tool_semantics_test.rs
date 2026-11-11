@@ -30,7 +30,7 @@ fn valid_args(tool: &rmcp::model::Tool) -> Map<String, Value> {
     let mut args = Map::new();
     for field in tool.input_schema["required"].as_array().unwrap() {
         let field = field.as_str().unwrap();
-        let value = if field.ends_with("_number") {
+        let value = if field.ends_with("_number") || field == "comment_id" {
             json!(1)
         } else if field == "color" {
             json!("abcdef")
@@ -39,7 +39,7 @@ fn valid_args(tool: &rmcp::model::Tool) -> Map<String, Value> {
         };
         args.insert(field.into(), value);
     }
-    if tool.name.starts_with("update_") {
+    if tool.name.starts_with("update_") && tool.name != "update_issue_comment" {
         let field = if tool.name == "update_label" {
             "color"
         } else {
@@ -510,7 +510,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
     let normal_client = connect(normal).await;
     let all = normal_client.list_all_tools().await.unwrap();
     let tools = client.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 19);
+    assert_eq!(tools.len(), 20);
     assert!(tools
         .iter()
         .all(|t| t.name.starts_with("get_") || t.name.starts_with("list_")));
@@ -552,6 +552,8 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "create_issue" => direct!(create_issue),
             "update_issue" => direct!(update_issue),
             "add_issue_comment" => direct!(add_issue_comment),
+            "update_issue_comment" => direct!(update_issue_comment),
+            "delete_issue_comment" => direct!(delete_issue_comment),
             "create_pull_request" => direct!(create_pull_request),
             "update_pull_request" => direct!(update_pull_request),
             "merge_pull_request" => direct!(merge_pull_request),

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use crate::api::{ApiFuture, GitBucketApi};
-use crate::models::comment::{Comment, CreateComment};
+use crate::models::comment::{Comment, CreateComment, UpdateComment};
 use crate::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
 use crate::models::label::{CreateLabel, Label as RepositoryLabel, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
@@ -156,6 +156,22 @@ pub enum RecordedCall {
         repo: String,
         number: u64,
         body: CreateComment,
+    },
+    GetIssueComment {
+        owner: String,
+        repo: String,
+        comment_id: u64,
+    },
+    UpdateIssueComment {
+        owner: String,
+        repo: String,
+        comment_id: u64,
+        body: UpdateComment,
+    },
+    DeleteIssueComment {
+        owner: String,
+        repo: String,
+        comment_id: u64,
     },
     ListPullRequests {
         owner: String,
@@ -759,6 +775,55 @@ impl GitBucketApi for MockApi {
         });
         let comment = self.comment.clone();
         Box::pin(async move { Ok(comment) })
+    }
+
+    fn get_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, Comment> {
+        self.record(RecordedCall::GetIssueComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            comment_id,
+        });
+        let mut comment = self.comment.clone();
+        comment.id = comment_id;
+        Box::pin(async move { Ok(comment) })
+    }
+
+    fn update_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+        body: &'a UpdateComment,
+    ) -> ApiFuture<'a, Comment> {
+        self.record(RecordedCall::UpdateIssueComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            comment_id,
+            body: body.clone(),
+        });
+        let mut comment = self.comment.clone();
+        comment.id = comment_id;
+        comment.body = Some(body.body.clone());
+        Box::pin(async move { Ok(comment) })
+    }
+
+    fn delete_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, ()> {
+        self.record(RecordedCall::DeleteIssueComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            comment_id,
+        });
+        Box::pin(async { Ok(()) })
     }
 
     fn list_pull_requests<'a>(

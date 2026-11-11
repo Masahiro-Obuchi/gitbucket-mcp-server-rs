@@ -2,7 +2,7 @@
 
 All ten MCP list tools return pages: repositories, branches, issues, issue
 comments, labels, milestones, pull requests, PR review comments, PR commits and
-PR files. The server exposes 35 tools, including 19 reads. The diff getter also
+PR files. The server exposes 38 tools, including 20 reads. The diff getter also
 uses chunk continuations described in [the change contract](pull-request-changes.md).
 Existing GitBucketClient / GitBucketApi lists retain their Vec return types and
 upstream traversal. New PR change reads return typed observations with comparison

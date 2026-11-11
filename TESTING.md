@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 35 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 38 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 16 writes, call each through MCP
+skips the content form. Read-only tests hide all 18 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 35 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 38 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -569,3 +569,20 @@ and again in an always-run workflow step. See the policy for local reproduction.
 - Prefer write-path E2E only when setup is explicit and reruns are collision-safe; cleanup may be best-effort if tests use dedicated disposable data such as uniquely named repositories and branches.
 - Prefer asserting structured MCP payloads (`structured_content`, `is_error`) instead of `"Error: ..."` text.
 - Never hardcode real tokens or instance URLs in tests or fixtures.
+
+## Ordinary comment operations (P15-2)
+
+`cargo test --locked --test comment_item_test` covers raw Markdown, original
+author after a developer edits another author's comment, HTML links,
+ID and repository validation, rejection without fallback, exact stored-text
+mismatch, post-write GET failures, ID-shaped error statuses, observed absence and lost repository visibility. The shared MCP tests check registration, strict schemas, annotations
+and enforced read-only access including direct handlers.
+
+The core acceptance `changes` stage also calls
+[`probe_comment_items.py`](scripts/e2e/probe_comment_items.py) using its fresh
+private PR fixture. Actual stdio clients with PAT-only `rest-only` configuration
+check Issue and PR comments, full raw text, owner/GUEST authors, GUEST own edits
+and deletion, developer edits of another author's comment, denied writes to
+others' comments, read-only rejection, wrong repository and repeated deletion.
+Both supported official Docker versions run these checks; private probe logs and
+credentials follow the acceptance runner's disposal policy.

@@ -144,7 +144,7 @@ Git commands prompt for a username or password.
 
 ### Read-only access
 
-Set `GITBUCKET_READ_ONLY=true` to register only the 19 list/get tools. The server
+Set `GITBUCKET_READ_ONLY=true` to register only the 20 list/get tools. The server
 also rejects write calls with `read_only_error` before any HTTP or authentication
 requests, including calls to a known write name and direct Rust tool handlers.
 The setting is env-only; values other than `true` or `false` fail startup.
@@ -240,7 +240,7 @@ For example, an Issue title verified before a body timeout returns:
 }
 ```
 
-Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover Issue/PR updates, PR merge results, label/milestone writes and verified deletion. Other creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment targets use `parent_number`; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Merge targets retain the observed head, base branch and captured `result_commit`.
+Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover Issue/PR updates, PR merge results, label/milestone writes and verified deletion. Other creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment creation targets use `parent_number`; item edits/deletes use `number` for the comment ID; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Merge targets retain the observed head, base branch and captured `result_commit`.
 
 Pre-write preparation/authentication errors retain their normal error kinds. Low-level Rust helpers and custom adapters without service progress can omit target/route/fields; they remain conservative about uncertain writes. There are no automatic retries or rollbacks. Inspect partial/unknown/unverified results before deciding what to send next, and correct rejected input/permissions before retrying.
 
@@ -486,6 +486,9 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 | `update_issue` | Update issue (state, title, body) |
 | `list_issue_comments` | List comments on an issue |
 | `add_issue_comment` | Add a comment to an issue |
+| `get_issue_comment` | Get an ordinary Issue/PR conversation comment by comment ID |
+| `update_issue_comment` | Replace its full body and verify the stored text and author |
+| `delete_issue_comment` | Delete it and verify a subsequent 404 |
 
 ### Labels
 
@@ -599,6 +602,23 @@ See [the merge contract](docs/pull-request-merges.md) and
 |------|-------------|
 | `get_authenticated_user` | Get the authenticated user's info |
 | `get_user` | Get a user by username |
+
+### Ordinary conversation comments
+
+`get_issue_comment(owner, repo, comment_id)`, `update_issue_comment(..., body)`
+and `delete_issue_comment(...)` operate on ordinary Issue **and PR** conversation
+comments, using the repository-scoped numeric ID returned by comment creation or
+`list_issue_comments`. IDs must be 1..2147483647. They use PAT-only REST under
+both profiles. Editing replaces the complete nonblank Markdown body without
+trimming, then GETs the stored comment to verify the exact text and return the
+original author. GitBucket permits the author or a repository developer to edit
+or delete. Deletion checks that the comment exists before sending one DELETE, then requires
+a subsequent comment GET returning 404 and a successful repository-visibility
+read. This handles an upstream bug that emits the deleted ID as HTTP status.
+Success is `{deleted: true, comment_id: ...}`. Verification is
+sequential and does not prevent concurrent edits or permission changes. Failed
+verification after a write may mean the change was saved; do not retry blindly.
+See [the ordinary comment contract](docs/ordinary-comments.md).
 
 ### Inline review comments
 

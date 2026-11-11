@@ -63,6 +63,7 @@ Issue tools:
 - `update_issue`
 - `list_issue_comments`
 - `add_issue_comment`
+- `get_issue_comment`, `update_issue_comment`, `delete_issue_comment`
 
 Pull request tools:
 
@@ -215,3 +216,19 @@ Ask for confirmation before:
 When a user asks for a destructive or irreversible action, restate the target owner, repository, and object number or name before calling the tool.
 
 Prefer exact owner, repository, branch, issue number, and pull request number values from tool results over guesses. Trim accidental whitespace, but do not rewrite names by assumption.
+
+## Ordinary comment changes
+
+Use `get_issue_comment`, `update_issue_comment` or `delete_issue_comment` for an
+ordinary Issue or PR conversation comment. Obtain its numeric repository-scoped
+`comment_id` from creation or `list_issue_comments`; use `view: full` to inspect
+complete list bodies. The get tool returns exact Markdown, author, timestamps
+and links. Update requires the complete nonblank replacement body, preserves
+whitespace and verifies it with a GET that returns the original author. Delete
+checks existence before one DELETE, then returns `deleted: true` after a comment
+404 and a successful repository-visibility read. Upstream can emit the deleted
+ID as HTTP status; abnormal responses can follow a saved delete. These PAT-only operations work in both profiles; writes require the author
+or a repository developer and are hidden/rejected in read-only mode. A write
+can be saved even if verification fails. Inspect structured operation evidence
+and re-read before deciding whether to retry. Review comment IDs such as
+`commit:123` belong to the separate review tools.

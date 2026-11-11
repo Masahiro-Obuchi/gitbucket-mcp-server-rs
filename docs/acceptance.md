@@ -127,3 +127,9 @@ If rollback would restore a known data-loss path, disable the affected write
 capability rather than reintroducing that behavior. Partial review observations
 and non-atomic preflight merge guards remain limitations, including after a
 successful acceptance run.
+
+The core `changes` probe also verifies ordinary Issue/PR comment get/edit/delete
+through actual PAT-only stdio clients. It checks owner/GUEST permissions, exact
+Markdown and original authors after editing, repository scope, read-only
+rejection and deletion with a subsequent missing lookup. See the
+[ordinary comment contract](ordinary-comments.md).

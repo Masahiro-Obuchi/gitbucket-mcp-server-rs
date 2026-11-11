@@ -241,6 +241,35 @@ impl GitBucketClient {
             .await
     }
 
+    // Upstream's comment controller returns Int as Scalatra's HTTP status, not
+    // a response body. A status equal to the requested ID can follow a saved
+    // delete even for 4xx. Only the caller's subsequent reads confirm deletion.
+    pub(crate) async fn delete_comment_once(&self, path: &str, comment_id: u64) -> Result<()> {
+        let url = super::url_safety::route(&self.base_url, path)?;
+        let request = self
+            .write_client
+            .delete(url)
+            .build()
+            .map_err(GbMcpError::from)?;
+        super::http::mutation("GitBucket REST delete", async {
+            let response = self
+                .write_client
+                .execute(request)
+                .await
+                .map_err(GbMcpError::from)?;
+            let status = response.status().as_u16();
+            if response.status().is_success() || u64::from(status) == comment_id {
+                Ok(())
+            } else {
+                Err(GbMcpError::Api {
+                    status,
+                    message: safe_status_message(status),
+                })
+            }
+        })
+        .await
+    }
+
     pub(crate) async fn delete_url(&self, url: Url, path: &str) -> Result<()> {
         let request = self
             .write_client

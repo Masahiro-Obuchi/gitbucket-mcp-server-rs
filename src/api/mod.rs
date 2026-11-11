@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::error::Result;
-use crate::models::comment::{Comment, CreateComment};
+use crate::models::comment::{Comment, CreateComment, UpdateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
@@ -187,6 +187,25 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
         number: u64,
         body: &'a CreateComment,
     ) -> ApiFuture<'a, Comment>;
+    fn get_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, Comment>;
+    fn update_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+        body: &'a UpdateComment,
+    ) -> ApiFuture<'a, Comment>;
+    fn delete_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, ()>;
 
     fn list_pull_requests<'a>(
         &'a self,

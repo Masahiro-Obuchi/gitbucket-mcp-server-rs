@@ -17,6 +17,12 @@ pub struct CreateComment {
     pub body: String,
 }
 
+/// Replaces the complete Markdown body of an existing conversation comment.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateComment {
+    pub body: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
