@@ -1,6 +1,6 @@
 use super::client::GitBucketClient;
 use super::{ApiFuture, GitBucketApi};
-use crate::models::comment::{Comment, CreateComment};
+use crate::models::comment::{Comment, CreateComment, UpdateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
@@ -253,6 +253,40 @@ impl GitBucketApi for GitBucketClient {
     ) -> ApiFuture<'a, Comment> {
         Box::pin(async move {
             GitBucketClient::add_issue_comment(self, owner, repo, number, body).await
+        })
+    }
+
+    fn get_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, Comment> {
+        Box::pin(
+            async move { GitBucketClient::get_issue_comment(self, owner, repo, comment_id).await },
+        )
+    }
+
+    fn update_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+        body: &'a UpdateComment,
+    ) -> ApiFuture<'a, Comment> {
+        Box::pin(async move {
+            GitBucketClient::update_issue_comment(self, owner, repo, comment_id, body).await
+        })
+    }
+
+    fn delete_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            GitBucketClient::delete_issue_comment(self, owner, repo, comment_id).await
         })
     }
 

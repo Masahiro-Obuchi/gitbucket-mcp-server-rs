@@ -4,7 +4,7 @@
 result commit and target branch. It requires only the configured PAT; neither
 profile enables Web fallback or strategy fallback. The repository's native
 merge policy and permissions remain enforced by GitBucket. There are still
-35 tools (19 reads); read-only mode hides/rejects merge before HTTP.
+38 tools (20 reads); read-only mode hides/rejects merge before HTTP.
 
 ## Inputs and head guards
 

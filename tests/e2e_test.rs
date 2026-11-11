@@ -339,7 +339,7 @@ async fn test_e2e_input_content_metadata_and_read_only() {
 
     let read_only = spawn_client_and_server_with_mode(&config, AccessMode::ReadOnly).await;
     let tools = read_only.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 19);
+    assert_eq!(tools.len(), 20);
     assert!(tools
         .iter()
         .all(|t| t.annotations.as_ref().unwrap().read_only_hint == Some(true)));

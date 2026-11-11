@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use gitbucket_mcp_server::api::{ApiFuture, GitBucketApi};
-use gitbucket_mcp_server::models::comment::{Comment, CreateComment};
+use gitbucket_mcp_server::models::comment::{Comment, CreateComment, UpdateComment};
 use gitbucket_mcp_server::models::issue::{CreateIssue, Issue, Label, UpdateIssue};
 use gitbucket_mcp_server::models::label::{CreateLabel, Label as RepositoryLabel, UpdateLabel};
 use gitbucket_mcp_server::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
@@ -143,6 +143,22 @@ enum RecordedCall {
         repo: String,
         number: u64,
         body: CreateComment,
+    },
+    GetIssueComment {
+        owner: String,
+        repo: String,
+        comment_id: u64,
+    },
+    UpdateIssueComment {
+        owner: String,
+        repo: String,
+        comment_id: u64,
+        body: UpdateComment,
+    },
+    DeleteIssueComment {
+        owner: String,
+        repo: String,
+        comment_id: u64,
     },
     ListPullRequests {
         owner: String,
@@ -733,6 +749,55 @@ impl GitBucketApi for IntegrationMockApi {
         Box::pin(async move { Ok(comment) })
     }
 
+    fn get_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, Comment> {
+        self.record(RecordedCall::GetIssueComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            comment_id,
+        });
+        let mut comment = self.comment.clone();
+        comment.id = comment_id;
+        Box::pin(async move { Ok(comment) })
+    }
+
+    fn update_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+        body: &'a UpdateComment,
+    ) -> ApiFuture<'a, Comment> {
+        self.record(RecordedCall::UpdateIssueComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            comment_id,
+            body: body.clone(),
+        });
+        let mut comment = self.comment.clone();
+        comment.id = comment_id;
+        comment.body = Some(body.body.clone());
+        Box::pin(async move { Ok(comment) })
+    }
+
+    fn delete_issue_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        comment_id: u64,
+    ) -> ApiFuture<'a, ()> {
+        self.record(RecordedCall::DeleteIssueComment {
+            owner: owner.into(),
+            repo: repo.into(),
+            comment_id,
+        });
+        Box::pin(async { Ok(()) })
+    }
+
     fn list_pull_requests<'a>(
         &'a self,
         owner: &'a str,
@@ -909,6 +974,9 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "fork_repository",
         "get_authenticated_user",
         "get_issue",
+        "get_issue_comment",
+        "update_issue_comment",
+        "delete_issue_comment",
         "get_label",
         "get_milestone",
         "get_pull_request",
@@ -947,6 +1015,16 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     assert_eq!(auth_schema.get("properties"), Some(&json!({})));
     assert_eq!(auth_schema.get("required"), Some(&json!([])));
     assert_eq!(required_fields(&tools, "get_user"), json!(["username"]));
+    for name in ["get_issue_comment", "delete_issue_comment"] {
+        assert_eq!(
+            required_fields(&tools, name),
+            json!(["owner", "repo", "comment_id"])
+        );
+    }
+    assert_eq!(
+        required_fields(&tools, "update_issue_comment"),
+        json!(["owner", "repo", "comment_id", "body"])
+    );
     assert_eq!(
         required_fields(&tools, "list_repositories"),
         json!(["owner"])

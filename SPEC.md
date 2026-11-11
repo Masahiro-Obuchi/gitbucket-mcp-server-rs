@@ -196,7 +196,7 @@ successful partial traversal. API lists retain their Vec-returning contracts.
   List/get tools are read-only; create/comment/fork tools are additive;
   update/delete/merge tools are destructive. Reads and deletes have idempotent
   hints; other writes conservatively do not. All tools interact with external data.
-- `GITBUCKET_READ_ONLY=true` registers only the 19 read tools and rejects all other
+- `GITBUCKET_READ_ONLY=true` registers only the 20 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
   The default is false; this env-only setting accepts only true/false. Rust server
   constructors use read/write mode until `with_access_mode(AccessMode::ReadOnly)`
@@ -236,7 +236,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 35 tools: 19 reads and 16 writes. The standard
+The normal server advertises 38 tools: 20 reads and 18 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -285,6 +285,9 @@ See [the posting contract](docs/review-comment-posts.md) and
 - `update_issue(owner, repo, issue_number, state?, title?, body?)`
 - `list_issue_comments(owner, repo, issue_number)`
 - `add_issue_comment(owner, repo, issue_number, body)`
+- `get_issue_comment(owner, repo, comment_id)`
+- `update_issue_comment(owner, repo, comment_id, body)`
+- `delete_issue_comment(owner, repo, comment_id)`
 
 ### 6.4 Milestone Tools
 
@@ -428,3 +431,13 @@ The following are intentionally deferred and may be specified later:
 - Additional write-path E2E coverage beyond repository creation, Issue flows, and pull request flows
 - Additional GitBucket endpoints
 - Alternative transports beyond stdio
+
+## Ordinary comment item operations (P15-2)
+
+The three comment item tools apply to both Issue and PR conversation comments.
+The numeric ID is scoped by repository, not by parent Issue/PR number. They use
+PAT-only REST under both profiles. Exact body, original author, dates and HTML links survive the detail model. Update first verifies the ID through the conversation-comment GET to exclude system timeline entries, then verifies the stored body
+with a follow-up GET because upstream PATCH reports the editor as user. Delete checks existence before one request, then verifies a follow-up 404 and
+continued repository visibility; upstream can emit the deleted ID as HTTP status. No automatic retry or Web
+fallback is sent. Writes retain comment ID and body/existence evidence on failure.
+See [ordinary-comments.md](docs/ordinary-comments.md) for the complete contract.

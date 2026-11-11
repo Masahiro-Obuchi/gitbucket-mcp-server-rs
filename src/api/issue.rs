@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::models::comment::{Comment, CreateComment};
+use crate::models::comment::{Comment, CreateComment, UpdateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 
 use super::{client::GitBucketClient, outcome::Operation, profile::Route};
@@ -94,4 +94,113 @@ impl GitBucketClient {
             ))
             .await
     }
+
+    /// Get one conversation comment (including comments attached to a PR).
+    pub async fn get_issue_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        comment_id: u64,
+    ) -> Result<Comment> {
+        super::url_safety::repository(owner, repo)?;
+        validate_comment_id(comment_id)?;
+        let comment: Comment = self
+            .get(&format!(
+                "/repos/{owner}/{repo}/issues/comments/{comment_id}"
+            ))
+            .await?;
+        if comment.id != comment_id {
+            return Err(crate::error::GbMcpError::Other(
+                "GitBucket returned a different comment ID".into(),
+            ));
+        }
+        Ok(comment)
+    }
+
+    /// Replace a conversation comment body and verify the exact stored body.
+    pub async fn update_issue_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        comment_id: u64,
+        body: &UpdateComment,
+    ) -> Result<Comment> {
+        super::url_safety::repository(owner, repo)?;
+        validate_comment_id(comment_id)?;
+        let operation = Operation::new(
+            "update_issue_comment",
+            OperationTarget::new(ResourceKind::IssueComment, owner, repo).numbered(comment_id),
+            Route::Rest,
+            &[("body", true)],
+        );
+        operation
+            .run(async {
+                // The native PATCH accepts system timeline entries that its
+                // conversation-comment GET deliberately hides. Establish the
+                // supported target before sending a potentially saved edit.
+                self.get_issue_comment(owner, repo, comment_id).await?;
+                let path = format!("/repos/{owner}/{repo}/issues/comments/{comment_id}");
+                let updated: Comment = self.patch(&path, body).await?;
+                operation.identity(updated.id)?;
+                let observed = self.get_issue_comment(owner, repo, comment_id).await?;
+                let body_matches = observed.body.as_deref() == Some(body.body.as_str());
+                operation.verify(&[("body", body_matches)])?;
+                Ok(observed)
+            })
+            .await
+    }
+
+    /// Delete one conversation comment and verify it can no longer be fetched.
+    pub async fn delete_issue_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        comment_id: u64,
+    ) -> Result<()> {
+        super::url_safety::repository(owner, repo)?;
+        validate_comment_id(comment_id)?;
+        let operation = Operation::new(
+            "delete_issue_comment",
+            OperationTarget::new(ResourceKind::IssueComment, owner, repo).numbered(comment_id),
+            Route::Rest,
+            &[("existence", true)],
+        );
+        operation
+            .run(async {
+                self.get_issue_comment(owner, repo, comment_id).await?;
+                let path = format!("/repos/{owner}/{repo}/issues/comments/{comment_id}");
+                let sent = self.delete_comment_once(&path, comment_id).await;
+                // A 4xx different from this ID is a definite REST rejection;
+                // http::mutation already treats HTTP 408 as uncertain.
+                // Protocol errors (e.g. HTTP 001) and ID-shaped statuses can
+                // follow deletion, so inspect the effect without a second write.
+                if let Err(crate::error::GbMcpError::Api { status: 400..=499, .. }) = &sent {
+                    return sent;
+                }
+                match self.get_issue_comment(owner, repo, comment_id).await {
+                    Err(crate::error::GbMcpError::Api { status: 404, .. }) => {
+                        let visible = self.get_repository(owner, repo).await?;
+                        if visible.full_name != format!("{owner}/{repo}") {
+                            return Err(crate::error::GbMcpError::Other("Repository visibility could not be verified after comment deletion".into()));
+                        }
+                        operation.verify(&[("existence", true)])
+                    }
+                    Ok(_) => {
+                        sent?;
+                        operation.verify(&[("existence", false)])
+                    },
+                    Err(error) => Err(error),
+                }
+            })
+            .await
+    }
+}
+
+pub(crate) fn validate_comment_id(comment_id: u64) -> Result<()> {
+    if comment_id == 0 || comment_id > i32::MAX as u64 {
+        return Err(crate::error::GbMcpError::InvalidInput(
+            "comment_id must be between 1 and 2147483647".into(),
+        ));
+    }
+    Ok(())
 }

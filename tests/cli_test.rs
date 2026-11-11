@@ -335,7 +335,7 @@ async fn stdio_readiness_waits_for_initialized_notification_and_stdout_stays_pro
             .as_array()
             .unwrap()
             .len(),
-        19
+        20
     );
     drop(input);
     assert!(tokio::time::timeout(Duration::from_secs(10), child.wait())

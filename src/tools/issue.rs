@@ -5,7 +5,7 @@ use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::models::comment::CreateComment;
+use crate::models::comment::{CreateComment, UpdateComment};
 use crate::models::issue::{CreateIssue, UpdateIssue};
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{
@@ -118,6 +118,38 @@ pub struct AddIssueCommentParams {
     pub issue_number: u64,
     #[schemars(description = "Comment body text")]
     pub body: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IssueCommentParams {
+    #[schemars(description = "Repository owner")]
+    pub owner: String,
+    #[schemars(description = "Repository name")]
+    pub repo: String,
+    #[schemars(description = "Repository-scoped conversation comment ID, 1..2147483647")]
+    pub comment_id: u64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateIssueCommentParams {
+    #[schemars(description = "Repository owner")]
+    pub owner: String,
+    #[schemars(description = "Repository name")]
+    pub repo: String,
+    #[schemars(description = "Repository-scoped conversation comment ID, 1..2147483647")]
+    pub comment_id: u64,
+    #[schemars(
+        description = "Complete nonblank replacement body; sent and verified without trimming"
+    )]
+    pub body: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct DeleteIssueCommentResult {
+    deleted: bool,
+    comment_id: u64,
 }
 
 #[tool_router(router = tool_router_issue, vis = "pub")]
@@ -307,6 +339,110 @@ impl GitBucketMcpServer {
             },
         )
         .await
+    }
+
+    #[tool(
+        description = "Get one ordinary issue or pull request conversation comment by repository-scoped comment ID",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
+    pub async fn get_issue_comment(
+        &self,
+        Parameters(params): Parameters<IssueCommentParams>,
+    ) -> ToolResult {
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
+            Err(err) => return validation_error(err),
+        };
+        if let Err(err) = crate::api::issue::validate_comment_id(params.comment_id) {
+            return from_gb_error(err);
+        }
+        match self
+            .client
+            .get_issue_comment(&owner, &repo, params.comment_id)
+            .await
+        {
+            Ok(comment) => success(&comment),
+            Err(err) => from_gb_error(err),
+        }
+    }
+
+    #[tool(
+        description = "Replace the complete body of one ordinary issue or pull request conversation comment. GitBucket permits its author or a repository developer; exact body is verified after the update",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    pub async fn update_issue_comment(
+        &self,
+        Parameters(params): Parameters<UpdateIssueCommentParams>,
+    ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
+            Err(err) => return validation_error(err),
+        };
+        if let Err(err) = crate::api::issue::validate_comment_id(params.comment_id) {
+            return from_gb_error(err);
+        }
+        let text = match required_text(&params.body, "body") {
+            Ok(text) => text,
+            Err(err) => return validation_error(err),
+        };
+        let body = UpdateComment { body: text };
+        match self
+            .client
+            .update_issue_comment(&owner, &repo, params.comment_id, &body)
+            .await
+        {
+            Ok(comment) => success(&comment),
+            Err(err) => from_gb_error(err),
+        }
+    }
+
+    #[tool(
+        description = "Delete one ordinary issue or pull request conversation comment. GitBucket permits its author or a repository developer; success requires preflight existence, a follow-up 404 and continued repository visibility",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
+    pub async fn delete_issue_comment(
+        &self,
+        Parameters(params): Parameters<IssueCommentParams>,
+    ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
+            Err(err) => return validation_error(err),
+        };
+        if let Err(err) = crate::api::issue::validate_comment_id(params.comment_id) {
+            return from_gb_error(err);
+        }
+        match self
+            .client
+            .delete_issue_comment(&owner, &repo, params.comment_id)
+            .await
+        {
+            Ok(()) => success(&DeleteIssueCommentResult {
+                deleted: true,
+                comment_id: params.comment_id,
+            }),
+            Err(err) => from_gb_error(err),
+        }
     }
 
     #[tool(
