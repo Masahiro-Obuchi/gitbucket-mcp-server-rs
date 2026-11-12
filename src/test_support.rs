@@ -534,6 +534,57 @@ impl GitBucketApi for MockApi {
         Box::pin(async move { Ok(branches) })
     }
 
+    fn list_issue_labels<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
+    fn add_issue_labels<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _change: &'a crate::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
+    fn replace_issue_labels<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _change: &'a crate::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
+    fn remove_issue_label<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _name: &'a str,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
     fn list_labels<'a>(
         &'a self,
         owner: &'a str,

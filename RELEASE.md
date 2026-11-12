@@ -2,6 +2,23 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 Issue/PR label assignments
+
+- Add list_issue_labels, add_issue_labels, remove_issue_label and
+  replace_issue_labels (PAT-only REST in both profiles). The server exposes
+  42 tools / 21 reads / 21 writes.
+- Add only missing assignments; verify the entire resulting set. Replacement
+  removes omitted assignments and [] clears them all. Unknown names create
+  repository definitions with generated colors; removal preserves definitions.
+- Matching sets are checked no-ops. Actual changes require developer permission.
+  Failures retain target/labels evidence and never trigger retry or rollback.
+- Custom GitBucketApi adapters must implement four new required methods using
+  LabelNames; the operation resource enum adds IssueLabels. No defaults/aliases
+  or new dependencies/configuration are added.
+- Core actual stdio acceptance checks Issue/PR assignments, owner/GUEST access,
+  special names, replacement/clear and cached pages across assignment changes.
+  See [the contract](docs/issue-labels.md).
+
 ## Unreleased P15 ordinary comment operations
 
 - Add `get_issue_comment`, `update_issue_comment` and `delete_issue_comment` for

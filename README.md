@@ -144,7 +144,7 @@ Git commands prompt for a username or password.
 
 ### Read-only access
 
-Set `GITBUCKET_READ_ONLY=true` to register only the 20 list/get tools. The server
+Set `GITBUCKET_READ_ONLY=true` to register only the 21 list/get tools. The server
 also rejects write calls with `read_only_error` before any HTTP or authentication
 requests, including calls to a known write name and direct Rust tool handlers.
 The setting is env-only; values other than `true` or `false` fail startup.
@@ -500,6 +500,33 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 | `update_label` | Update label name/color via the selected API profile |
 | `delete_label` | Delete a label |
 
+### Issue/PR label assignments
+
+| Tool | Description |
+| --- | --- |
+| `list_issue_labels` | List assigned labels with cached continuation |
+| `add_issue_labels` | Add missing assignments and keep all other assignments |
+| `remove_issue_label` | Remove one assignment; keep its repository definition |
+| `replace_issue_labels` | Replace the entire set; `labels: []` clears it |
+
+All four accept `owner`, `repo` and `issue_number` (also a PR number). Writes
+require distinct exact `labels` names, or one `name` for removal. Names are not
+trimmed. Unknown names passed to add/replace **create repository labels** with
+GitBucket-generated colors. Replacement removes every existing assignment not
+listed; repository definitions remain available. Use `list_labels` / `get_label`
+for repository definitions and `list_issue_labels` for assignments.
+
+These PAT-only REST tools work in both profiles. Before a change, the parent and
+current assignments are read; after a write, the complete resulting set is
+verified. Add sends only missing names to avoid GitBucket duplicate insertion
+errors. An already matching state is a checked no-op requiring read access;
+actual changes require developer permission. Read-only MCP mode blocks every
+write call, including no-ops. Write success returns `{issue_number, labels}`
+with complete observed label models; list results use the normal bounded pages.
+A write or verification failure may follow partial changes or repository-label
+creation. No retry, fallback or rollback is performed. See the
+[assignment contract](docs/issue-labels.md) for limits and concurrent changes.
+
 ### Milestones
 
 | Tool | Description |
@@ -676,13 +703,14 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_issues` | `issues` |
 | `list_issue_comments` | `comments` |
 | `list_labels` | `labels` |
+| `list_issue_labels` | `labels` |
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
 | `list_pull_request_review_comments` | `comments` (also returns `coverage`) |
 | `list_pull_request_commits` | `commits` (also `comparison`) |
 | `list_pull_request_files` | `files` (also `comparison`) |
 
-All ten list tools accept optional `limit` (default 50, maximum 100), `cursor`
+All eleven list tools accept optional `limit` (default 50, maximum 100), `cursor`
 and `view` (`summary` by default, or `full`). Every page adds `has_more`,
 `next_cursor` and `range`. Follow cursors with identical target, filters, limit
 and view until `has_more` is false. Cursors expire after five minutes and can be

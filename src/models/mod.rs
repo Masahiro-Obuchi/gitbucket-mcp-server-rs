@@ -12,3 +12,5 @@ pub mod review_post;
 pub mod user;
 
 pub mod pull_request_changes;
+
+pub mod issue_label;

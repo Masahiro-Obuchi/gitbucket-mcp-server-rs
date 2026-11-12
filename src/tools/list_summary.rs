@@ -116,7 +116,7 @@ pub(super) fn project(kind: ListKind, mut value: Value) -> Value {
             "text",
         ],
         ListKind::Branches => &["name", "commit"],
-        ListKind::Labels => &["name", "color", "description", "url"],
+        ListKind::Labels | ListKind::IssueLabels => &["name", "color", "description", "url"],
         ListKind::Milestones => &[
             "number",
             "title",

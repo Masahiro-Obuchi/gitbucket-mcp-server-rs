@@ -17,6 +17,7 @@ mod adapter;
 pub mod client;
 pub mod http;
 pub mod issue;
+pub mod issue_label;
 mod issue_update;
 pub mod label;
 mod label_write;
@@ -96,6 +97,33 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
     fn create_repository<'a>(&'a self, body: &'a CreateRepository) -> ApiFuture<'a, Repository>;
     fn fork_repository<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Repository>;
     fn list_branches<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Branch>>;
+    fn list_issue_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+    ) -> ApiFuture<'a, Vec<Label>>;
+    fn add_issue_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        change: &'a crate::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<Label>>;
+    fn replace_issue_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        change: &'a crate::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<Label>>;
+    fn remove_issue_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        name: &'a str,
+    ) -> ApiFuture<'a, Vec<Label>>;
     fn list_labels<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Label>>;
     fn get_label<'a>(
         &'a self,

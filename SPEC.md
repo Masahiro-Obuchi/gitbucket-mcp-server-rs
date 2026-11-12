@@ -164,7 +164,7 @@ Requirements:
 
 All tools return MCP tool results.
 
-All ten list tools accept `limit?` (1..100, default 50), `cursor?` and
+All eleven list tools accept `limit?` (1..100, default 50), `cursor?` and
 `view?` (`summary` default / `full`). Array keys remain with `has_more`,
 `next_cursor` and `range`. Summary omissions and UTF-8-safe 1024-byte display
 previews are explicit in per-item `_list` metadata; Issue/PR bodies and repeated
@@ -194,9 +194,9 @@ successful partial traversal. API lists retain their Vec-returning contracts.
   PR comment tools reject inline-location arguments.
 - Tools provide readOnly/destructive/idempotent/openWorld annotations as hints.
   List/get tools are read-only; create/comment/fork tools are additive;
-  update/delete/merge tools are destructive. Reads and deletes have idempotent
+  update/delete/replace/remove/merge tools are destructive. Reads and removals have idempotent
   hints; other writes conservatively do not. All tools interact with external data.
-- `GITBUCKET_READ_ONLY=true` registers only the 20 read tools and rejects all other
+- `GITBUCKET_READ_ONLY=true` registers only the 21 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
   The default is false; this env-only setting accepts only true/false. Rust server
   constructors use read/write mode until `with_access_mode(AccessMode::ReadOnly)`
@@ -236,7 +236,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 38 tools: 20 reads and 18 writes. The standard
+The normal server advertises 42 tools: 21 reads and 21 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -441,3 +441,22 @@ with a follow-up GET because upstream PATCH reports the editor as user. Delete c
 continued repository visibility; upstream can emit the deleted ID as HTTP status. No automatic retry or Web
 fallback is sent. Writes retain comment ID and body/existence evidence on failure.
 See [ordinary-comments.md](docs/ordinary-comments.md) for the complete contract.
+
+## Issue/PR label assignments (P15-3)
+
+- `list_issue_labels(owner, repo, issue_number, limit?, cursor?, view?)`
+- `add_issue_labels(owner, repo, issue_number, labels)`
+- `remove_issue_label(owner, repo, issue_number, name)`
+- `replace_issue_labels(owner, repo, issue_number, labels)`
+
+These PAT-only REST operations check parent existence and use exact names. Add
+sends the missing subset; replacement discards omitted assignments and accepts
+[] to clear all. Add/replace automatically create unknown repository labels.
+Actual writes require developer permission; already matching sets are verified
+read-only no-ops. Read-only MCP mode blocks all writes independently of no-ops.
+Success returns the complete observed `{issue_number, labels}`; list responses
+share the bounded cache and cursor bound to the parent and this specific tool.
+Write outcomes target `issue_labels` with the Issue/PR number and aggregate
+`labels` field evidence. Verification compares the entire expected set, including
+preserved assignments, without claiming atomicity or automatic rollback.
+See [issue-labels.md](docs/issue-labels.md) for the contract and primary sources.

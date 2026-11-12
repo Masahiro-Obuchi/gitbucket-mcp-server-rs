@@ -31,7 +31,7 @@ class McpReviewClient:
                                     "clientInfo": {"name": "review-contract-probe", "version": "1"}})
             self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
             tools = self.rpc("tools/list", {})["tools"]
-            assert len(tools) == (20 if read_only else 38)
+            assert len(tools) == (21 if read_only else 42)
             for name in ["list_pull_request_review_comments", "get_pull_request_review_comment"]:
                 tool = next(t for t in tools if t["name"] == name)
                 assert tool["annotations"]["readOnlyHint"] is True

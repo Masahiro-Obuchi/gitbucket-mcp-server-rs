@@ -133,3 +133,8 @@ through actual PAT-only stdio clients. It checks owner/GUEST permissions, exact
 Markdown and original authors after editing, repository scope, read-only
 rejection and deletion with a subsequent missing lookup. See the
 [ordinary comment contract](ordinary-comments.md).
+
+The core `changes` stage also exercises Issue/PR label assignment list/add/remove/
+replace over actual PAT-only stdio, including unknown-name repository creation,
+replacement clearing, permission rejection, checked no-ops and cached pages over
+55 labels. See the [assignment contract](issue-labels.md).
