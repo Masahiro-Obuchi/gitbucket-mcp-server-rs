@@ -11,3 +11,5 @@ pub mod user;
 pub mod validation;
 
 pub mod pull_request_changes;
+
+pub mod issue_label;

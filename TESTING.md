@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 38 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 42 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 18 writes, call each through MCP
+skips the content form. Read-only tests hide all 21 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 38 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 42 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -592,3 +592,22 @@ it despite its ordinary-comment GET returning 404, and verifies that the MCP
 edit rejects that ID without changing the entry's body.
 Both supported official Docker versions run these checks; private probe logs and
 credentials follow the acceptance runner's disposal policy.
+
+## Issue/PR label assignments (P15-3)
+
+`cargo test --locked --test issue_label_test` checks scoped parent existence,
+unpaged REST reads, add-only-missing requests, exact names and URI encoding,
+replacement/clear, removal without deleting repository definitions, unchanged
+no-ops, preservation mismatch, error outcomes without retry/fallback and cached
+cursors bound to the Issue/PR and tool. Shared MCP tests cover required inputs,
+strict schemas, annotations and enforced read-only access including handlers.
+
+Core acceptance's `changes` stage calls
+[`probe_issue_labels.py`](scripts/e2e/probe_issue_labels.py) in its disposable
+private repository. Actual PAT-only rest-only stdio clients check Issue and PR
+assignments, automatically created definitions and colors, exact Unicode/special
+names, repeated add, replacement and clear, removal preserving definitions,
+owner/GUEST permissions, checked no-ops, read-only rejection, missing-parent
+protection and cached continuation over more than 50 labels while assignments
+change. Both official supported versions run these checks with the existing
+acceptance cleanup and private-log disposal policy.

@@ -510,6 +510,57 @@ impl GitBucketApi for IntegrationMockApi {
         Box::pin(async move { Ok(vec![branch]) })
     }
 
+    fn list_issue_labels<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
+    fn add_issue_labels<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _change: &'a gitbucket_mcp_server::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
+    fn replace_issue_labels<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _change: &'a gitbucket_mcp_server::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
+    fn remove_issue_label<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _name: &'a str,
+    ) -> ApiFuture<'a, Vec<RepositoryLabel>> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Unconfigured issue label mock".into(),
+            ))
+        })
+    }
     fn list_labels<'a>(
         &'a self,
         owner: &'a str,
@@ -988,6 +1039,10 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "get_user",
         "list_branches",
         "list_issue_comments",
+        "list_issue_labels",
+        "add_issue_labels",
+        "remove_issue_label",
+        "replace_issue_labels",
         "list_issues",
         "list_labels",
         "list_milestones",
@@ -1015,6 +1070,20 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     assert_eq!(auth_schema.get("properties"), Some(&json!({})));
     assert_eq!(auth_schema.get("required"), Some(&json!([])));
     assert_eq!(required_fields(&tools, "get_user"), json!(["username"]));
+    assert_eq!(
+        required_fields(&tools, "list_issue_labels"),
+        json!(["owner", "repo", "issue_number"])
+    );
+    for name in ["add_issue_labels", "replace_issue_labels"] {
+        assert_eq!(
+            required_fields(&tools, name),
+            json!(["owner", "repo", "issue_number", "labels"])
+        );
+    }
+    assert_eq!(
+        required_fields(&tools, "remove_issue_label"),
+        json!(["owner", "repo", "issue_number", "name"])
+    );
     for name in ["get_issue_comment", "delete_issue_comment"] {
         assert_eq!(
             required_fields(&tools, name),

@@ -1,8 +1,8 @@
 # Bounded MCP lists and continuations (P11)
 
-All ten MCP list tools return pages: repositories, branches, issues, issue
-comments, labels, milestones, pull requests, PR review comments, PR commits and
-PR files. The server exposes 38 tools, including 20 reads. The diff getter also
+All eleven MCP list tools return pages: repositories, branches, issues, issue
+comments, repository labels, assigned Issue/PR labels, milestones, pull requests,
+PR review comments, PR commits and PR files. The server exposes 42 tools, including 21 reads. The diff getter also
 uses chunk continuations described in [the change contract](pull-request-changes.md).
 Existing GitBucketClient / GitBucketApi lists retain their Vec return types and
 upstream traversal. New PR change reads return typed observations with comparison
@@ -89,6 +89,7 @@ remain null rather than becoming false/empty.
 | Milestones | number/title/state, due_on, html_url, open/closed counts; omit description/creator detail |
 | Issues | number/title/state, html_url, created/updated/closed times, comment count, author login and labels; omit body and other nested detail |
 | Pull requests | number/title/state, draft/merged/mergeable, html_url, created/updated times, author login, head/base label/ref/SHA and repo full_name; omit body/repeated repository detail |
+| Issue/PR assigned labels | name, color, description, url (same projection as repository labels) |
 | Issue comments | id, body preview, user login, created/updated times, html_url |
 | Review comments | id/storage_id/kind, author/path, observed sides/lines/current commit, position_verified/association/source/url/display date; omit body and original metadata |
 

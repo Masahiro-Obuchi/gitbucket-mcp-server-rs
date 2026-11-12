@@ -32,6 +32,8 @@ fn valid_args(tool: &rmcp::model::Tool) -> Map<String, Value> {
         let field = field.as_str().unwrap();
         let value = if field.ends_with("_number") || field == "comment_id" {
             json!(1)
+        } else if field == "labels" {
+            json!(["example"])
         } else if field == "color" {
             json!("abcdef")
         } else {
@@ -469,7 +471,9 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
         let read = tool.name.starts_with("get_") || tool.name.starts_with("list_");
         let destructive = tool.name.starts_with("update_")
             || tool.name.starts_with("delete_")
-            || tool.name == "merge_pull_request";
+            || tool.name == "merge_pull_request"
+            || tool.name == "replace_issue_labels"
+            || tool.name == "remove_issue_label";
         let annotations = tool.annotations.as_ref().expect("every tool has hints");
         assert_eq!(annotations.read_only_hint, Some(read), "{}", tool.name);
         assert_eq!(
@@ -480,7 +484,7 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
         );
         assert_eq!(
             annotations.idempotent_hint,
-            Some(read || tool.name.starts_with("delete_")),
+            Some(read || tool.name.starts_with("delete_") || tool.name == "remove_issue_label"),
             "{}",
             tool.name
         );
@@ -510,7 +514,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
     let normal_client = connect(normal).await;
     let all = normal_client.list_all_tools().await.unwrap();
     let tools = client.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 20);
+    assert_eq!(tools.len(), 21);
     assert!(tools
         .iter()
         .all(|t| t.name.starts_with("get_") || t.name.starts_with("list_")));
@@ -552,6 +556,9 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "create_issue" => direct!(create_issue),
             "update_issue" => direct!(update_issue),
             "add_issue_comment" => direct!(add_issue_comment),
+            "add_issue_labels" => direct!(add_issue_labels),
+            "replace_issue_labels" => direct!(replace_issue_labels),
+            "remove_issue_label" => direct!(remove_issue_label),
             "update_issue_comment" => direct!(update_issue_comment),
             "delete_issue_comment" => direct!(delete_issue_comment),
             "create_pull_request" => direct!(create_pull_request),

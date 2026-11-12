@@ -172,6 +172,8 @@ def run(binary):
         assert all(c["new_path"] == "日本 & file.txt" for c in chosen)
         from probe_comment_items import verify_comment_items, verify_system_comment_edit
         verify_comment_items(binary, base, user, token, repo, number)
+        from probe_issue_labels import verify_issue_labels
+        verify_issue_labels(binary, base, user, token, repo, number)
         merged = api.json("PUT", rest + f"/pulls/{number}/merge", {"merge_method": "merge-commit"})
         assert merged["merged"]
         verify_system_comment_edit(binary, base, user, token, repo, number, web)

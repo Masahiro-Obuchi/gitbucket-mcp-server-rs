@@ -80,6 +80,7 @@ Pull request tools:
 Label and milestone tools:
 
 - `list_labels`, `get_label`, `create_label`, `update_label`, `delete_label`
+- `list_issue_labels`, `add_issue_labels`, `remove_issue_label`, `replace_issue_labels`
 - `list_milestones`, `get_milestone`, `create_milestone`, `update_milestone`, `delete_milestone`
 
 User tools:
@@ -98,6 +99,7 @@ MCP structured results are JSON objects. List tools return arrays under stable f
 | `list_issues` | `issues` |
 | `list_issue_comments` | `comments` |
 | `list_labels` | `labels` |
+| `list_issue_labels` | `labels` |
 | `list_milestones` | `milestones` |
 | `list_pull_requests` | `pull_requests` |
 | `list_pull_request_review_comments` | `comments` (also `coverage`) |
@@ -232,3 +234,22 @@ or a repository developer and are hidden/rejected in read-only mode. A write
 can be saved even if verification fails. Inspect structured operation evidence
 and re-read before deciding whether to retry. Review comment IDs such as
 `commit:123` belong to the separate review tools.
+
+## Issue/PR label assignments
+
+Use `list_issue_labels` to inspect assignments on an Issue or PR (`issue_number`
+also accepts its PR number). Use `add_issue_labels` to add missing names,
+`remove_issue_label` to remove one assignment, and `replace_issue_labels` only
+when replacing the entire set is intended. Replacement with `labels: []` clears
+all assignments. These operations preserve repository label definitions;
+add/replace create unknown definitions with generated colors. Names are exact
+and must be distinct; do not trim or silently deduplicate them.
+
+They use PAT-only REST in both profiles. Actual changes require developer role;
+matching states are checked read-only no-ops. Read-only MCP mode still blocks
+these write tools. Success returns `{issue_number, labels}` after verifying the
+complete expected set. On unknown/not_verified outcomes, re-read assignments and
+repository definitions before deciding on another write: a prefix and newly
+created definitions can survive a failed batch. There is no retry or rollback.
+`list_issue_labels` follows the standard bounded pagination contract; cached
+continuations may predate subsequent writes or permission changes.

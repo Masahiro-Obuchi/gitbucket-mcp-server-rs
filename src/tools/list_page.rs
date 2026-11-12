@@ -32,6 +32,7 @@ pub(crate) enum ListKind {
     Repositories,
     Branches,
     Labels,
+    IssueLabels,
     Milestones,
     Issues,
     PullRequests,
@@ -46,7 +47,7 @@ impl ListKind {
         match self {
             Self::Repositories => "repositories",
             Self::Branches => "branches",
-            Self::Labels => "labels",
+            Self::Labels | Self::IssueLabels => "labels",
             Self::Milestones => "milestones",
             Self::Issues => "issues",
             Self::PullRequests => "pull_requests",

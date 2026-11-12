@@ -110,6 +110,49 @@ impl GitBucketApi for GitBucketClient {
         Box::pin(async move { GitBucketClient::list_branches(self, owner, repo).await })
     }
 
+    fn list_issue_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+    ) -> ApiFuture<'a, Vec<Label>> {
+        Box::pin(async move {
+            GitBucketClient::list_issue_labels(self, owner, repo, issue_number).await
+        })
+    }
+    fn add_issue_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        change: &'a crate::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<Label>> {
+        Box::pin(async move {
+            GitBucketClient::add_issue_labels(self, owner, repo, issue_number, change).await
+        })
+    }
+    fn replace_issue_labels<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        change: &'a crate::models::issue_label::LabelNames,
+    ) -> ApiFuture<'a, Vec<Label>> {
+        Box::pin(async move {
+            GitBucketClient::replace_issue_labels(self, owner, repo, issue_number, change).await
+        })
+    }
+    fn remove_issue_label<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        name: &'a str,
+    ) -> ApiFuture<'a, Vec<Label>> {
+        Box::pin(async move {
+            GitBucketClient::remove_issue_label(self, owner, repo, issue_number, name).await
+        })
+    }
     fn list_labels<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Label>> {
         Box::pin(async move { GitBucketClient::list_labels(self, owner, repo).await })
     }

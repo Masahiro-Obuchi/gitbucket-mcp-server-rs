@@ -52,6 +52,7 @@ pub enum ResourceKind {
     Milestone,
     Repository,
     IssueComment,
+    IssueLabels,
     PullRequestComment,
     PullRequestReviewComment,
 }
