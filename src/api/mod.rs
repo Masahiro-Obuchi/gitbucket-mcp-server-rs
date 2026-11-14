@@ -19,6 +19,7 @@ pub(crate) mod creation;
 pub mod http;
 pub mod issue;
 pub mod issue_label;
+pub mod issue_milestone;
 mod issue_update;
 pub mod label;
 mod label_write;
@@ -42,6 +43,19 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn set_issue_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+        milestone_number: u64,
+    ) -> ApiFuture<'a, Issue>;
+    fn clear_issue_milestone<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        issue_number: u64,
+    ) -> ApiFuture<'a, Issue>;
     fn list_pull_request_commits<'a>(
         &'a self,
         owner: &'a str,

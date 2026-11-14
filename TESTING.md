@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 42 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 44 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 21 writes, call each through MCP
+skips the content form. Read-only tests hide all 23 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 42 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 44 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -631,3 +631,23 @@ true/false/default, draft get/list observations, existing draft merge rejection
 and read-only rejection. Existing acceptance policy discards credentials and raw
 probe logs, retains only the allowed summary and cleans the dedicated Docker
 environment. Both official supported versions run the probe.
+
+## Issue/PR milestone assignments (P15-4b)
+
+`cargo test --locked --test issue_milestone_test` checks scoped references and
+parent identity, invalid IDs, matching no-ops, raw-body and assignment
+preservation, cookie-only one-POST forms, ignored writes, partial/missing
+observations, response identity mismatch, pre-write authentication failures,
+post-write REST failures, deadline retention, POST 404 ambiguity and refusal to
+follow redirects. Clear requires the explicit native empty marker; missing,
+duplicate, assigned and authentication markup cannot verify clear. The general
+schema/annotation/read-only tests cover both new tools, including direct handlers.
+
+Core acceptance invokes `probe_issue_milestones.py` through the changes fixture.
+On each supported official image, actual stdio checks open/closed milestone
+set/replacement/clear on closed Issues and open PRs, exact raw content and
+label/assignee retention, PR head/base/draft retention, repeat no-ops, GUEST
+permission refusal and no-ops, PAT-only/rest-only/read-only rejection, scoped
+missing/foreign references and retained milestone definitions. The normal Issue
+update schema and PR draft/assignment update schemas are unchanged. See
+[the contract](docs/issue-milestones.md) and [acceptance policy](docs/acceptance.md).

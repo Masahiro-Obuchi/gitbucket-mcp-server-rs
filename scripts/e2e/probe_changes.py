@@ -176,6 +176,8 @@ def run(binary):
         verify_issue_labels(binary, base, user, token, repo, number)
         from probe_creation_metadata import verify_creation_metadata
         verify_creation_metadata(binary, base, user, token, repo, info["default_branch"], git)
+        from probe_issue_milestones import verify_issue_milestones
+        verify_issue_milestones(binary, base, user, password, token, repo, number)
         merged = api.json("PUT", rest + f"/pulls/{number}/merge", {"merge_method": "merge-commit"})
         assert merged["merged"]
         verify_system_comment_edit(binary, base, user, token, repo, number, web)

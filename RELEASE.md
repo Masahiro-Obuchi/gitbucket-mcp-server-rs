@@ -2,10 +2,23 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 Issue/PR milestone assignment updates
+
+- Add set_issue_milestone and clear_issue_milestone for Issue/PR assignments,
+  bringing the server to 44 tools (21 reads / 23 writes). Milestone definitions
+  are preserved. The standard profile is required; rest-only refuses before HTTP.
+- Check target/reference identity, use one cookie-only Web POST and verify
+  stored milestone plus retained raw content, state, labels and assignees.
+  Clear requires the native explicit empty marker as well as the REST read.
+- Keep target/field evidence on failure. POST 404 can follow a saved assignment
+  and stays unknown; no replay, redirect, fallback or rollback is introduced.
+- Custom GitBucketApi adapters must implement the two new required methods.
+  See [the contract](docs/issue-milestones.md) and [tests](TESTING.md#issuepr-milestone-assignments-p15-4b).
+
 ## Unreleased P15 creation metadata
 
 - Add optional milestone to create_issue and draft to create_pull_request.
-  Keep 42 tools (21 reads / 21 writes); both profiles use PAT-only REST.
+  That creation unit kept 42 tools (21 reads / 21 writes); both profiles use PAT-only REST.
 - Preflight supplied Issue reference names/IDs; verify supplied assignees,
   labels and milestone after one POST. Verify explicit PR draft true/false.
   Do not infer unobserved arrays/flags or retry a creation after verification fails.

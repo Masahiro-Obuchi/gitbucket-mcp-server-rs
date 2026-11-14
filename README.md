@@ -154,7 +154,8 @@ read this environment variable. This mode controls the MCP server's tools;
 standalone `GitBucketClient` calls use the client's own capabilities.
 
 All tools advertise read-only, destructive, idempotent and open-world hints.
-Reads and deletions are marked idempotent; other writes conservatively are not,
+Reads, deletions and the verified milestone set/clear no-ops are marked
+idempotent; other writes conservatively are not,
 because updates can emit hooks or notifications. Updates, deletions and merge
 are destructive hints; creates/comments/forks are additive hints. Annotations
 are client hints, while read-only access is enforced independently by the server.
@@ -165,7 +166,7 @@ are client hints, while read-only access is enforced independently by the server
 
 | Value | Behavior |
 | --- | --- |
-| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts return `unsupported_error` before HTTP. |
+| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts and Issue/PR milestone assignment updates return `unsupported_error` before HTTP. |
 | `standard` | Use the common standard GitBucket contract verified on 4.44.0 and 4.48.0. Web routes require both web credentials. |
 
 Under `standard`, operations select the following routes:
@@ -177,6 +178,7 @@ Under `standard`, operations select the following routes:
 | PR review-comment list/get | Web conversation page; HTML and partial coverage only |
 | PR review-comment creation | One Web POST after pinned diff/head checks, followed by own raw/commit/PR verification |
 | Ordinary Issue update | Web; the standard REST Issue PATCH is unavailable |
+| Issue/PR milestone set/clear | Web; requires standard profile, with reference and stored-field verification |
 | Label same-name color change | Web; the standard REST implementation rejects its own existing name with 422 |
 | Milestone create/update with REST-valid title | REST |
 | Milestone create/update with a title outside `[a-zA-Z0-9+_.-]+` | Web, subject to the date/whitespace safeguards below |
@@ -466,6 +468,8 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 
 ## Available Tools
 
+The server exposes 44 tools: 21 reads and 23 writes.
+
 ### Repository
 
 | Tool | Description |
@@ -484,11 +488,34 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 | `get_issue` | Get issue details |
 | `create_issue` | Create an issue with optional assignees, labels and milestone |
 | `update_issue` | Update issue (state, title, body) |
+| `set_issue_milestone` | Set an existing repository milestone on an Issue or PR |
+| `clear_issue_milestone` | Clear an Issue/PR assignment while keeping the milestone definition |
 | `list_issue_comments` | List comments on an issue |
 | `add_issue_comment` | Add a comment to an issue |
 | `get_issue_comment` | Get an ordinary Issue/PR conversation comment by comment ID |
 | `update_issue_comment` | Replace its full body and verify the stored text and author |
 | `delete_issue_comment` | Delete it and verify a subsequent 404 |
+
+### Issue/PR milestone assignment updates
+
+Use `set_issue_milestone(owner, repo, issue_number, milestone_number)` to assign
+an existing open or closed repository milestone and `clear_issue_milestone(owner,
+repo, issue_number)` to remove that assignment. Both numbers are 1..2147483647;
+there is no zero/null clearing alias. A PR uses its number as `issue_number`.
+
+These require the `standard` profile; `rest-only` refuses before HTTP. Actual
+changes need matching PAT/Web credentials and developer permission. The service
+checks the target/reference, sends one Web POST, then verifies the stored
+milestone plus preserved title, exact raw body, state, labels and assignees.
+Clear also requires the native page's explicit `No milestone` marker: absent
+REST metadata alone is unknown. Matching states are read-only no-ops; observing
+an already clear state still needs Web credentials. Read-only MCP blocks both
+tools. Success returns the complete observed Issue model, also for PR targets.
+
+A POST 404 may follow a saved assignment, so it remains unknown. Errors retain
+the target number and field evidence; there is no retry, rollback or fallback.
+See [the assignment contract](docs/issue-milestones.md) for permissions, race
+limits and the distinct creation contract.
 
 ### Issue/PR creation metadata
 

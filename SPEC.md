@@ -236,7 +236,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 42 tools: 21 reads and 21 writes. The standard
+The normal server advertises 44 tools: 21 reads and 23 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -468,8 +468,8 @@ are now checked against existing references and verified after creation. PR
 creation adds optional `draft`; explicit true/false is verified after creation.
 These use the existing GitBucketApi methods with extended CreateIssue /
 CreatePullRequest models. Both request models reject unknown JSON fields. The
-server remains at 42 tools (21 reads/21 writes); no new configuration or routing
-profile is introduced.
+creation unit kept 42 tools (21 reads/21 writes); P15-4b adds two milestone
+assignment writes. No new configuration or routing profile is introduced.
 
 Only supplied metadata has field evidence. Labels/assignees compare distinct
 name sets; milestone compares its observed number; draft compares its observed
@@ -480,3 +480,27 @@ detected only after an Issue exists. Creation IDs are retained as soon as a vali
 POST response supplies them, including later verification errors or interruption.
 PR creation assignee/milestone and metadata updates remain outside these tools'
 schemas. See [creation-metadata.md](docs/creation-metadata.md).
+
+## Issue/PR milestone assignment updates (P15-4b)
+
+`set_issue_milestone(owner, repo, issue_number, milestone_number)` and
+`clear_issue_milestone(owner, repo, issue_number)` return the observed Issue
+model and support both Issue and PR numbers. Set requires an existing scoped
+milestone; clear retains its definition. IDs are positive 32-bit integers.
+Both tools reject unknown arguments and are hidden/blocked in read-only mode.
+There are now 44 tools (21 reads / 23 writes).
+
+Only the standard profile supports these operations. Rest-only refuses before
+HTTP; no ineffective Issue/PR PATCH is sent. Actual changes use matching PAT/Web
+identities, one cookie-only AJAX milestone POST and independent reads to verify
+requested milestone and preserved title/raw body/state/labels/assignees. Clear
+requires the native page's explicit empty marker as well as no observed REST
+milestone. Missing data never establishes clear by itself. A matching set needs
+no Web session; already clear requires its authenticated page observation.
+
+POST 404 can follow storage and remains unknown, as do other unexpected statuses
+and post-write verification failures; only POST authenticator 401/403 establishes
+rejection. IDs and field evidence survive mismatches, read failures and MCP
+interruption. No retry/fallback/rollback or atomicity claim is introduced.
+GitBucketApi gains two required methods with no compatibility defaults. See
+[the complete contract](docs/issue-milestones.md) for sources and limitations.

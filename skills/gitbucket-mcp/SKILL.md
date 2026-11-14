@@ -61,6 +61,7 @@ Issue tools:
 - `get_issue`
 - `create_issue`
 - `update_issue`
+- `set_issue_milestone`, `clear_issue_milestone`
 - `list_issue_comments`
 - `add_issue_comment`
 - `get_issue_comment`, `update_issue_comment`, `delete_issue_comment`
@@ -268,8 +269,28 @@ deciding on another write. Do not blindly retry or undo a creation.
 
 `create_pull_request` accepts optional `draft` true/false, verified after POST.
 Omitting it uses the upstream ready default. Get/list preserve draft values,
-including false; null stays unknown. PR creation assignees/milestone and draft/
-assignment updates are not exposed by these schemas. Do not send unsupported
+including false; null stays unknown. PR creation assignees/milestone and draft/assignee updates are not exposed by
+these schemas. Milestone updates use the separate set/clear tools. Do not send unsupported
 fields or emulate them with follow-up mutations without a separate user request.
 Explicit empty arrays differ from omitted/unobserved metadata. All of these
 operations are PAT-only in either profile; read-only MCP mode rejects creation.
+
+## Issue/PR milestone assignment updates
+
+Use `set_issue_milestone(owner, repo, issue_number, milestone_number)` to assign
+an existing repository milestone, or `clear_issue_milestone(owner, repo,
+issue_number)` to clear only the assignment. A PR uses its number as
+issue_number. IDs are 1..2147483647; zero/null is not a clearing alias. Open and
+closed milestones are supported and definitions are retained.
+
+These require the standard profile. Actual changes also need matching PAT/Web
+credentials and developer permission. Rest-only refuses before HTTP. A matching
+set is a read-only no-op; an already clear observation needs Web credentials to
+verify the native explicit empty marker. Read-only MCP blocks both tools.
+The server checks target/reference and verifies requested milestone plus retained
+raw content/state/labels/assignees after one POST. Missing REST data alone does
+not prove clear. Success returns the complete observed Issue model for either
+Issue or PR targets. A POST 404 can follow a saved assignment: inspect target and
+field evidence and re-read before deciding on another write. Do not retry,
+roll back or switch routes automatically. Assignee/draft transitions remain
+separate unsupported operations.

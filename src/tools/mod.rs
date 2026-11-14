@@ -13,3 +13,4 @@ pub mod validation;
 pub mod pull_request_changes;
 
 pub mod issue_label;
+pub mod issue_milestone;
