@@ -133,7 +133,7 @@ Requirements:
 - Operation status also has internal `verified`; it is never exposed as a successful error. Original resource payloads are preserved on successful tool calls. Definite REST rejection means HTTP 4xx except 408; a rejected later attempt does not erase earlier verified fields.
 - Locators carry resource kind, owner/repository, available number or label name/requested name, optional comment parent number, creation candidates or unexpected observed number. They omit secrets, URL credentials, titles and bodies. Unknown owner/creation IDs remain absent. Candidate IDs do not assert which resource was created.
 - Pre-write validation, preparation and authentication errors retain their original kinds. After a mutation begins, the operation service packages failures with all available progress. The MCP per-call write tracker retains the same progress handle when it drops the service future on timeout/cancellation; no background writes, automatic rollback or retries are started.
-- Built-in writes have operation/target context. Detailed field evidence covers Issue/PR updates, PR merge observations, label/milestone writes and deletion. Remaining create/comment operations and low-level/custom adapters may have no field evidence. Custom adapters without tracking retain conservative unknown outcomes with no invented target, route or verified field. Merges retain an observed head and captured result_commit locator across later failures.
+- Built-in writes have operation/target context. Detailed field evidence covers supplied Issue creation metadata and explicit PR draft creation, Issue/PR updates, PR merge observations, label/milestone writes and deletion. Remaining create/comment operations and low-level/custom adapters may have no field evidence. Custom adapters without tracking retain conservative unknown outcomes with no invented target, route or verified field. Merges retain an observed head and captured result_commit locator across later failures.
 - The old two operation error variants and `outcome_unknown`/`update_not_verified` kinds are removed. Consumers must use the new outcome model; no compatibility aliases are supported.
 
 ## 5. GitBucket API Contract
@@ -281,7 +281,7 @@ See [the posting contract](docs/review-comment-posts.md) and
 
 - `list_issues(owner, repo, state?)`
 - `get_issue(owner, repo, issue_number)`
-- `create_issue(owner, repo, title, body?, labels?, assignees?)`
+- `create_issue(owner, repo, title, body?, labels?, assignees?, milestone?)`
 - `update_issue(owner, repo, issue_number, state?, title?, body?)`
 - `list_issue_comments(owner, repo, issue_number)`
 - `add_issue_comment(owner, repo, issue_number, body)`
@@ -333,7 +333,7 @@ mode. Cursors retain the original observation rather than refreshing revisions.
 
 - `list_pull_requests(owner, repo, state?)`
 - `get_pull_request(owner, repo, pull_number)`
-- `create_pull_request(owner, repo, title, head, base, body?)`
+- `create_pull_request(owner, repo, title, head, base, body?, draft?)`
 - `update_pull_request(owner, repo, pull_number, state?, title?, body?, base?)`
 - `merge_pull_request(owner, repo, pull_number, commit_message?, merge_method?, expected_head_sha?, head_guard?)`
 - `add_pull_request_comment(owner, repo, pull_number, body)`
@@ -460,3 +460,23 @@ Write outcomes target `issue_labels` with the Issue/PR number and aggregate
 `labels` field evidence. Verification compares the entire expected set, including
 preserved assignments, without claiming atomicity or automatic rollback.
 See [issue-labels.md](docs/issue-labels.md) for the contract and primary sources.
+
+## Verified creation metadata (P15-4a)
+
+Issue creation adds optional `milestone`; labels and assignees already exposed
+are now checked against existing references and verified after creation. PR
+creation adds optional `draft`; explicit true/false is verified after creation.
+These use the existing GitBucketApi methods with extended CreateIssue /
+CreatePullRequest models. Both request models reject unknown JSON fields. The
+server remains at 42 tools (21 reads/21 writes); no new configuration or routing
+profile is introduced.
+
+Only supplied metadata has field evidence. Labels/assignees compare distinct
+name sets; milestone compares its observed number; draft compares its observed
+boolean. Unknown observations do not become empty/false. No metadata supplied
+uses native defaults, without claiming those defaults were independently verified.
+Reference failures happen before POST; permission/race-related omission can be
+detected only after an Issue exists. Creation IDs are retained as soon as a valid
+POST response supplies them, including later verification errors or interruption.
+PR creation assignee/milestone and metadata updates remain outside these tools'
+schemas. See [creation-metadata.md](docs/creation-metadata.md).

@@ -611,3 +611,23 @@ owner/GUEST permissions, checked no-ops, read-only rejection, missing-parent
 protection and cached continuation over more than 50 labels while assignments
 change. Both official supported versions run these checks with the existing
 acceptance cleanup and private-log disposal policy.
+
+## Creation metadata (P15-4a)
+
+`cargo test --locked --test creation_metadata_test` covers existing/missing/
+foreign references, exact body and names, normalized assignees, explicit draft
+true/false and omitted flags, arrays missing versus empty, ignored metadata,
+partial observations and created-ID retention after GET failure/identity mismatch
+or MCP deadline. Unknown request fields and unsupported update fields are
+rejected by strict schemas/models. No failure triggers another mutation.
+
+The core `changes` stage invokes
+[`probe_creation_metadata.py`](scripts/e2e/probe_creation_metadata.py) against
+its disposable private repository. Actual PAT-only rest-only stdio clients check
+open/closed milestones, two assignees and an exact existing label, invalid and
+foreign references without extra Issues, GUEST creation whose assignment is
+ignored but whose created number is reported, explicit empty metadata, draft
+true/false/default, draft get/list observations, existing draft merge rejection
+and read-only rejection. Existing acceptance policy discards credentials and raw
+probe logs, retains only the allowed summary and cleans the dedicated Docker
+environment. Both official supported versions run the probe.

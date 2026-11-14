@@ -46,15 +46,7 @@ impl GitBucketClient {
         body: &CreatePullRequest,
     ) -> Result<PullRequest> {
         super::url_safety::repository(owner, repo)?;
-        let operation = Operation::new(
-            "create_pull_request",
-            OperationTarget::new(ResourceKind::PullRequest, owner, repo),
-            Route::Rest,
-            &[],
-        );
-        operation
-            .run(self.post(&format!("/repos/{owner}/{repo}/pulls"), body))
-            .await
+        super::creation::pull_request(self, owner, repo, body).await
     }
 
     /// Update a pull request (title, body, state, base).

@@ -240,7 +240,7 @@ For example, an Issue title verified before a body timeout returns:
 }
 ```
 
-Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover Issue/PR updates, PR merge results, label/milestone writes and verified deletion. Other creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment creation targets use `parent_number`; item edits/deletes use `number` for the comment ID; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Merge targets retain the observed head, base branch and captured `result_commit`.
+Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover supplied Issue creation metadata and explicit PR draft creation, Issue/PR updates, PR merge results, label/milestone writes and verified deletion. Other creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment creation targets use `parent_number`; item edits/deletes use `number` for the comment ID; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Merge targets retain the observed head, base branch and captured `result_commit`.
 
 Pre-write preparation/authentication errors retain their normal error kinds. Low-level Rust helpers and custom adapters without service progress can omit target/route/fields; they remain conservative about uncertain writes. There are no automatic retries or rollbacks. Inspect partial/unknown/unverified results before deciding what to send next, and correct rejected input/permissions before retrying.
 
@@ -482,13 +482,38 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 |------|-------------|
 | `list_issues` | List issues (filterable by state) |
 | `get_issue` | Get issue details |
-| `create_issue` | Create a new issue |
+| `create_issue` | Create an issue with optional assignees, labels and milestone |
 | `update_issue` | Update issue (state, title, body) |
 | `list_issue_comments` | List comments on an issue |
 | `add_issue_comment` | Add a comment to an issue |
 | `get_issue_comment` | Get an ordinary Issue/PR conversation comment by comment ID |
 | `update_issue_comment` | Replace its full body and verify the stored text and author |
 | `delete_issue_comment` | Delete it and verify a subsequent 404 |
+
+### Issue/PR creation metadata
+
+`create_issue(..., milestone?)` accepts an existing repository milestone number
+(1..2147483647), in addition to `assignees?` and `labels?`. Supplied references are
+checked before POST. Assignee identifiers are trimmed and must be distinct;
+label names are exact and must already exist. Issue creation does not create
+unknown label definitions as `add_issue_labels` does. Existing closed milestones
+can also be selected on the verified versions.
+
+`create_pull_request(..., draft?)` accepts `true` or `false`; omission uses
+GitBucket's default ready state. Explicit draft state is checked by a subsequent
+GET. Existing get/list responses retain `draft`, including explicit false, and
+missing observations remain unknown. PR creation does not accept assignees,
+milestone or maintainer_can_modify because the verified controller does not
+apply them. Creation fields are not accepted by the update tools in this unit.
+
+These operations use PAT-only REST in both profiles. Supplied Issue creation
+metadata is verified by a GET after one POST. Nonempty assignments/milestone need
+developer permission: **GitBucket can create the Issue while ignoring these
+fields for other readable users.** A verification error may therefore leave an
+Issue/PR, and retains its captured number in `operation.target.number`. Inspect
+that resource before another write. There is no retry, follow-up mutation or
+rollback. Explicit empty arrays are checked as empty, separately from omitted
+or unobserved arrays. See [the creation contract](docs/creation-metadata.md).
 
 ### Labels
 

@@ -15,6 +15,7 @@ use crate::models::user::User;
 
 mod adapter;
 pub mod client;
+pub(crate) mod creation;
 pub mod http;
 pub mod issue;
 pub mod issue_label;

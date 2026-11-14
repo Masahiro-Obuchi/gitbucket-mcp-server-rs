@@ -44,8 +44,11 @@ pub struct PullRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreatePullRequest {
     pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draft: Option<bool>,
     pub head: String,
     pub base: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -219,6 +222,7 @@ mod tests {
     #[test]
     fn test_serialize_create_pull_request() {
         let create = CreatePullRequest {
+            draft: None,
             title: "New feature".to_string(),
             head: "feature-branch".to_string(),
             base: "main".to_string(),

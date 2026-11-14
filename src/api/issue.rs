@@ -34,15 +34,7 @@ impl GitBucketClient {
     /// Create a new issue.
     pub async fn create_issue(&self, owner: &str, repo: &str, body: &CreateIssue) -> Result<Issue> {
         super::url_safety::repository(owner, repo)?;
-        let operation = Operation::new(
-            "create_issue",
-            OperationTarget::new(ResourceKind::Issue, owner, repo),
-            Route::Rest,
-            &[],
-        );
-        operation
-            .run(self.post(&format!("/repos/{owner}/{repo}/issues"), body))
-            .await
+        super::creation::issue(self, owner, repo, body).await
     }
 
     /// Update an issue (title, body, state).
