@@ -138,3 +138,9 @@ The core `changes` stage also exercises Issue/PR label assignment list/add/remov
 replace over actual PAT-only stdio, including unknown-name repository creation,
 replacement clearing, permission rejection, checked no-ops and cached pages over
 55 labels. See the [assignment contract](issue-labels.md).
+
+Core `changes` also verifies creation metadata through actual PAT-only stdio:
+Issue milestone/assignees/labels, ignored GUEST metadata with a captured creation
+ID, and draft PR creation/get/list with true/false/default values. Reference
+validation failures must not create Issues. See the
+[creation contract](creation-metadata.md).

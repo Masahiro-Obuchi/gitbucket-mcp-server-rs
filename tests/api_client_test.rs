@@ -625,6 +625,7 @@ async fn test_create_issue() {
         .await;
 
     let body = gitbucket_mcp_server::models::issue::CreateIssue {
+        milestone: None,
         title: "New issue".to_string(),
         body: None,
         labels: None,
@@ -1022,6 +1023,7 @@ async fn test_create_pull_request() {
         .await;
 
     let body = gitbucket_mcp_server::models::pull_request::CreatePullRequest {
+        draft: None,
         title: "New PR".to_string(),
         head: "feature".to_string(),
         base: "main".to_string(),

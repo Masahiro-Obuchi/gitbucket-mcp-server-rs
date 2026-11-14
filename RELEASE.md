@@ -2,6 +2,23 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 creation metadata
+
+- Add optional milestone to create_issue and draft to create_pull_request.
+  Keep 42 tools (21 reads / 21 writes); both profiles use PAT-only REST.
+- Preflight supplied Issue reference names/IDs; verify supplied assignees,
+  labels and milestone after one POST. Verify explicit PR draft true/false.
+  Do not infer unobserved arrays/flags or retry a creation after verification fails.
+- Capture the created number before verification. GitBucket can ignore Issue
+  metadata for callers without developer permission after creating the Issue;
+  failure evidence locates the existing resource when its number is known.
+- Public Rust CreateIssue / CreatePullRequest literals must supply the new
+  milestone / draft Option fields. Their JSON deserializers now reject unknown
+  fields; unsupported PR creation metadata is not silently accepted.
+- Core actual stdio acceptance covers open/closed milestone assignment,
+  multiple assignees, ignored GUEST metadata, explicit empty arrays, draft
+  true/false/default and get/list observations. See [the contract](docs/creation-metadata.md).
+
 ## Unreleased P15 Issue/PR label assignments
 
 - Add list_issue_labels, add_issue_labels, remove_issue_label and

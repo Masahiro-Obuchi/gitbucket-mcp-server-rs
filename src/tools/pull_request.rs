@@ -55,6 +55,10 @@ pub struct GetPullRequestParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreatePullRequestParams {
+    #[schemars(
+        description = "Create as draft (true) or ready (false). Omitted uses GitBucket default false; explicit values are verified after one POST"
+    )]
+    pub draft: Option<bool>,
     #[schemars(description = "Repository owner")]
     pub owner: String,
     #[schemars(description = "Repository name")]
@@ -200,7 +204,7 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "Create a new pull request in a GitBucket repository",
+        description = "Create a pull request, optionally draft. Explicit draft state is verified after one POST; verification errors retain the created PR number. Inspect that target before retrying",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -233,6 +237,7 @@ impl GitBucketMcpServer {
         };
 
         let body = CreatePullRequest {
+            draft: params.draft,
             title,
             head,
             base,
@@ -427,6 +432,7 @@ mod tests {
 
         let result = server
             .create_pull_request(Parameters(CreatePullRequestParams {
+                draft: None,
                 owner: "owner".to_string(),
                 repo: "repo".to_string(),
                 title: "Title".to_string(),
@@ -510,6 +516,7 @@ mod tests {
 
         let result = server
             .create_pull_request(Parameters(CreatePullRequestParams {
+                draft: None,
                 owner: " owner ".to_string(),
                 repo: " repo ".to_string(),
                 title: "  Add feature  ".to_string(),

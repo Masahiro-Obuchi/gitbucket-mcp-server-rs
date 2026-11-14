@@ -253,3 +253,23 @@ repository definitions before deciding on another write: a prefix and newly
 created definitions can survive a failed batch. There is no retry or rollback.
 `list_issue_labels` follows the standard bounded pagination contract; cached
 continuations may predate subsequent writes or permission changes.
+
+## Creation metadata
+
+`create_issue` accepts optional `milestone` (an existing repository milestone
+number), `assignees` and `labels`. Assignees are trimmed identifiers; labels are
+exact existing definitions, unlike assignment add/replace which can create new
+definitions. Invalid/missing references are checked before POST. Developer
+permission is needed to apply nonempty metadata: other readable users may create
+the Issue while GitBucket ignores metadata. The server verifies supplied fields
+after one POST and captures the created number before verification. A failure
+can leave that Issue; inspect `operation.target.number` and field evidence before
+deciding on another write. Do not blindly retry or undo a creation.
+
+`create_pull_request` accepts optional `draft` true/false, verified after POST.
+Omitting it uses the upstream ready default. Get/list preserve draft values,
+including false; null stays unknown. PR creation assignees/milestone and draft/
+assignment updates are not exposed by these schemas. Do not send unsupported
+fields or emulate them with follow-up mutations without a separate user request.
+Explicit empty arrays differ from omitted/unobserved metadata. All of these
+operations are PAT-only in either profile; read-only MCP mode rejects creation.

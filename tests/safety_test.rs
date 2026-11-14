@@ -91,6 +91,7 @@ async fn invalid_identifiers_never_reach_any_http_target() {
                     bad,
                     "repo",
                     &CreateIssue {
+                        milestone: None,
                         title: "test".into(),
                         body: None,
                         assignees: None,

@@ -53,6 +53,10 @@ pub struct GetIssueParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateIssueParams {
+    #[schemars(
+        description = "Existing repository milestone number, 1..2147483647; supplied creation metadata is verified after one POST"
+    )]
+    pub milestone: Option<u64>,
     #[schemars(description = "Repository owner")]
     pub owner: String,
     #[schemars(description = "Repository name")]
@@ -61,9 +65,13 @@ pub struct CreateIssueParams {
     pub title: String,
     #[schemars(description = "Issue body/description")]
     pub body: Option<String>,
-    #[schemars(description = "Label names to assign")]
+    #[schemars(
+        description = "Existing repository label names; exact names are retained and checked before creation"
+    )]
     pub labels: Option<Vec<String>>,
-    #[schemars(description = "Usernames to assign")]
+    #[schemars(
+        description = "Account usernames to assign; trimmed identifiers, distinct and checked before creation; requires developer permission"
+    )]
     pub assignees: Option<Vec<String>>,
 }
 
@@ -221,7 +229,7 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "Create a new issue in a GitBucket repository",
+        description = "Create one issue. Existing labels, assignee accounts and milestone are checked before POST; supplied metadata is verified afterward. Assignment needs developer permissions; failed verification can leave a created Issue, so inspect the returned target before retrying",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -245,12 +253,29 @@ impl GitBucketMcpServer {
             Err(err) => return validation_error(err),
         };
 
+        let assignees = match params
+            .assignees
+            .map(|names| {
+                names
+                    .into_iter()
+                    .map(|name| required_trimmed(&name, "assignees"))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()
+        {
+            Ok(names) => names,
+            Err(err) => return validation_error(err),
+        };
         let body = CreateIssue {
+            milestone: params.milestone,
             title,
             body: params.body,
             labels: params.labels,
-            assignees: params.assignees,
+            assignees,
         };
+        if let Err(err) = crate::api::creation::validate_issue(&body) {
+            return from_gb_error(err);
+        }
         match self.client.create_issue(&owner, &repo, &body).await {
             Ok(issue) => success(&issue),
             Err(e) => from_gb_error(e),
@@ -676,6 +701,7 @@ mod tests {
 
         let result = server
             .create_issue(Parameters(CreateIssueParams {
+                milestone: None,
                 owner: " owner ".to_string(),
                 repo: " repo ".to_string(),
                 title: "  New issue  ".to_string(),

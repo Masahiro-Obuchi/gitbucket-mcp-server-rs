@@ -36,8 +36,11 @@ pub struct IssuePullRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateIssue {
     pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,6 +104,7 @@ mod tests {
     #[test]
     fn test_serialize_create_issue() {
         let create = CreateIssue {
+            milestone: None,
             title: "New bug".to_string(),
             body: Some("Description here".to_string()),
             labels: Some(vec!["bug".to_string()]),
