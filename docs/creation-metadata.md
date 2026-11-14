@@ -1,8 +1,11 @@
 # Creation metadata (P15-4a)
 
-This unit extends two existing tools. Counts remain 42 tools: 21 reads and 21
-writes. Both profiles use PAT-only REST. There are no new runtime dependencies,
-configuration values, fallback routes or follow-up business mutations.
+This creation unit extended two existing tools, keeping the then-current count
+of 42 tools (21 reads / 21 writes). [P15-4b](issue-milestones.md) adds two separate
+milestone assignment tools, bringing the current total to 44.
+
+Creation operations use PAT-only REST in both profiles. This unit adds no runtime
+dependencies, configuration values, fallback routes or follow-up mutations.
 
 | Tool | Optional creation fields | Verification |
 | --- | --- | --- |
@@ -37,8 +40,9 @@ observation. Existing merge preflight rejects drafts.
 
 PR creation does not expose assignees, milestone or maintainer_can_modify. The
 verified controller does not apply those fields (even though its request type
-mentions maintainer_can_modify). Issue/PR assignment updates and draft state
-updates require a separate operation contract and PR. Unknown fields are rejected
+mentions maintainer_can_modify). Issue/PR milestone updates use the separate
+[set/clear contract](issue-milestones.md). Assignee and draft state updates
+require a future operation contract and PR. Unknown fields are rejected
 by MCP schemas and by the two public Rust creation request deserializers.
 
 ## Stored observations and failures

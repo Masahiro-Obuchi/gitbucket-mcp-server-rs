@@ -377,6 +377,31 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn set_issue_milestone<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+        _milestone_number: u64,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store milestone assignments".into(),
+            ))
+        })
+    }
+    fn clear_issue_milestone<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _issue_number: u64,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store milestone assignments".into(),
+            ))
+        })
+    }
     fn list_pull_request_commits<'a>(
         &'a self,
         _owner: &'a str,
