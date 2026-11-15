@@ -195,8 +195,8 @@ successful partial traversal. API lists retain their Vec-returning contracts.
 - Tools provide readOnly/destructive/idempotent/openWorld annotations as hints.
   List/get tools are read-only; create/comment/fork tools are additive;
   update/delete/replace/remove/merge and milestone set/clear tools are destructive.
-  Reads, removals and milestone set/clear have idempotent hints; other writes
-  conservatively do not. All tools interact with external data.
+  Reads, removals, milestone set/clear and assignee updates have idempotent hints;
+  other writes conservatively do not. All tools interact with external data.
 - `GITBUCKET_READ_ONLY=true` registers only the 21 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
   The default is false; this env-only setting accepts only true/false. Rust server
