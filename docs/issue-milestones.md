@@ -1,6 +1,7 @@
 # Issue/PR milestone assignments (P15-4b)
 
-This unit adds two tools, for 44 tools total: 21 reads and 23 writes.
+This unit added two tools, bringing its count to 44. With
+[assignee updates](issue-assignees.md), the current total is 47: 21 reads / 26 writes.
 
 | Tool | Required arguments after owner/repo | Result |
 | --- | --- | --- |
@@ -93,8 +94,8 @@ official versions. Source files and Git blobs:
 has no update implementation;
 [ApiPullRequestControllerBase.scala](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala)
 passes only title/body/state/base to its update service. Assignment creation is
-the separate [P15-4a contract](creation-metadata.md). Assignee updates and draft
-transitions remain future units; they are not silently added to existing schemas.
+the separate [P15-4a contract](creation-metadata.md). Assignee updates use their [separate tools](issue-assignees.md). Draft transitions
+remain a future unit; they are not silently added to existing schemas.
 
 GitBucketApi gains two required methods mirroring the tools and returning Issue.
 Custom adapters must implement both; there are no default compatibility methods,

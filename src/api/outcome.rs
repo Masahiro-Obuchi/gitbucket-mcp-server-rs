@@ -28,7 +28,7 @@ struct Progress {
 #[derive(Clone)]
 pub(crate) struct Step {
     operation: Operation,
-    fields: Vec<&'static str>,
+    fields: Vec<String>,
 }
 pub(crate) struct Attempt {
     step: Step,
@@ -41,7 +41,7 @@ impl Operation {
         name: &'static str,
         target: OperationTarget,
         route: Route,
-        fields: &[(&'static str, bool)],
+        fields: &[(&str, bool)],
     ) -> Self {
         Self(Arc::new(Mutex::new(Progress {
             outcome: OperationOutcome {
@@ -101,14 +101,14 @@ impl Operation {
 
     pub(crate) async fn step<T>(
         &self,
-        fields: &[&'static str],
+        fields: &[&str],
         future: impl Future<Output = Result<T>>,
     ) -> Result<T> {
         ACTIVE_STEP
             .scope(
                 Step {
                     operation: self.clone(),
-                    fields: fields.to_vec(),
+                    fields: fields.iter().map(|field| (*field).to_owned()).collect(),
                 },
                 future,
             )
@@ -155,12 +155,20 @@ impl Operation {
     }
 
     pub(crate) fn identity(&self, actual: u64) -> Result<()> {
+        self.identity_for_fields(actual, &[])
+    }
+
+    /// A later step's foreign response must not erase earlier verified fields.
+    /// Empty fields retain the whole-operation identity check used by callers.
+    pub(crate) fn identity_for_fields(&self, actual: u64, fields: &[&str]) -> Result<()> {
         let mut progress = self.0.lock().expect("operation progress");
         let target = progress.outcome.target.as_mut().expect("service target");
         if actual == 0 || target.number.is_some_and(|number| number != actual) {
             target.observed_number = Some(actual);
             for field in &mut progress.outcome.fields {
-                if field.status != FieldStatus::NotAttempted {
+                if field.status != FieldStatus::NotAttempted
+                    && (fields.is_empty() || fields.contains(&field.field.as_str()))
+                {
                     field.status = FieldStatus::Unknown;
                 }
             }
@@ -249,9 +257,7 @@ pub(crate) fn attempt() -> Option<Attempt> {
                 .outcome
                 .fields
                 .iter()
-                .filter(|field| {
-                    step.fields.is_empty() || step.fields.contains(&field.field.as_str())
-                })
+                .filter(|field| step.fields.is_empty() || step.fields.contains(&field.field))
                 .map(|field| field.field.clone())
                 .collect();
             for name in &names {
@@ -277,7 +283,7 @@ impl Attempt {
         self.rejected = true;
         let mut progress = self.step.operation.0.lock().expect("operation progress");
         for field in &mut progress.outcome.fields {
-            if self.step.fields.is_empty() || self.step.fields.contains(&field.field.as_str()) {
+            if self.step.fields.is_empty() || self.step.fields.contains(&field.field) {
                 field.status = FieldStatus::Rejected;
             }
         }

@@ -32,7 +32,7 @@ fn valid_args(tool: &rmcp::model::Tool) -> Map<String, Value> {
         let field = field.as_str().unwrap();
         let value = if field.ends_with("_number") || field == "comment_id" {
             json!(1)
-        } else if field == "labels" {
+        } else if matches!(field, "labels" | "assignees") {
             json!(["example"])
         } else if field == "color" {
             json!("abcdef")
@@ -475,7 +475,9 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
             || tool.name == "replace_issue_labels"
             || tool.name == "remove_issue_label"
             || tool.name == "set_issue_milestone"
-            || tool.name == "clear_issue_milestone";
+            || tool.name == "clear_issue_milestone"
+            || tool.name == "replace_issue_assignees"
+            || tool.name == "remove_issue_assignee";
         let annotations = tool.annotations.as_ref().expect("every tool has hints");
         assert_eq!(annotations.read_only_hint, Some(read), "{}", tool.name);
         assert_eq!(
@@ -491,6 +493,9 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
                     || tool.name == "remove_issue_label"
                     || tool.name == "set_issue_milestone"
                     || tool.name == "clear_issue_milestone"
+                    || tool.name == "add_issue_assignees"
+                    || tool.name == "replace_issue_assignees"
+                    || tool.name == "remove_issue_assignee"
             ),
             "{}",
             tool.name
@@ -568,6 +573,9 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "remove_issue_label" => direct!(remove_issue_label),
             "set_issue_milestone" => direct!(set_issue_milestone),
             "clear_issue_milestone" => direct!(clear_issue_milestone),
+            "add_issue_assignees" => direct!(add_issue_assignees),
+            "replace_issue_assignees" => direct!(replace_issue_assignees),
+            "remove_issue_assignee" => direct!(remove_issue_assignee),
             "update_issue_comment" => direct!(update_issue_comment),
             "delete_issue_comment" => direct!(delete_issue_comment),
             "create_pull_request" => direct!(create_pull_request),

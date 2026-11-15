@@ -47,6 +47,72 @@ enum Reply {
 }
 
 impl GitBucketWebSession {
+    pub(crate) async fn change_issue_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        username: &str,
+        add: bool,
+    ) -> Result<()> {
+        let url = self.repo_url(
+            owner,
+            repo,
+            &[
+                "issues",
+                &number.to_string(),
+                "assignee",
+                if add { "new" } else { "delete" },
+            ],
+        )?;
+        let request = self
+            .client
+            .post(url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .form(&[("assigneeUserName", username)])
+            .build()
+            .map_err(GbMcpError::from)?;
+        self.check_identity().await?;
+        http::mutation("Issue/PR assignee change", async {
+            let response = self.client.execute(request).await.map_err(GbMcpError::from)?;
+            let status = response.status();
+            if status != StatusCode::OK {
+                if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    return Err(GbMcpError::Api {
+                        status: status.as_u16(),
+                        message: "GitBucket rejected the assignee change".into(),
+                    });
+                }
+                // Native hooks/timeline work can precede a failed insertion.
+                // Unexpected replies are not proof that nothing was applied.
+                return Err(GbMcpError::Other("Unexpected assignee change response; inspect the Issue/PR before another write. No redirect or replay was attempted".into()));
+            }
+            let page_url = response.url().clone();
+            let body = http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML").await?;
+            web_html::check_page(&body, &page_url, &self.api_base)?;
+            Ok(())
+        }).await
+    }
+
+    pub(crate) async fn issue_assignment_state(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        is_pr: bool,
+    ) -> Result<(std::collections::BTreeSet<String>, bool)> {
+        let url = self.repo_url(
+            owner,
+            repo,
+            &[if is_pr { "pull" } else { "issues" }, &number.to_string()],
+        )?;
+        let body = self.verification_read(url, true).await?;
+        Ok((
+            web_html::issue_assignees(&body, &Url::parse(&self.base_url)?)?,
+            web_html::issue_has_no_milestone(&body)?,
+        ))
+    }
+
     /// Native AJAX assignment endpoint: one cookie-only POST, no redirects or replay.
     pub(crate) async fn set_issue_milestone(
         &self,

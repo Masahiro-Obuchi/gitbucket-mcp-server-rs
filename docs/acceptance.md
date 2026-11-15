@@ -149,3 +149,8 @@ The core changes fixture also invokes the P15-4b Issue/PR milestone assignment
 probe: scoped open/closed milestone set/clear, retained raw content/assignments,
 GUEST permissions/no-ops, refused profiles/credentials/access, missing/foreign
 references and preserved definitions. See [the contract](issue-milestones.md).
+
+The same core fixture invokes P15-4c assignee add/remove/replace checks, including
+multiple individual accounts, GUEST/non-collaborator assignments, retained raw
+content/milestone/PR metadata, no-ops/refusals and a real suspended-account
+relation hidden from REST. See [the contract](issue-assignees.md).

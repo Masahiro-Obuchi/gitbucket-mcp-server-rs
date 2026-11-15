@@ -8,6 +8,75 @@ fn selector(value: &str) -> Selector {
     Selector::parse(value).expect("static HTML selector")
 }
 
+/// The native sidebar includes raw assignment rows even when REST omits a
+/// disabled/deleted account. Require a canonical profile link in every row.
+pub(super) fn issue_assignees(
+    body: &str,
+    web_base: &Url,
+) -> Result<std::collections::BTreeSet<String>> {
+    let invalid = || {
+        GbMcpError::Other(
+            "Could not observe complete canonical Issue/PR assignees in GitBucket HTML".into(),
+        )
+    };
+    let html = Html::parse_document(body);
+    let markers: Vec<_> = html.select(&selector("#label-assigned")).collect();
+    if markers.len() != 1 {
+        return Err(invalid());
+    }
+    let marker = markers[0];
+    if marker.children().any(|node| {
+        node.value()
+            .as_text()
+            .is_some_and(|text| !text.trim().is_empty())
+    }) {
+        return Err(invalid());
+    }
+    let children: Vec<_> = marker
+        .children()
+        .filter_map(scraper::ElementRef::wrap)
+        .collect();
+    if children.len() == 1
+        && children[0].value().name() == "span"
+        && children[0].value().classes().any(|c| c == "muted")
+        && children[0].value().classes().any(|c| c == "small")
+        && children[0].text().collect::<String>().trim() == "No one assigned"
+        && children[0].select(&selector("*")).next().is_none()
+    {
+        return Ok(std::collections::BTreeSet::new());
+    }
+    if children.is_empty() || children.iter().any(|row| row.value().name() != "div") {
+        return Err(invalid());
+    }
+    let prefix = format!("{}/", web_base.path().trim_end_matches('/'));
+    let mut names = std::collections::BTreeSet::new();
+    for row in children {
+        let links: Vec<_> = row
+            .select(&selector("a.username.strong.small[href]"))
+            .collect();
+        if links.len() != 1 || row.select(&selector("div")).next().is_some() {
+            return Err(invalid());
+        }
+        let url = web_base
+            .join(links[0].value().attr("href").ok_or_else(invalid)?)
+            .map_err(|_| invalid())?;
+        if url.origin() != web_base.origin()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(invalid());
+        }
+        let name = url.path().strip_prefix(&prefix).ok_or_else(invalid)?;
+        super::url_safety::identifier(name, "username").map_err(|_| invalid())?;
+        if !names.insert(name.to_owned()) {
+            return Err(invalid());
+        }
+    }
+    Ok(names)
+}
+
 /// An absent REST milestone is unknown; this native marker positively observes clear.
 pub(super) fn issue_has_no_milestone(body: &str) -> Result<bool> {
     let html = Html::parse_document(body);
@@ -156,6 +225,49 @@ pub(super) fn milestone_list(body: &str, new_url: &Url) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn assignee_sidebar_uses_canonical_profile_links_with_context_and_display_names() {
+        for context in ["", "/oidc-context", "/team/api/v3"] {
+            let base = Url::parse(&format!("https://example.test{context}")).unwrap();
+            let html = format!("<span id='label-assigned'><div><a href='{context}/alice'><img></a><a class='username strong small' href='{context}/alice'>表示名 &amp; alias</a></div></span>");
+            assert_eq!(
+                issue_assignees(&html, &base).unwrap(),
+                ["alice".to_owned()].into_iter().collect()
+            );
+            assert!(issue_assignees(
+                &html.replace(&format!("{context}/alice"), "https://foreign.test/alice"),
+                &base
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn assignee_sidebar_rejects_ambiguous_accounts_links_and_absent_empty_markers() {
+        let base = Url::parse("https://example.test/context").unwrap();
+        let row = "<div><a class='username strong small' href='/context/alice'>Alice</a></div>";
+        for rows in [
+            format!("{row}{row}"),
+            "<div>Disabled account</div>".into(),
+            "".into(),
+            "<div><a class='username strong small' href='/context/alice?other=1'>Alice</a></div>"
+                .into(),
+            "<div><a class='username strong small' href='/other/alice'>Alice</a></div>".into(),
+            "<div><a class='username strong small' href='/context/%2E%2E'>Alice</a></div>".into(),
+            "<span class='muted small'>No one assigned</span><div>Hidden account</div>".into(),
+        ] {
+            assert!(
+                issue_assignees(&format!("<span id='label-assigned'>{rows}</span>"), &base)
+                    .is_err()
+            );
+        }
+        assert!(issue_assignees(
+            "<span id='label-assigned'><span class='muted small'>No one assigned</span></span>",
+            &base
+        )
+        .unwrap()
+        .is_empty());
+    }
     fn issues() -> Url {
         Url::parse("https://example.test/team/owner/repo/issues").unwrap()
     }

@@ -11,6 +11,39 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn add_issue_assignees<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a crate::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async move {
+            GitBucketClient::add_issue_assignees(self, owner, repo, number, change).await
+        })
+    }
+    fn replace_issue_assignees<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a crate::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async move {
+            GitBucketClient::replace_issue_assignees(self, owner, repo, number, change).await
+        })
+    }
+    fn remove_issue_assignee<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        username: &'a str,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async move {
+            GitBucketClient::remove_issue_assignee(self, owner, repo, number, username).await
+        })
+    }
     fn set_issue_milestone<'a>(
         &'a self,
         owner: &'a str,

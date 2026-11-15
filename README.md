@@ -154,7 +154,7 @@ read this environment variable. This mode controls the MCP server's tools;
 standalone `GitBucketClient` calls use the client's own capabilities.
 
 All tools advertise read-only, destructive, idempotent and open-world hints.
-Reads, deletions and the verified milestone set/clear no-ops are marked
+Reads, deletions and the verified milestone/assignee changes are marked
 idempotent; other writes conservatively are not,
 because updates can emit hooks or notifications. Updates, deletions and merge
 are destructive hints; creates/comments/forks are additive hints. Annotations
@@ -166,7 +166,7 @@ are client hints, while read-only access is enforced independently by the server
 
 | Value | Behavior |
 | --- | --- |
-| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts and Issue/PR milestone assignment updates return `unsupported_error` before HTTP. |
+| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts and Issue/PR milestone/assignee updates return `unsupported_error` before HTTP. |
 | `standard` | Use the common standard GitBucket contract verified on 4.44.0 and 4.48.0. Web routes require both web credentials. |
 
 Under `standard`, operations select the following routes:
@@ -178,6 +178,7 @@ Under `standard`, operations select the following routes:
 | PR review-comment list/get | Web conversation page; HTML and partial coverage only |
 | PR review-comment creation | One Web POST after pinned diff/head checks, followed by own raw/commit/PR verification |
 | Ordinary Issue update | Web; the standard REST Issue PATCH is unavailable |
+| Issue/PR assignee add/remove/replace | Web; complete REST/sidebar observations, including no-ops |
 | Issue/PR milestone set/clear | Web; requires standard profile, with reference and stored-field verification |
 | Label same-name color change | Web; the standard REST implementation rejects its own existing name with 422 |
 | Milestone create/update with REST-valid title | REST |
@@ -468,7 +469,7 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 
 ## Available Tools
 
-The server exposes 44 tools: 21 reads and 23 writes.
+The server exposes 47 tools: 21 reads and 26 writes.
 
 ### Repository
 
@@ -490,11 +491,37 @@ The server exposes 44 tools: 21 reads and 23 writes.
 | `update_issue` | Update issue (state, title, body) |
 | `set_issue_milestone` | Set an existing repository milestone on an Issue or PR |
 | `clear_issue_milestone` | Clear an Issue/PR assignment while keeping the milestone definition |
+| `add_issue_assignees` | Add missing individual assignees to an Issue or PR |
+| `remove_issue_assignee` | Remove one individual assignee, retaining others |
+| `replace_issue_assignees` | Replace all individual assignees; [] clears assignments |
 | `list_issue_comments` | List comments on an issue |
 | `add_issue_comment` | Add a comment to an issue |
 | `get_issue_comment` | Get an ordinary Issue/PR conversation comment by comment ID |
 | `update_issue_comment` | Replace its full body and verify the stored text and author |
 | `delete_issue_comment` | Delete it and verify a subsequent 404 |
+
+### Issue/PR assignee updates
+
+Use `add_issue_assignees(owner, repo, issue_number, assignees)` to add missing
+individual account logins, `remove_issue_assignee(..., username)` to unassign one,
+and `replace_issue_assignees(..., assignees)` to replace the complete set. Replace
+with `[]` clears assignments; add requires a nonempty array. Identifiers are
+trimmed and must be distinct valid existing individual logins. PRs use their
+number as `issue_number`. Success returns the complete observed Issue model.
+
+These require the `standard` profile and matching PAT/Web credentials, including
+matching no-ops. Actual changes need developer permission. REST hides suspended
+account assignments, so the native sidebar must independently enumerate the
+same complete set; unknown/hidden rows cannot become an empty set. Missing,
+Organization/group and unobserved account types are not accepted.
+
+The service adds missing people before removing extras, verifying each one-person
+POST, the full intermediate set and retained title/raw body/state/labels/milestone.
+A batch can stop after a successful prefix; errors retain the target and
+`assignee.LOGIN` evidence. Re-read before deciding on another write. There is no
+retry, rollback, redirect or fallback. Read-only MCP blocks all three tools.
+See [the assignee contract](docs/issue-assignees.md) for account scope, permissions,
+observation limits and interruption behavior.
 
 ### Issue/PR milestone assignment updates
 

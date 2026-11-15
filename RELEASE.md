@@ -2,10 +2,23 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 Issue/PR assignee updates
+
+- Add add_issue_assignees, remove_issue_assignee and replace_issue_assignees for
+  individual accounts on Issues/PRs. There are 47 tools (21 reads / 26 writes).
+- Require standard profile and matching PAT/Web credentials even for no-ops;
+  reconcile complete REST/sidebar observations to protect hidden suspended-account
+  relations. Add missing accounts before removing extras, verifying every step
+  and preserved raw content/state/labels/milestone.
+- Preserve target and per-login progress through partial failure/deadline/cancel;
+  no retry, redirect, fallback or rollback. Custom GitBucketApi adapters implement
+  three new required methods using AssigneeNames, without compatibility defaults.
+  See [the contract](docs/issue-assignees.md).
+
 ## Unreleased P15 Issue/PR milestone assignment updates
 
 - Add set_issue_milestone and clear_issue_milestone for Issue/PR assignments,
-  bringing the server to 44 tools (21 reads / 23 writes). Milestone definitions
+  bringing that unit to 44 tools (21 reads / 23 writes). Milestone definitions
   are preserved. The standard profile is required; rest-only refuses before HTTP.
 - Check target/reference identity, use one cookie-only Web POST and verify
   stored milestone plus retained raw content, state, labels and assignees.
