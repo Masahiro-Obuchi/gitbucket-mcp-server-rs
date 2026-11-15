@@ -472,6 +472,7 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
         let destructive = tool.name.starts_with("update_")
             || tool.name.starts_with("delete_")
             || tool.name == "merge_pull_request"
+            || tool.name == "mark_pull_request_ready"
             || tool.name == "replace_issue_labels"
             || tool.name == "remove_issue_label"
             || tool.name == "set_issue_milestone"
@@ -491,6 +492,7 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
             Some(
                 read || tool.name.starts_with("delete_")
                     || tool.name == "remove_issue_label"
+                    || tool.name == "mark_pull_request_ready"
                     || tool.name == "set_issue_milestone"
                     || tool.name == "clear_issue_milestone"
                     || tool.name == "add_issue_assignees"
@@ -581,6 +583,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "create_pull_request" => direct!(create_pull_request),
             "update_pull_request" => direct!(update_pull_request),
             "merge_pull_request" => direct!(merge_pull_request),
+            "mark_pull_request_ready" => direct!(mark_pull_request_ready),
             "add_pull_request_comment" => direct!(add_pull_request_comment),
             "add_pull_request_review_comment" => direct!(add_pull_request_review_comment),
             name => panic!("add a direct-handler check for {name}"),

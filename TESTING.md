@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 47 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 48 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 26 writes, call each through MCP
+skips the content form. Read-only tests hide all 27 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 47 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 48 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -674,3 +674,23 @@ exact Markdown and retained label/milestone/PR fields, permission refusals,
 PAT-only/rest-only/readonly rejection, missing references/targets and a real
 suspended-account hidden relation. Unsuspending the fixture proves the refused
 clear/no-op did not delete that relation. See [the contract](docs/issue-assignees.md).
+
+## Pull request ready transition (P15-4d)
+
+`cargo test --locked --test pull_request_ready_test` covers one empty cookie-only
+POST with independent false/preservation checks, already-ready PAT-only and
+concurrent-ready no-ops, invalid/missing/foreign/incomplete targets, closed/merged/
+unknown flags, final pre-write revision/content changes, credentials/session
+failures, ignored writes, partial/unknown observations, unexpected identity,
+native POST versus post-GET 404, redirect/refusal/non-replay, strict reverse-flag
+rejection, readonly enforcement, and deadline/cancel target+head retention.
+Existing schema/annotation/direct-handler tests cover the new tool as well.
+
+Core acceptance invokes `probe_pr_ready.py` in the changes fixture. Both official
+versions check actual stdio readiness for same-repo and same-name fork PRs,
+head-developer versus base-owner/GUEST permission, retained raw body/assignments/
+milestone/revisions, no change to the base Git tip, draft merge refusal, repeated
+PAT-only no-op, unsupported profiles/credentials/access, ignored native REST
+draft=true and closed/merged rejection. See [the contract](docs/pull-request-ready.md).
+Fork fixture setup uses the native Web form on both versions because 4.44.0 has
+no REST fork-creation endpoint; it does not extend the product fork tool.

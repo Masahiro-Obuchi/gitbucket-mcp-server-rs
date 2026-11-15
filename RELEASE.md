@@ -2,10 +2,24 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 pull request readiness
+
+- Add mark_pull_request_ready for the native one-way draft-to-ready transition.
+  There are 48 tools (21 reads / 27 writes). Standard profile is required;
+  actual changes need matching PAT/Web credentials and head-repository developer
+  permission. Already ready is a verified PAT-only no-op.
+- Recheck content/revisions before one empty cookie-only POST; verify draft=false
+  and preserved fields afterward. Retain target/head/evidence on uncertainty,
+  without retry, redirect, reverse toggle, merge, rollback or atomic-head claims.
+- Custom GitBucketApi adapters implement one new required method returning the
+  existing PullRequest type. No compatibility defaults or new settings/models/
+  dependencies. See [the contract](docs/pull-request-ready.md).
+
 ## Unreleased P15 Issue/PR assignee updates
 
 - Add add_issue_assignees, remove_issue_assignee and replace_issue_assignees for
-  individual accounts on Issues/PRs. There are 47 tools (21 reads / 26 writes).
+  individual accounts on Issues/PRs. That unit brought the count to 47 tools
+  (21 reads / 26 writes).
 - Require standard profile and matching PAT/Web credentials even for no-ops;
   reconcile complete REST/sidebar observations to protect hidden suspended-account
   relations. Add missing accounts before removing extras, verifying every step

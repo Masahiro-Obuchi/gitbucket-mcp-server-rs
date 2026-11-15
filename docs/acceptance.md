@@ -154,3 +154,8 @@ The same core fixture invokes P15-4c assignee add/remove/replace checks, includi
 multiple individual accounts, GUEST/non-collaborator assignments, retained raw
 content/milestone/PR metadata, no-ops/refusals and a real suspended-account
 relation hidden from REST. See [the contract](issue-assignees.md).
+
+The core fixture also exercises P15-4d one-way PR readiness on same-repository
+and fork PRs, head-repository permission checks, retained content/metadata/Git
+tip, PAT-only no-ops, unsupported reverse updates and closed/merged rejection.
+See [the contract](pull-request-ready.md).

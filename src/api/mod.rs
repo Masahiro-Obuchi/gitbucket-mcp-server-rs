@@ -30,6 +30,7 @@ pub(crate) mod outcome;
 pub mod profile;
 pub mod pull_request;
 mod pull_request_merge;
+pub(crate) mod pull_request_ready;
 mod pull_request_update;
 pub mod repository;
 pub mod review_comment;
@@ -44,6 +45,12 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn mark_pull_request_ready<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, PullRequest>;
     fn add_issue_assignees<'a>(
         &'a self,
         owner: &'a str,
