@@ -144,3 +144,8 @@ Issue milestone/assignees/labels, ignored GUEST metadata with a captured creatio
 ID, and draft PR creation/get/list with true/false/default values. Reference
 validation failures must not create Issues. See the
 [creation contract](creation-metadata.md).
+
+The core changes fixture also invokes the P15-4b Issue/PR milestone assignment
+probe: scoped open/closed milestone set/clear, retained raw content/assignments,
+GUEST permissions/no-ops, refused profiles/credentials/access, missing/foreign
+references and preserved definitions. See [the contract](issue-milestones.md).

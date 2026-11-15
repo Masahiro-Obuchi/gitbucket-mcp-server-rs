@@ -8,6 +8,32 @@ fn selector(value: &str) -> Selector {
     Selector::parse(value).expect("static HTML selector")
 }
 
+/// An absent REST milestone is unknown; this native marker positively observes clear.
+pub(super) fn issue_has_no_milestone(body: &str) -> Result<bool> {
+    let html = Html::parse_document(body);
+    let markers: Vec<_> = html.select(&selector("#label-milestone")).collect();
+    if markers.len() != 1 {
+        return Err(GbMcpError::Other(
+            "Could not uniquely observe the Issue/PR milestone marker".into(),
+        ));
+    }
+    let marker = markers[0];
+    let empty: Vec<_> = marker.select(&selector("span.muted.small")).collect();
+    if empty.len() == 1
+        && empty[0].text().collect::<String>().trim() == "No milestone"
+        && marker.text().collect::<String>().trim() == "No milestone"
+        && marker.select(&selector("a")).next().is_none()
+    {
+        return Ok(true);
+    }
+    if marker.select(&selector("a[href]")).count() == 1 && empty.is_empty() {
+        return Ok(false);
+    }
+    Err(GbMcpError::Other(
+        "GitBucket did not expose an unambiguous milestone state".into(),
+    ))
+}
+
 pub(super) fn check_page(body: &str, page_url: &Url, api_base: &Url) -> Result<()> {
     let html = Html::parse_document(body);
     let web_path = api_base

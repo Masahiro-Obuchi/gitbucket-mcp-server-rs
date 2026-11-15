@@ -47,7 +47,64 @@ enum Reply {
 }
 
 impl GitBucketWebSession {
-    async fn review_read(&self, url: Url, html: bool) -> Result<String> {
+    /// Native AJAX assignment endpoint: one cookie-only POST, no redirects or replay.
+    pub(crate) async fn set_issue_milestone(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        milestone: Option<u64>,
+    ) -> Result<()> {
+        let url = self.repo_url(owner, repo, &["issues", &number.to_string(), "milestone"])?;
+        let request = self
+            .client
+            .post(url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .form(&[(
+                "milestoneId",
+                milestone.map(|n| n.to_string()).unwrap_or_default(),
+            )])
+            .build()
+            .map_err(GbMcpError::from)?;
+        self.check_identity().await?;
+        http::mutation("Issue/PR milestone assignment", async {
+            let response = self.client.execute(request).await.map_err(GbMcpError::from)?;
+            let status = response.status();
+            if status != StatusCode::OK {
+                // This controller updates storage BEFORE looking up the result
+                // milestone. A 404 can therefore follow a saved assignment.
+                // Only the authenticator's 401/403 are definite rejections.
+                if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    return Err(GbMcpError::Api { status: status.as_u16(), message: "GitBucket rejected the milestone assignment".into() });
+                }
+                return Err(GbMcpError::Other("Unexpected milestone assignment response; the effect is unknown and no redirect or replay was attempted".into()));
+            }
+            let page_url = response.url().clone();
+            let body = http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML").await?;
+            // Set returns a progress fragment; clear returns an empty HTTP 200.
+            // Neither is proof of storage. The service performs independent reads.
+            web_html::check_page(&body, &page_url, &self.api_base)?;
+            Ok(())
+        }).await
+    }
+
+    pub(crate) async fn issue_has_no_milestone(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        is_pr: bool,
+    ) -> Result<bool> {
+        let url = self.repo_url(
+            owner,
+            repo,
+            &[if is_pr { "pull" } else { "issues" }, &number.to_string()],
+        )?;
+        let body = self.verification_read(url, true).await?;
+        web_html::issue_has_no_milestone(&body)
+    }
+
+    async fn verification_read(&self, url: Url, html: bool) -> Result<String> {
         self.check_identity().await?;
         let response = self
             .client
@@ -59,14 +116,13 @@ impl GitBucketWebSession {
         if response.status().is_redirection() {
             self.location(&response)?;
             return Err(GbMcpError::Authentication(
-                "GitBucket redirected a review verification read; no redirect was followed",
+                "GitBucket redirected a verification read; no redirect was followed",
             ));
         }
         if response.status() != StatusCode::OK {
             return Err(GbMcpError::Api {
                 status: response.status().as_u16(),
-                message: "GitBucket did not return the requested review verification resource"
-                    .into(),
+                message: "GitBucket did not return the requested verification resource".into(),
             });
         }
         if !html
@@ -96,7 +152,7 @@ impl GitBucketWebSession {
         base: &str,
         head: &str,
     ) -> Result<String> {
-        self.review_read(
+        self.verification_read(
             self.repo_url(owner, repo, &["patch", &format!("{base}...{head}")])?,
             false,
         )
@@ -109,14 +165,14 @@ impl GitBucketWebSession {
         repo: &str,
         commit: &str,
     ) -> Result<String> {
-        self.review_read(self.repo_url(owner, repo, &["commit", commit])?, true)
+        self.verification_read(self.repo_url(owner, repo, &["commit", commit])?, true)
             .await
     }
 
     pub(crate) async fn own_review_body(&self, owner: &str, repo: &str, id: u64) -> Result<String> {
         let mut url = self.repo_url(owner, repo, &["commit_comments", "_data", &id.to_string()])?;
         url.query_pairs_mut().append_pair("dataType", "html");
-        self.review_read(url, true).await
+        self.verification_read(url, true).await
     }
 
     pub(crate) async fn prepare_review_write(&self) -> Result<()> {

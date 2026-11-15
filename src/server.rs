@@ -109,6 +109,7 @@ impl GitBucketMcpServer {
             + Self::tool_router_milestone()
             + Self::tool_router_issue()
             + Self::tool_router_issue_label()
+            + Self::tool_router_issue_milestone()
             + Self::tool_router_pull_request()
             + Self::tool_router_review_comment()
             + Self::tool_router_pull_request_changes();

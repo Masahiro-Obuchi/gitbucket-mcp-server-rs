@@ -430,7 +430,7 @@ async fn mcp_post_and_readonly_direct_calls_respect_the_write_boundary() {
     readonly.cancel().await.unwrap();
     let client = connect(GitBucketMcpServer::new(f.api)).await;
     let tools = client.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 42);
+    assert_eq!(tools.len(), 44);
     let tool = tools
         .iter()
         .find(|t| t.name == "add_pull_request_review_comment")

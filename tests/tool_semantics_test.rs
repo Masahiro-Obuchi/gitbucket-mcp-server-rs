@@ -473,7 +473,9 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
             || tool.name.starts_with("delete_")
             || tool.name == "merge_pull_request"
             || tool.name == "replace_issue_labels"
-            || tool.name == "remove_issue_label";
+            || tool.name == "remove_issue_label"
+            || tool.name == "set_issue_milestone"
+            || tool.name == "clear_issue_milestone";
         let annotations = tool.annotations.as_ref().expect("every tool has hints");
         assert_eq!(annotations.read_only_hint, Some(read), "{}", tool.name);
         assert_eq!(
@@ -484,7 +486,12 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
         );
         assert_eq!(
             annotations.idempotent_hint,
-            Some(read || tool.name.starts_with("delete_") || tool.name == "remove_issue_label"),
+            Some(
+                read || tool.name.starts_with("delete_")
+                    || tool.name == "remove_issue_label"
+                    || tool.name == "set_issue_milestone"
+                    || tool.name == "clear_issue_milestone"
+            ),
             "{}",
             tool.name
         );
@@ -559,6 +566,8 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "add_issue_labels" => direct!(add_issue_labels),
             "replace_issue_labels" => direct!(replace_issue_labels),
             "remove_issue_label" => direct!(remove_issue_label),
+            "set_issue_milestone" => direct!(set_issue_milestone),
+            "clear_issue_milestone" => direct!(clear_issue_milestone),
             "update_issue_comment" => direct!(update_issue_comment),
             "delete_issue_comment" => direct!(delete_issue_comment),
             "create_pull_request" => direct!(create_pull_request),
