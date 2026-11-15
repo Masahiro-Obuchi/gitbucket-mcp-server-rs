@@ -217,12 +217,13 @@ impl GitBucketClient {
             let mut step_expected = current;
             let mut observed = before.clone();
             for (index, item) in delta.iter().enumerate() {
-                operation.step(&["assignees", "title", "body", "state", "labels", "milestone", &item.field],
+                let step_fields = ["assignees", "title", "body", "state", "labels", "milestone", &item.field];
+                operation.step(&step_fields,
                     session.change_issue_assignee(owner, repo, number, &item.name, item.add)).await?;
                 if item.add { step_expected.insert(item.name.clone()); }
                 else { step_expected.remove(&item.name); }
                 observed = self.get_issue(owner, repo, number).await?;
-                operation.identity(observed.number)?;
+                operation.identity_for_fields(observed.number, &step_fields)?;
                 let mut checks = vec![("title", observed.title == before.title), ("state", observed.state == before.state)];
                 let mut missing = false;
                 if let Some(body) = &observed.body { checks.push(("body", Some(body) == before.body.as_ref())); }

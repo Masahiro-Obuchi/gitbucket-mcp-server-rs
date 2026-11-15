@@ -660,8 +660,10 @@ canonical references, missing/group/unknown account types, invalid IDs/logins,
 missing/duplicate observations, full native-sidebar agreement, no-ops, ignored
 writes, unexpected concurrent sets, post-write GET errors, wrong identity,
 POST failures/redirect refusal, cookie expiry, and per-account prefix evidence
-through a later rejection, deadline or cancellation. Shared schema/annotation/
-read-only tests cover all three new tools and their direct handlers. Parser unit
+through a later rejection, identity mismatch, deadline or cancellation. The
+regression checks zero and foreign numbers after the second POST, retaining
+verification of the first account and stopping pending removals. Shared schema,
+annotation and read-only tests cover all three new tools and their direct handlers. Parser unit
 tests cover context paths, display-name independence, foreign/ambiguous links,
 removed-account rows and the explicit empty marker.
 

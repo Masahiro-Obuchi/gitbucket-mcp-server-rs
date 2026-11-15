@@ -82,7 +82,8 @@ use owned field names in the shared progress tracker so evidence survives
 deadline/cancellation and later steps. A verified prefix remains visible as
 partial if a later account fails; an unattempted account remains not_attempted.
 An unexpected response number is recorded separately without replacing the
-intended target.
+intended target. If this happens after a later step, only that step's fields
+become unknown; earlier verified accounts and unattempted changes are retained.
 
 Only native POST 401/403 are definite authenticator rejections. Other unexpected
 statuses (including 404/422/5xx), redirects, malformed/validation/authentication

@@ -155,12 +155,20 @@ impl Operation {
     }
 
     pub(crate) fn identity(&self, actual: u64) -> Result<()> {
+        self.identity_for_fields(actual, &[])
+    }
+
+    /// A later step's foreign response must not erase earlier verified fields.
+    /// Empty fields retain the whole-operation identity check used by callers.
+    pub(crate) fn identity_for_fields(&self, actual: u64, fields: &[&str]) -> Result<()> {
         let mut progress = self.0.lock().expect("operation progress");
         let target = progress.outcome.target.as_mut().expect("service target");
         if actual == 0 || target.number.is_some_and(|number| number != actual) {
             target.observed_number = Some(actual);
             for field in &mut progress.outcome.fields {
-                if field.status != FieldStatus::NotAttempted {
+                if field.status != FieldStatus::NotAttempted
+                    && (fields.is_empty() || fields.contains(&field.field.as_str()))
+                {
                     field.status = FieldStatus::Unknown;
                 }
             }

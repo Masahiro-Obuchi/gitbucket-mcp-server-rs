@@ -65,6 +65,7 @@ struct Options {
     patch: Vec<(&'static str, Value)>,
     missing: Vec<&'static str>,
     get_error_at: Option<(usize, u16)>,
+    get_identity_at: Option<(usize, u64)>,
     delay_at: Option<usize>,
     web_before: Option<String>,
     web_after: Option<String>,
@@ -144,6 +145,11 @@ async fn fixture(before: Value, options: Options) -> Fixture {
                 }
                 for key in &opts.missing {
                     value.as_object_mut().unwrap().remove(*key);
+                }
+            }
+            if let Some((threshold, number)) = opts.get_identity_at {
+                if n >= threshold {
+                    value["number"] = json!(number);
                 }
             }
             let mut reply = ResponseTemplate::new(200).set_body_json(value);
@@ -618,6 +624,38 @@ async fn response_identity_mismatch_preserves_intended_and_observed_numbers() {
     let t = o.target.unwrap();
     assert_eq!(t.number, Some(7));
     assert_eq!(t.observed_number, Some(8));
+}
+
+#[tokio::test]
+async fn later_identity_mismatch_retains_verified_prefix_and_stops_removals() {
+    for number in [0, 8] {
+        let f = fixture(
+            issue(&["alice"]),
+            Options {
+                get_identity_at: Some((2, number)),
+                ..Default::default()
+            },
+        )
+        .await;
+        let o = outcome(
+            f.client()
+                .replace_issue_assignees("owner", "repo", 7, &request(&["bob", "carol"]))
+                .await
+                .unwrap_err(),
+        );
+        assert_eq!(o.status, OutcomeStatus::Partial);
+        assert_eq!(status(&o, "assignee.bob"), FieldStatus::Verified);
+        assert_eq!(status(&o, "assignee.carol"), FieldStatus::Unknown);
+        assert_eq!(status(&o, "assignee.alice"), FieldStatus::NotAttempted);
+        assert_eq!(status(&o, "assignees"), FieldStatus::Unknown);
+        let target = o.target.unwrap();
+        assert_eq!(target.number, Some(7));
+        assert_eq!(target.observed_number, Some(number));
+        assert_eq!(
+            f.posts(),
+            vec![(true, "bob".into()), (true, "carol".into())]
+        );
+    }
 }
 
 #[tokio::test]
