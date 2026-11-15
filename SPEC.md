@@ -237,7 +237,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 44 tools: 21 reads and 23 writes. The standard
+The normal server advertises 47 tools: 21 reads and 26 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -489,7 +489,7 @@ schemas. See [creation-metadata.md](docs/creation-metadata.md).
 model and support both Issue and PR numbers. Set requires an existing scoped
 milestone; clear retains its definition. IDs are positive 32-bit integers.
 Both tools reject unknown arguments and are hidden/blocked in read-only mode.
-There are now 44 tools (21 reads / 23 writes).
+There are now 47 tools (21 reads / 26 writes).
 
 Only the standard profile supports these operations. Rest-only refuses before
 HTTP; no ineffective Issue/PR PATCH is sent. Actual changes use matching PAT/Web
@@ -505,3 +505,32 @@ rejection. IDs and field evidence survive mismatches, read failures and MCP
 interruption. No retry/fallback/rollback or atomicity claim is introduced.
 GitBucketApi gains two required methods with no compatibility defaults. See
 [the complete contract](docs/issue-milestones.md) for sources and limitations.
+
+## Issue/PR assignee updates (P15-4c)
+
+`add_issue_assignees(owner, repo, issue_number, assignees)`,
+`remove_issue_assignee(owner, repo, issue_number, username)` and
+`replace_issue_assignees(owner, repo, issue_number, assignees)` add missing
+individual accounts, remove one, or replace the entire set ([] clears). IDs are
+positive 32-bit integers; MCP trims canonical logins and rejects duplicates.
+The server exposes 47 tools (21 reads / 26 writes). Existing creation/update
+schemas remain unchanged; draft transitions are a future unit.
+
+Only standard is supported. All calls, even no-ops, require matching PAT/Web
+credentials to reconcile complete REST and native-sidebar assignment sets.
+The native REST projection hides suspended accounts; missing/ambiguous rows or
+unknown collections cannot prove empty. Supplied references must be exact active
+individual User accounts, not groups or unknown types. Actual changes need native
+developer permission; readable GUEST no-ops are allowed. Read-only mode hides
+and rejects every new write before HTTP.
+
+Add missing accounts first, then remove extras, in canonical order. Each step
+sends one cookie-only AJAX POST after identity verification, then independently
+checks the Issue identity, complete intermediate set, sidebar and retained raw
+content/state/labels/milestone. Mismatches or incomplete observations stop later
+steps. Ownership of progress stays with the operation service; dynamic per-login
+field names preserve verified-prefix evidence through later rejection, unknown
+result, deadline or cancellation. Shared transport still marks actual attempts.
+No retry, redirect, fallback, rollback or atomicity guarantee is introduced.
+GitBucketApi gains three required methods and the AssigneeNames request type.
+See [the contract](docs/issue-assignees.md) for source evidence and limitations.

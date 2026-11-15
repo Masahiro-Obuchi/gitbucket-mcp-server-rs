@@ -62,6 +62,7 @@ Issue tools:
 - `create_issue`
 - `update_issue`
 - `set_issue_milestone`, `clear_issue_milestone`
+- `add_issue_assignees`, `remove_issue_assignee`, `replace_issue_assignees`
 - `list_issue_comments`
 - `add_issue_comment`
 - `get_issue_comment`, `update_issue_comment`, `delete_issue_comment`
@@ -269,8 +270,8 @@ deciding on another write. Do not blindly retry or undo a creation.
 
 `create_pull_request` accepts optional `draft` true/false, verified after POST.
 Omitting it uses the upstream ready default. Get/list preserve draft values,
-including false; null stays unknown. PR creation assignees/milestone and draft/assignee updates are not exposed by
-these schemas. Milestone updates use the separate set/clear tools. Do not send unsupported
+including false; null stays unknown. PR creation assignees/milestone and draft updates are not exposed by these schemas.
+Milestone and assignee updates use their separate tools. Do not send unsupported
 fields or emulate them with follow-up mutations without a separate user request.
 Explicit empty arrays differ from omitted/unobserved metadata. All of these
 operations are PAT-only in either profile; read-only MCP mode rejects creation.
@@ -292,5 +293,28 @@ raw content/state/labels/assignees after one POST. Missing REST data alone does
 not prove clear. Success returns the complete observed Issue model for either
 Issue or PR targets. A POST 404 can follow a saved assignment: inspect target and
 field evidence and re-read before deciding on another write. Do not retry,
-roll back or switch routes automatically. Assignee/draft transitions remain
-separate unsupported operations.
+roll back or switch routes automatically. Assignee updates use the separate tools below; draft transitions remain
+unsupported.
+
+## Issue/PR assignee updates
+
+Use add_issue_assignees to add missing existing individual logins, remove_issue_assignee
+with username to remove one, and replace_issue_assignees to replace the complete
+set ([] clears). All use owner/repo/issue_number; a PR uses its number. Add needs
+a nonempty assignees array. Logins are trimmed identifiers and must remain
+distinct; missing, suspended, group/Organization and unknown-type accounts are
+unsupported. No account creation or repository membership change is performed.
+
+All calls, including matching no-ops, need standard profile and matching PAT/Web
+credentials. REST can omit suspended assignments, so the native sidebar must
+independently enumerate the same complete set; hidden or ambiguous rows are not
+empty. Actual changes require developer permission. Read-only MCP rejects every
+new tool. The service adds missing accounts before removing extras and verifies
+each one-person POST, the intermediate set and retained raw content/state/labels/
+milestone. Success returns the complete observed Issue model.
+
+A batch can stop after a successful prefix. Inspect target.number, aggregate
+assignees and requested assignee.LOGIN fields; re-read before another operation.
+A verified account alongside a later rejection/unknown observation is partial.
+Do not retry, undo or switch routes automatically. Replacement is sequential;
+there is no atomic compare-and-swap guarantee. Draft transitions are separate.

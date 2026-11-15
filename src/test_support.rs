@@ -377,6 +377,45 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn add_issue_assignees<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _change: &'a crate::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store assignee changes".into(),
+            ))
+        })
+    }
+    fn replace_issue_assignees<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _change: &'a crate::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store assignee changes".into(),
+            ))
+        })
+    }
+    fn remove_issue_assignee<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _username: &'a str,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store assignee changes".into(),
+            ))
+        })
+    }
     fn set_issue_milestone<'a>(
         &'a self,
         _owner: &'a str,

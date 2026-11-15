@@ -349,6 +349,45 @@ impl IntegrationMockApi {
 }
 
 impl GitBucketApi for IntegrationMockApi {
+    fn add_issue_assignees<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _change: &'a gitbucket_mcp_server::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store assignee changes".into(),
+            ))
+        })
+    }
+    fn replace_issue_assignees<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _change: &'a gitbucket_mcp_server::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store assignee changes".into(),
+            ))
+        })
+    }
+    fn remove_issue_assignee<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+        _username: &'a str,
+    ) -> ApiFuture<'a, Issue> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store assignee changes".into(),
+            ))
+        })
+    }
     fn set_issue_milestone<'a>(
         &'a self,
         _owner: &'a str,
@@ -1068,6 +1107,9 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "add_issue_labels",
         "remove_issue_label",
         "set_issue_milestone",
+        "add_issue_assignees",
+        "replace_issue_assignees",
+        "remove_issue_assignee",
         "clear_issue_milestone",
         "replace_issue_labels",
         "list_issues",

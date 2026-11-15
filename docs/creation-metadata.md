@@ -2,7 +2,8 @@
 
 This creation unit extended two existing tools, keeping the then-current count
 of 42 tools (21 reads / 21 writes). [P15-4b](issue-milestones.md) adds two separate
-milestone assignment tools, bringing the current total to 44.
+milestone assignment tools. [P15-4c](issue-assignees.md) adds three assignee
+updates, bringing the current total to 47.
 
 Creation operations use PAT-only REST in both profiles. This unit adds no runtime
 dependencies, configuration values, fallback routes or follow-up mutations.
@@ -41,8 +42,8 @@ observation. Existing merge preflight rejects drafts.
 PR creation does not expose assignees, milestone or maintainer_can_modify. The
 verified controller does not apply those fields (even though its request type
 mentions maintainer_can_modify). Issue/PR milestone updates use the separate
-[set/clear contract](issue-milestones.md). Assignee and draft state updates
-require a future operation contract and PR. Unknown fields are rejected
+[set/clear contract](issue-milestones.md). Assignee updates use their [separate tools](issue-assignees.md). Draft state
+updates require a future operation contract and PR. Unknown fields are rejected
 by MCP schemas and by the two public Rust creation request deserializers.
 
 ## Stored observations and failures

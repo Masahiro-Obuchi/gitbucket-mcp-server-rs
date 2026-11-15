@@ -18,6 +18,7 @@ pub mod client;
 pub(crate) mod creation;
 pub mod http;
 pub mod issue;
+pub mod issue_assignee;
 pub mod issue_label;
 pub mod issue_milestone;
 mod issue_update;
@@ -43,6 +44,27 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn add_issue_assignees<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a crate::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue>;
+    fn replace_issue_assignees<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        change: &'a crate::models::issue_assignee::AssigneeNames,
+    ) -> ApiFuture<'a, Issue>;
+    fn remove_issue_assignee<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        username: &'a str,
+    ) -> ApiFuture<'a, Issue>;
     fn set_issue_milestone<'a>(
         &'a self,
         owner: &'a str,

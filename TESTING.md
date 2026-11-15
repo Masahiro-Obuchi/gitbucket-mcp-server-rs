@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 44 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 47 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 23 writes, call each through MCP
+skips the content form. Read-only tests hide all 26 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 44 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 47 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -651,3 +651,24 @@ permission refusal and no-ops, PAT-only/rest-only/read-only rejection, scoped
 missing/foreign references and retained milestone definitions. The normal Issue
 update schema and PR draft/assignment update schemas are unchanged. See
 [the contract](docs/issue-milestones.md) and [acceptance policy](docs/acceptance.md).
+
+## Issue/PR assignee updates (P15-4c)
+
+`cargo test --locked --test issue_assignee_test` covers delta-only additions,
+add-before-remove replacement, [] clear, raw content/milestone/label preservation,
+canonical references, missing/group/unknown account types, invalid IDs/logins,
+missing/duplicate observations, full native-sidebar agreement, no-ops, ignored
+writes, unexpected concurrent sets, post-write GET errors, wrong identity,
+POST failures/redirect refusal, cookie expiry, and per-account prefix evidence
+through a later rejection, deadline or cancellation. Shared schema/annotation/
+read-only tests cover all three new tools and their direct handlers. Parser unit
+tests cover context paths, display-name independence, foreign/ambiguous links,
+removed-account rows and the explicit empty marker.
+
+Core acceptance invokes `probe_issue_assignees.py` through the changes fixture.
+Official 4.44.0/4.48.0 checks use actual stdio on closed Issues and PRs, multiple
+assignees including GUEST/non-collaborators, add/remove/replace/clear/repeat no-ops,
+exact Markdown and retained label/milestone/PR fields, permission refusals,
+PAT-only/rest-only/readonly rejection, missing references/targets and a real
+suspended-account hidden relation. Unsuspending the fixture proves the refused
+clear/no-op did not delete that relation. See [the contract](docs/issue-assignees.md).

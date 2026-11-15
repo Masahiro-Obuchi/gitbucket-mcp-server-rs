@@ -1,5 +1,6 @@
 pub mod comment;
 pub mod issue;
+pub mod issue_assignee;
 pub mod label;
 pub mod list_page;
 pub mod milestone;

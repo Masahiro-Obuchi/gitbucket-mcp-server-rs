@@ -1,4 +1,5 @@
 pub mod issue;
+pub mod issue_assignee;
 pub mod label;
 pub(crate) mod list_page;
 mod list_summary;

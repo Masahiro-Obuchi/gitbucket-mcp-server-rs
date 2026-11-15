@@ -1,6 +1,6 @@
 # Pull request commits, files and diff
 
-P15 adds three read tools. The server now exposes 44 tools: 21 reads and 23
+P15 adds three read tools. The server now exposes 47 tools: 21 reads and 26
 writes. All three work in read-only mode, reject unknown arguments, and require
 a positive PR number and valid owner/repository identifiers.
 
