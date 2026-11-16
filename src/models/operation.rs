@@ -77,6 +77,8 @@ pub struct OperationTarget {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_number: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_parent_number: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_commit: Option<String>,
@@ -100,6 +102,7 @@ impl OperationTarget {
             requested_name: None,
             candidate_numbers: Vec::new(),
             observed_number: None,
+            observed_parent_number: None,
             commit: None,
             result_commit: None,
             path: None,

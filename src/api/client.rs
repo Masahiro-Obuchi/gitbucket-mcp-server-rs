@@ -202,6 +202,44 @@ impl GitBucketClient {
             .await
     }
 
+    pub(crate) async fn post_comment_state_once(
+        &self,
+        path: &str,
+        action: &str,
+        body: &crate::models::comment::CreateComment,
+    ) -> Result<u64> {
+        #[derive(serde::Deserialize)]
+        struct CreatedCommentId {
+            id: u64,
+        }
+        let mut url = super::url_safety::route(&self.base_url, path)?;
+        url.query_pairs_mut().append_pair("action", action);
+        let request = self
+            .write_client
+            .post(url)
+            .json(body)
+            .build()
+            .map_err(GbMcpError::from)?;
+        super::http::mutation("GitBucket comment/state write", async {
+            let response = self
+                .write_client
+                .execute(request)
+                .await
+                .map_err(GbMcpError::from)?;
+            let result: Result<CreatedCommentId> =
+                self.handle_response(response, "POST", path).await;
+            match result {
+                // Native handleComment saves before the controller re-looks up
+                // the created comment. Its final None branch also returns 404.
+                Err(error @ GbMcpError::Api { status: 404, .. }) => {
+                    Err(super::http::unknown("GitBucket comment/state write", error))
+                }
+                result => result.map(|created| created.id),
+            }
+        })
+        .await
+    }
+
     pub(crate) async fn patch_url<T: DeserializeOwned, B: Serialize>(
         &self,
         url: Url,

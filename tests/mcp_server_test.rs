@@ -349,6 +349,32 @@ impl IntegrationMockApi {
 }
 
 impl GitBucketApi for IntegrationMockApi {
+    fn close_issue_with_comment<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a str,
+        _: u64,
+        _: &'a CreateComment,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::comment::CommentStateChange> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "comment/state action is not configured in this mock".into(),
+            ))
+        })
+    }
+    fn reopen_issue_with_comment<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a str,
+        _: u64,
+        _: &'a CreateComment,
+    ) -> ApiFuture<'a, gitbucket_mcp_server::models::comment::CommentStateChange> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "comment/state action is not configured in this mock".into(),
+            ))
+        })
+    }
     fn mark_pull_request_ready<'a>(
         &'a self,
         _owner: &'a str,
@@ -1088,6 +1114,8 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     let tool_names: BTreeSet<_> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
     let expected = BTreeSet::from([
+        "close_issue_with_comment",
+        "reopen_issue_with_comment",
         "add_issue_comment",
         "add_pull_request_comment",
         "add_pull_request_review_comment",
@@ -1139,6 +1167,12 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     ]);
 
     assert_eq!(tool_names, expected);
+    for name in ["close_issue_with_comment", "reopen_issue_with_comment"] {
+        assert_eq!(
+            required_fields(&tools, name),
+            json!(["owner", "repo", "issue_number", "body"])
+        );
+    }
     for tool in &tools {
         assert_eq!(
             tool.input_schema.get("type"),

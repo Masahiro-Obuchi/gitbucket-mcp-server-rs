@@ -159,3 +159,9 @@ The core fixture also exercises P15-4d one-way PR readiness on same-repository
 and fork PRs, head-repository permission checks, retained content/metadata/Git
 tip, PAT-only no-ops, unsupported reverse updates and closed/merged rejection.
 See [the contract](pull-request-ready.md).
+
+P15-5 adds actual stdio comment-with-close/reopen checks on Issues and ready/draft
+PRs in both profiles with PAT-only clients. It verifies owner/GUEST-opener success,
+GUEST-non-opener comment-only partial effects, exact body/parent membership,
+retained metadata/PR revisions/base Git tip and repeat/readonly/merged refusal.
+See [the contract](comment-state.md).

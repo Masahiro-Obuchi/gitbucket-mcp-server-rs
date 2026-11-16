@@ -157,7 +157,7 @@ All tools advertise read-only, destructive, idempotent and open-world hints.
 Reads, deletions, verified milestone/assignee changes and PR ready transitions
 carry idempotent hints. Other writes conservatively do not, because updates can
 emit hooks or notifications. Updates, deletions, merge and PR ready transitions
-are destructive hints; creates/comments/forks are additive hints. Annotations
+and comment-with-close/reopen are destructive hints; ordinary creates/comments/forks are additive hints. Annotations
 are client hints, while read-only access is enforced independently by the server.
 
 ### GitBucket API profiles
@@ -244,7 +244,7 @@ For example, an Issue title verified before a body timeout returns:
 }
 ```
 
-Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover supplied Issue creation metadata and explicit PR draft creation, Issue/PR updates, PR merge results, label/milestone writes and verified deletion. Other creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment creation targets use `parent_number`; item edits/deletes use `number` for the comment ID; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Merge targets retain the observed head, base branch and captured `result_commit`.
+Built-in writes retain their operation and target on failures, including MCP deadlines/cancellation. Detailed field observations cover supplied Issue creation metadata and explicit PR draft creation, Issue/PR updates, PR merge results, label/milestone writes, PR readiness, comment-with-close/reopen and verified deletion. Other ordinary creates and comments can have an empty field list; this does not assert any field verification. A creation ID is supplied only when known. Ambiguous milestone creation returns candidate numbers without inventing a created ID. Comment creation targets use `parent_number`; item edits/deletes use `number` for the comment ID; an unknown authenticated repository owner is omitted. Unexpected response numbers are recorded separately from the intended target. Comment/state operations retain the created comment number and parent_number; foreign parent reads add observed_parent_number. Merge targets retain the observed head, base branch and captured `result_commit`.
 
 Pre-write preparation/authentication errors retain their normal error kinds. Low-level Rust helpers and custom adapters without service progress can omit target/route/fields; they remain conservative about uncertain writes. There are no automatic retries or rollbacks. Inspect partial/unknown/unverified results before deciding what to send next, and correct rejected input/permissions before retrying.
 
@@ -470,7 +470,7 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 
 ## Available Tools
 
-The server exposes 48 tools: 21 reads and 27 writes.
+The server exposes 50 tools: 21 reads and 29 writes.
 
 ### Repository
 
@@ -497,9 +497,33 @@ The server exposes 48 tools: 21 reads and 27 writes.
 | `replace_issue_assignees` | Replace all individual assignees; [] clears assignments |
 | `list_issue_comments` | List comments on an issue |
 | `add_issue_comment` | Add a comment to an issue |
+| `close_issue_with_comment` | Close an open Issue or unmerged PR with a required comment and verify both effects |
+| `reopen_issue_with_comment` | Reopen a closed Issue or unmerged PR with a required comment and verify both effects |
 | `get_issue_comment` | Get an ordinary Issue/PR conversation comment by comment ID |
 | `update_issue_comment` | Replace its full body and verify the stored text and author |
 | `delete_issue_comment` | Delete it and verify a subsequent 404 |
+
+### Comment with close/reopen
+
+`close_issue_with_comment(owner, repo, issue_number, body)` and
+`reopen_issue_with_comment(owner, repo, issue_number, body)` use one PAT-only
+native REST POST in either profile. PRs use their number as `issue_number`.
+Body is required and nonblank; whitespace and Markdown are stored unchanged.
+An already requested state or merged PR is rejected before any comment is sent.
+
+Native permission requires a base-repository developer or the Issue/PR opener.
+A readable caller without that permission can still create the comment while
+the state action is ignored. Independent reads verify the created comment's
+parent membership, exact body/author and Issue/PR state. Success returns
+`{comment, issue, pull_request}` (the last is null for Issues). Retained content,
+visible metadata and PR revisions/flags are also checked within the limits in
+[the contract](docs/comment-state.md).
+
+These tools are non-idempotent. Inspect the comment ID in `target.number`,
+parent in `target.parent_number`, and field evidence before another write.
+POST 404 can follow saving and remains unknown; verified comment with failed
+state is partial. No retry, corrective PATCH, fallback or rollback is sent.
+Read-only mode hides and rejects both tools, including direct handlers.
 
 ### Issue/PR assignee updates
 

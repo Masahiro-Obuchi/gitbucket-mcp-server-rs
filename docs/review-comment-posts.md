@@ -4,7 +4,7 @@
 selected standard profile. It uses GitBucket's native cookie-authenticated form
 once, with an independent diff preflight and post-write observations. Ordinary
 `add_pull_request_comment` remains a conversation comment. The server advertises
-48 tools (21 reads and 27 writes); read-only mode hides and rejects this tool.
+50 tools (21 reads and 29 writes); read-only mode hides and rejects this tool.
 
 ## Input and preservation
 

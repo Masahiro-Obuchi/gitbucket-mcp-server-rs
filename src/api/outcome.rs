@@ -198,6 +198,26 @@ impl Operation {
             .candidate_numbers = numbers;
     }
 
+    /// Composite comment/state operations retain the created comment ID even
+    /// when an independent parent read returns another Issue/PR.
+    pub(crate) fn parent_identity_for_fields(&self, actual: u64, fields: &[&str]) -> Result<()> {
+        let mut progress = self.0.lock().expect("operation progress");
+        let target = progress.outcome.target.as_mut().expect("service target");
+        if actual != 0 && target.parent_number == Some(actual) {
+            return Ok(());
+        }
+        target.observed_parent_number = Some(actual);
+        for field in &mut progress.outcome.fields {
+            if fields.contains(&field.field.as_str()) && field.status != FieldStatus::NotAttempted {
+                field.status = FieldStatus::Unknown;
+            }
+        }
+        drop(progress);
+        Err(self.failure(GbMcpError::Other(
+            "GitBucket returned a different or invalid parent identity".into(),
+        )))
+    }
+
     pub(crate) fn result_commit(&self, sha: &str) {
         self.0
             .lock()

@@ -1,7 +1,7 @@
 # Ordinary conversation comments (P15-2)
 
-Three tools expose existing GitBucket REST operations. The server has 48 tools:
-21 reads and 27 writes. All three work with only a PAT under both `rest-only`
+Three tools expose existing GitBucket REST operations. The server has 50 tools:
+21 reads and 29 writes. All three work with only a PAT under both `rest-only`
 and `standard`. Read-only mode registers the getter and hides/rejects the writes.
 
 | Tool | Required input | Result |
@@ -104,6 +104,9 @@ includes `comment`, `close_comment` and `reopen_comment`, while the PATCH path
 uses the broader `getComment` lookup. The [comment service](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/HandleCommentService.scala)
 only deletes `comment` actions through REST: close/reopen-with-comment entries
 can be read and edited but their deletion is rejected by the native endpoint.
+The dedicated [comment/state tools](comment-state.md) create those action entries
+and verify the separate state and comment effects. Editing a body does not undo
+the state change.
 
 `GitBucketApi` adds three required methods; custom adapters must implement them.
 `UpdateComment` is the explicit replacement-body model. Existing comment

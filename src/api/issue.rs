@@ -6,6 +6,43 @@ use super::{client::GitBucketClient, outcome::Operation, profile::Route};
 use crate::models::operation::{OperationTarget, ResourceKind};
 
 impl GitBucketClient {
+    /// Close an open Issue or unmerged PR with one real conversation comment.
+    pub async fn close_issue_with_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &CreateComment,
+    ) -> Result<crate::models::comment::CommentStateChange> {
+        super::comment_state::change(
+            self,
+            owner,
+            repo,
+            number,
+            body,
+            super::comment_state::Action::Close,
+        )
+        .await
+    }
+
+    /// Reopen a closed Issue or unmerged PR with one real conversation comment.
+    pub async fn reopen_issue_with_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &CreateComment,
+    ) -> Result<crate::models::comment::CommentStateChange> {
+        super::comment_state::change(
+            self,
+            owner,
+            repo,
+            number,
+            body,
+            super::comment_state::Action::Reopen,
+        )
+        .await
+    }
     /// List issues for a repository.
     pub async fn list_issues(
         &self,

@@ -182,9 +182,12 @@ def run(binary):
         verify_issue_assignees(binary, base, user, password, token, repo, number)
         from probe_pr_ready import verify_pr_ready, verify_merged_ready_rejection
         verify_pr_ready(binary, base, user, password, token, repo, info["default_branch"], git)
+        from probe_comment_state import verify_comment_state, verify_merged_comment_state_rejection
+        verify_comment_state(binary, base, user, token, repo, number, info["default_branch"], git)
         merged = api.json("PUT", rest + f"/pulls/{number}/merge", {"merge_method": "merge-commit"})
         assert merged["merged"]
         verify_merged_ready_rejection(binary, base, user, token, repo, number)
+        verify_merged_comment_state_rejection(binary, base, user, token, repo, number)
         verify_system_comment_edit(binary, base, user, token, repo, number, web)
         after, observed = collect(client, "list_pull_request_files", {**args, "limit": 2})
         assert after == files and observed["stored_base_sha"] == base_sha and observed["head_sha"] == head

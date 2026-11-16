@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 48 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 50 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 27 writes, call each through MCP
+skips the content form. Read-only tests hide all 29 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 48 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 50 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -694,3 +694,23 @@ PAT-only no-op, unsupported profiles/credentials/access, ignored native REST
 draft=true and closed/merged rejection. See [the contract](docs/pull-request-ready.md).
 Fork fixture setup uses the native Web form on both versions because 4.44.0 has
 no REST fork-creation endpoint; it does not extend the product fork tool.
+
+## Comment with close/reopen (P15-5)
+
+`cargo test --locked --test comment_state_test` adds 17 HTTP/MCP tests covering
+both actions and profiles, one exact body/action-query POST, parent membership,
+independent returned models and fork/draft PR preservation. Negative cases cover
+invalid/missing/foreign/incomplete baselines, already requested states, merged/
+unknown PRs, ignored actions, missing/duplicate/changed comment observations,
+unknown retained fields, definite rejection versus post-save POST404 uncertainty,
+redirect/server/JSON failures, wrong parent identity, post-write read failures,
+strict schema/readonly guards and deadline/cancel progress before/after ID capture.
+Shared schema/annotation/direct-handler tests cover all 50 tools.
+
+The core changes fixture invokes `probe_comment_state.py` through actual stdio.
+Both versions exercise PAT-only rest-only and standard, owner success, GUEST
+non-opener comment-only partial effects and GUEST opener success on Issue/draft
+PR, full raw body/visible metadata/revision retention, unchanged base Git tip,
+repeat/blank/readonly rejection and merged-PR refusal without added comments.
+See [the contract](docs/comment-state.md) for the native post-save 404 path and
+the limits of state/comment observations.

@@ -4,6 +4,8 @@ This creation unit extended two existing tools, keeping the then-current count
 of 42 tools (21 reads / 21 writes). [P15-4b](issue-milestones.md) adds two separate
 milestone assignment tools. [P15-4c](issue-assignees.md) adds three assignee
 updates. [P15-4d](pull-request-ready.md) adds one-way readiness, for 48 tools.
+[P15-5](comment-state.md) adds two comment/state operations, for 50 tools
+(21 reads / 29 writes) in the current server.
 
 Creation operations use PAT-only REST in both profiles. This unit adds no runtime
 dependencies, configuration values, fallback routes or follow-up mutations.

@@ -160,8 +160,81 @@ struct DeleteIssueCommentResult {
     comment_id: u64,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CommentStateChangeParams {
+    pub owner: String,
+    pub repo: String,
+    #[schemars(description = "Issue or unmerged PR number, 1..2147483647")]
+    pub issue_number: u64,
+    #[schemars(description = "Required nonblank comment; stored and verified without trimming")]
+    pub body: String,
+}
+
 #[tool_router(router = tool_router_issue, vis = "pub")]
 impl GitBucketMcpServer {
+    #[tool(
+        description = "Close an open Issue or unmerged PR with a required real comment. One PAT-only REST POST with action=close; verify comment membership/exact body/author and parent state independently. An unauthorized state action can still save a comment and return partial. Already closed targets are rejected before writing. Non-idempotent: inspect created comment ID and parent on error; no retry or corrective write",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    pub async fn close_issue_with_comment(
+        &self,
+        Parameters(params): Parameters<CommentStateChangeParams>,
+    ) -> ToolResult {
+        self.comment_state_change(params, true).await
+    }
+
+    #[tool(
+        description = "Reopen a closed Issue or unmerged PR with a required real comment. One PAT-only REST POST with action=reopen; verify comment membership/exact body/author and parent state independently. An unauthorized state action can still save a comment and return partial. Already open or merged targets are rejected before writing. Non-idempotent: inspect created comment ID and parent on error; no retry or corrective write",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    pub async fn reopen_issue_with_comment(
+        &self,
+        Parameters(params): Parameters<CommentStateChangeParams>,
+    ) -> ToolResult {
+        self.comment_state_change(params, false).await
+    }
+
+    async fn comment_state_change(
+        &self,
+        params: CommentStateChangeParams,
+        close: bool,
+    ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(value) => value,
+            Err(error) => return validation_error(error),
+        };
+        if let Err(error) = crate::api::comment_state::validate(params.issue_number, &params.body) {
+            return from_gb_error(error);
+        }
+        let body = CreateComment { body: params.body };
+        let result = if close {
+            self.client
+                .close_issue_with_comment(&owner, &repo, params.issue_number, &body)
+                .await
+        } else {
+            self.client
+                .reopen_issue_with_comment(&owner, &repo, params.issue_number, &body)
+                .await
+        };
+        match result {
+            Ok(value) => success(&value),
+            Err(error) => from_gb_error(error),
+        }
+    }
     #[tool(
         description = "List issues in a GitBucket repository. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(

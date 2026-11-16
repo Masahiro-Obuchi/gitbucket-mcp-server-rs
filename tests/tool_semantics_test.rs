@@ -473,6 +473,8 @@ async fn annotations_describe_reads_additions_and_destructive_writes() {
             || tool.name.starts_with("delete_")
             || tool.name == "merge_pull_request"
             || tool.name == "mark_pull_request_ready"
+            || tool.name == "close_issue_with_comment"
+            || tool.name == "reopen_issue_with_comment"
             || tool.name == "replace_issue_labels"
             || tool.name == "remove_issue_label"
             || tool.name == "set_issue_milestone"
@@ -584,6 +586,8 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "update_pull_request" => direct!(update_pull_request),
             "merge_pull_request" => direct!(merge_pull_request),
             "mark_pull_request_ready" => direct!(mark_pull_request_ready),
+            "close_issue_with_comment" => direct!(close_issue_with_comment),
+            "reopen_issue_with_comment" => direct!(reopen_issue_with_comment),
             "add_pull_request_comment" => direct!(add_pull_request_comment),
             "add_pull_request_review_comment" => direct!(add_pull_request_review_comment),
             name => panic!("add a direct-handler check for {name}"),
