@@ -47,6 +47,38 @@ enum Reply {
 }
 
 impl GitBucketWebSession {
+    pub(crate) async fn mark_pull_request_ready(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<()> {
+        let url = self.repo_url(owner, repo, &["pull", &number.to_string(), "update_draft"])?;
+        let request = self
+            .client
+            .post(url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .build()
+            .map_err(GbMcpError::from)?;
+        self.check_identity().await?;
+        http::mutation("Pull request ready transition", async {
+            let response = self.client.execute(request).await.map_err(GbMcpError::from)?;
+            let status = response.status();
+            if status != StatusCode::OK {
+                // Native 404 is the pre-write missing-PR/head-developer guard.
+                // Unlike the milestone route, this handler has no post-save 404.
+                if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN | StatusCode::NOT_FOUND) {
+                    return Err(GbMcpError::Api { status: status.as_u16(), message: "GitBucket rejected the PR ready transition".into() });
+                }
+                return Err(GbMcpError::Other("Unexpected ready-transition response; no redirect, retry or alternate write was attempted".into()));
+            }
+            let page_url = response.url().clone();
+            let body = http::bounded_text(response, self.http_settings.html_limit_bytes, "HTML").await?;
+            web_html::check_page(&body, &page_url, &self.api_base)?;
+            Ok(())
+        }).await
+    }
+
     pub(crate) async fn change_issue_assignee(
         &self,
         owner: &str,

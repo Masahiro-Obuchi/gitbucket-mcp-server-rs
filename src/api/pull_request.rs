@@ -8,6 +8,15 @@ use super::{client::GitBucketClient, outcome::Operation, profile::Route};
 use crate::models::operation::{OperationTarget, ResourceKind};
 
 impl GitBucketClient {
+    /// Mark an open draft PR ready using the native one-way Web operation.
+    pub async fn mark_pull_request_ready(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<PullRequest> {
+        super::pull_request_ready::ready(self, owner, repo, number).await
+    }
     /// List pull requests for a repository.
     pub async fn list_pull_requests(
         &self,

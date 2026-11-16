@@ -54,6 +54,15 @@ pub struct GetPullRequestParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct MarkPullRequestReadyParams {
+    pub owner: String,
+    pub repo: String,
+    #[schemars(description = "Open, explicitly unmerged PR number, 1..2147483647")]
+    pub pull_number: u64,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreatePullRequestParams {
     #[schemars(
         description = "Create as draft (true) or ready (false). Omitted uses GitBucket default false; explicit values are verified after one POST"
@@ -134,6 +143,39 @@ pub struct AddPullRequestCommentParams {
 
 #[tool_router(router = tool_router_pull_request, vis = "pub")]
 impl GitBucketMcpServer {
+    #[tool(
+        description = "Mark an open, explicitly unmerged draft PR ready for review. One-way standard-profile Web operation, not a merge or a draft toggle. Actual changes require matching PAT/Web credentials and developer permission on the head repository, including forks. A known ready PR is a PAT-only no-op. Recheck content/revisions before one POST and verify draft=false plus preserved fields afterward; no retries, redirects or rollback",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
+    pub async fn mark_pull_request_ready(
+        &self,
+        Parameters(params): Parameters<MarkPullRequestReadyParams>,
+    ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(value) => value,
+            Err(error) => return validation_error(error),
+        };
+        if let Err(error) = crate::api::pull_request_ready::number(params.pull_number) {
+            return from_gb_error(error);
+        }
+        match self
+            .client
+            .mark_pull_request_ready(&owner, &repo, params.pull_number)
+            .await
+        {
+            Ok(pr) => success(&pr),
+            Err(error) => from_gb_error(error),
+        }
+    }
+
     #[tool(
         description = "List pull requests in a GitBucket repository. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(

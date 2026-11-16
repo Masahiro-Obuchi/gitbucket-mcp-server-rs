@@ -377,6 +377,18 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn mark_pull_request_ready<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+    ) -> ApiFuture<'a, PullRequest> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Mock does not store PR ready transitions".into(),
+            ))
+        })
+    }
     fn add_issue_assignees<'a>(
         &'a self,
         _owner: &'a str,

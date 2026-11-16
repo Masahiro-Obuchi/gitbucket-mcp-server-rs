@@ -194,8 +194,8 @@ successful partial traversal. API lists retain their Vec-returning contracts.
   PR comment tools reject inline-location arguments.
 - Tools provide readOnly/destructive/idempotent/openWorld annotations as hints.
   List/get tools are read-only; create/comment/fork tools are additive;
-  update/delete/replace/remove/merge and milestone set/clear tools are destructive.
-  Reads, removals, milestone set/clear and assignee updates have idempotent hints;
+  update/delete/replace/remove/merge, milestone set/clear and PR ready tools are destructive.
+  Reads, removals, milestone set/clear, assignee updates and PR ready have idempotent hints;
   other writes conservatively do not. All tools interact with external data.
 - `GITBUCKET_READ_ONLY=true` registers only the 21 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
@@ -237,7 +237,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 47 tools: 21 reads and 26 writes. The standard
+The normal server advertises 48 tools: 21 reads and 27 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -489,7 +489,7 @@ schemas. See [creation-metadata.md](docs/creation-metadata.md).
 model and support both Issue and PR numbers. Set requires an existing scoped
 milestone; clear retains its definition. IDs are positive 32-bit integers.
 Both tools reject unknown arguments and are hidden/blocked in read-only mode.
-There are now 47 tools (21 reads / 26 writes).
+There are now 48 tools (21 reads / 27 writes).
 
 Only the standard profile supports these operations. Rest-only refuses before
 HTTP; no ineffective Issue/PR PATCH is sent. Actual changes use matching PAT/Web
@@ -513,8 +513,9 @@ GitBucketApi gains two required methods with no compatibility defaults. See
 `replace_issue_assignees(owner, repo, issue_number, assignees)` add missing
 individual accounts, remove one, or replace the entire set ([] clears). IDs are
 positive 32-bit integers; MCP trims canonical logins and rejects duplicates.
-The server exposes 47 tools (21 reads / 26 writes). Existing creation/update
-schemas remain unchanged; draft transitions are a future unit.
+The server exposes 48 tools (21 reads / 27 writes). Existing creation/update
+schemas remain unchanged. One-way readiness uses the separate tool below;
+ready-to-draft conversion remains unsupported on the verified contract.
 
 Only standard is supported. All calls, even no-ops, require matching PAT/Web
 credentials to reconcile complete REST and native-sidebar assignment sets.
@@ -534,3 +535,27 @@ result, deadline or cancellation. Shared transport still marks actual attempts.
 No retry, redirect, fallback, rollback or atomicity guarantee is introduced.
 GitBucketApi gains three required methods and the AssigneeNames request type.
 See [the contract](docs/issue-assignees.md) for source evidence and limitations.
+
+## Pull request ready transition (P15-4d)
+
+`mark_pull_request_ready(owner, repo, pull_number)` returns the observed
+PullRequest model after the native one-way draft-to-ready operation. The normal
+server exposes 48 tools (21 reads / 27 writes). Unknown/reverse/guard arguments
+are rejected, IDs are 1..2147483647, and existing create/update schemas remain
+unchanged. Rest-only refuses before HTTP; readonly mode hides and blocks it.
+
+Require an open, explicitly unmerged PR, a known draft flag and complete
+preservation fields/revisions. Already ready is a PAT-only no-op. Actual changes
+need matching PAT/Web credentials and native head-repository developer permission;
+base ownership is not sufficient for a fork. Recheck baseline after sign-in,
+then send one empty cookie-only native POST after a final cookie check. Verify
+the same PR number, draft=false and retained raw content/state/merged/repository
+revisions/visible label and assignee sets by independent GET.
+
+Missing metadata remains unknown. Target number, initial observed head and field
+evidence survive post-write failure/deadline/cancellation. A native POST 404 is
+pre-write rejection, while a post-write GET 404 is uncertain. No retry, fallback,
+redirect, reverse transition, merge or rollback is introduced. Observations are
+sequential, without atomic/external expected-head guarantees. GitBucketApi gains
+one required method returning PullRequest, without compatibility defaults or new
+models/dependencies/settings. See [the contract](docs/pull-request-ready.md).

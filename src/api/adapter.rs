@@ -11,6 +11,16 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn mark_pull_request_ready<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+    ) -> ApiFuture<'a, PullRequest> {
+        Box::pin(async move {
+            GitBucketClient::mark_pull_request_ready(self, owner, repo, number).await
+        })
+    }
     fn add_issue_assignees<'a>(
         &'a self,
         owner: &'a str,

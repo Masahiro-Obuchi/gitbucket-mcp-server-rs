@@ -1,7 +1,7 @@
 # Issue/PR assignee updates (P15-4c)
 
 Three tools change individual account assignments on either an Issue or a PR.
-The server exposes 47 tools: 21 reads and 26 writes.
+The server exposes 48 tools: 21 reads and 27 writes.
 
 | Tool | Arguments after owner/repo/issue_number | Effect |
 | --- | --- | --- |
@@ -119,6 +119,7 @@ filters assignments through available accounts in its GET projection.
 GitBucketApi gains three required methods and the public AssigneeNames request
 type. Custom adapters implement them explicitly; no compatibility defaults,
 aliases, dependencies or settings are added. Existing Issue/PR creation and
-update schemas are unchanged. Draft transitions remain a separate future unit.
+update schemas are unchanged. Draft-to-ready uses [its separate tool](pull-request-ready.md); reverse
+conversion remains unsupported.
 See [TESTING](../TESTING.md#issuepr-assignee-updates-p15-4c) for HTTP/MCP,
 parser and actual stdio coverage.

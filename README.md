@@ -154,9 +154,9 @@ read this environment variable. This mode controls the MCP server's tools;
 standalone `GitBucketClient` calls use the client's own capabilities.
 
 All tools advertise read-only, destructive, idempotent and open-world hints.
-Reads, deletions and the verified milestone/assignee changes are marked
-idempotent; other writes conservatively are not,
-because updates can emit hooks or notifications. Updates, deletions and merge
+Reads, deletions, verified milestone/assignee changes and PR ready transitions
+carry idempotent hints. Other writes conservatively do not, because updates can
+emit hooks or notifications. Updates, deletions, merge and PR ready transitions
 are destructive hints; creates/comments/forks are additive hints. Annotations
 are client hints, while read-only access is enforced independently by the server.
 
@@ -166,7 +166,7 @@ are client hints, while read-only access is enforced independently by the server
 
 | Value | Behavior |
 | --- | --- |
-| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts and Issue/PR milestone/assignee updates return `unsupported_error` before HTTP. |
+| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts and Issue/PR milestone/assignee updates and PR readiness return `unsupported_error` before HTTP. |
 | `standard` | Use the common standard GitBucket contract verified on 4.44.0 and 4.48.0. Web routes require both web credentials. |
 
 Under `standard`, operations select the following routes:
@@ -174,6 +174,7 @@ Under `standard`, operations select the following routes:
 | Operation | Route |
 | --- | --- |
 | PR update; label rename; milestone delete | REST |
+| Mark draft PR ready | One-way Web operation; head-repository developer permission for changes |
 | PR file list/diff | Pinned stored-base/head Web patch; binary payloads unavailable |
 | PR review-comment list/get | Web conversation page; HTML and partial coverage only |
 | PR review-comment creation | One Web POST after pinned diff/head checks, followed by own raw/commit/PR verification |
@@ -469,7 +470,7 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 
 ## Available Tools
 
-The server exposes 47 tools: 21 reads and 26 writes.
+The server exposes 48 tools: 21 reads and 27 writes.
 
 ### Repository
 
@@ -543,6 +544,24 @@ A POST 404 may follow a saved assignment, so it remains unknown. Errors retain
 the target number and field evidence; there is no retry, rollback or fallback.
 See [the assignment contract](docs/issue-milestones.md) for permissions, race
 limits and the distinct creation contract.
+
+### Mark a draft PR ready
+
+`mark_pull_request_ready(owner, repo, pull_number)` makes an open, explicitly
+unmerged draft ready for review. It is a one-way standard-profile operation;
+there is no reverse boolean/toggle argument or merge. Actual changes require
+matching PAT/Web credentials and developer permission on the head repository,
+including forks. A base owner alone may lack that permission. An already ready
+PR is a verified PAT-only no-op; read-only MCP still blocks the tool.
+
+The service checks content/revisions before one cookie-only POST and verifies
+`draft=false` plus retained title, exact body, state, merged, head/base identities,
+labels and visible assignees by a subsequent GET. Unknown flags/collections are
+not converted to false/empty. Errors retain the PR number, initial head and field
+evidence; there is no retry, rollback or atomic expected-head guarantee. See
+[the ready contract](docs/pull-request-ready.md) for permission and observation
+limits. Creating a draft still uses `create_pull_request(draft=true)`; converting
+an existing ready PR back to draft is unsupported on the verified contract.
 
 ### Issue/PR creation metadata
 
@@ -657,6 +676,7 @@ PR commits/files/diff are documented in [the change-read contract](docs/pull-req
 | `get_pull_request_diff` | Read exact patch text through bounded UTF-8 chunk continuations |
 | `get_pull_request` | Get PR details |
 | `create_pull_request` | Create a new pull request |
+| `mark_pull_request_ready` | Mark an open draft PR ready and verify the transition (standard profile) |
 | `update_pull_request` | Update PR state, title, body, or base branch |
 | `merge_pull_request` | Merge a pull request |
 | `add_pull_request_comment` | Add a comment to a pull request |

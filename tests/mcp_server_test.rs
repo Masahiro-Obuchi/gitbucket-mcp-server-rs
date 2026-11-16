@@ -349,6 +349,18 @@ impl IntegrationMockApi {
 }
 
 impl GitBucketApi for IntegrationMockApi {
+    fn mark_pull_request_ready<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _number: u64,
+    ) -> ApiFuture<'a, PullRequest> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Mock does not store PR ready transitions".into(),
+            ))
+        })
+    }
     fn add_issue_assignees<'a>(
         &'a self,
         _owner: &'a str,
@@ -1119,6 +1131,7 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "list_pull_request_review_comments",
         "list_repositories",
         "merge_pull_request",
+        "mark_pull_request_ready",
         "update_label",
         "update_milestone",
         "update_issue",

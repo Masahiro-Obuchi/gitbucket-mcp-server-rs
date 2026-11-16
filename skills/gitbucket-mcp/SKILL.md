@@ -71,6 +71,7 @@ Pull request tools:
 
 - `list_pull_requests`
 - `get_pull_request`
+- `mark_pull_request_ready`
 - `list_pull_request_commits`, `list_pull_request_files`, `get_pull_request_diff`
 - `create_pull_request`
 - `update_pull_request`
@@ -270,7 +271,8 @@ deciding on another write. Do not blindly retry or undo a creation.
 
 `create_pull_request` accepts optional `draft` true/false, verified after POST.
 Omitting it uses the upstream ready default. Get/list preserve draft values,
-including false; null stays unknown. PR creation assignees/milestone and draft updates are not exposed by these schemas.
+including false; null stays unknown. PR creation assignees/milestone and draft updates are not exposed by these schemas; use the separate ready tool
+for the supported one-way transition.
 Milestone and assignee updates use their separate tools. Do not send unsupported
 fields or emulate them with follow-up mutations without a separate user request.
 Explicit empty arrays differ from omitted/unobserved metadata. All of these
@@ -293,7 +295,7 @@ raw content/state/labels/assignees after one POST. Missing REST data alone does
 not prove clear. Success returns the complete observed Issue model for either
 Issue or PR targets. A POST 404 can follow a saved assignment: inspect target and
 field evidence and re-read before deciding on another write. Do not retry,
-roll back or switch routes automatically. Assignee updates use the separate tools below; draft transitions remain
+roll back or switch routes automatically. Assignee updates use the separate tools below; draft-to-ready uses mark_pull_request_ready; reverse conversion remains
 unsupported.
 
 ## Issue/PR assignee updates
@@ -317,4 +319,20 @@ A batch can stop after a successful prefix. Inspect target.number, aggregate
 assignees and requested assignee.LOGIN fields; re-read before another operation.
 A verified account alongside a later rejection/unknown observation is partial.
 Do not retry, undo or switch routes automatically. Replacement is sequential;
-there is no atomic compare-and-swap guarantee. Draft transitions are separate.
+there is no atomic compare-and-swap guarantee. Draft-to-ready uses the separate mark_pull_request_ready tool.
+
+## Mark a draft PR ready
+
+Use mark_pull_request_ready(owner, repo, pull_number) only for an open, explicitly
+unmerged PR. Standard profile is required. Actual changes need matching PAT/Web
+credentials and developer permission on the head repository; base ownership
+alone may be insufficient for a fork. An already-ready PR is a PAT-only no-op.
+Read-only MCP rejects the tool. Do not send draft/toggle/expected-head arguments
+or use merge as a substitute; native ready-to-draft conversion is unsupported.
+
+The server checks content/revisions before one empty Web POST and independently
+verifies draft=false plus retained fields afterward. Null/missing metadata stays
+unknown. Inspect target.number, target.commit (initial observed head) and field
+evidence on failure; readiness may already be stored. Do not automatically retry,
+undo, merge or change routes. The operation is sequential with no atomic or
+externally reviewed-head guarantee. Creating a draft uses create_pull_request.
