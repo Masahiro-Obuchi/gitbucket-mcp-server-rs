@@ -23,6 +23,14 @@ pub struct UpdateComment {
     pub body: String,
 }
 
+/// Independently observed comment and parent after a native close/reopen action.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CommentStateChange {
+    pub comment: Comment,
+    pub issue: super::issue::Issue,
+    pub pull_request: Option<super::pull_request::PullRequest>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

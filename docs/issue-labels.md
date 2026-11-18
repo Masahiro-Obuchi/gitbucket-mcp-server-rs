@@ -1,7 +1,7 @@
 # Issue/PR label assignments (P15-3)
 
 These four tools manage assignments separately from repository label CRUD.
-The server has 48 tools: 21 reads and 27 writes. All four use PAT-only REST under
+The server has 50 tools: 21 reads and 29 writes. All four use PAT-only REST under
 both profiles. Only the list is registered in read-only mode; every write is
 rejected before HTTP in that mode, even if it would be a no-op.
 

@@ -194,7 +194,8 @@ successful partial traversal. API lists retain their Vec-returning contracts.
   PR comment tools reject inline-location arguments.
 - Tools provide readOnly/destructive/idempotent/openWorld annotations as hints.
   List/get tools are read-only; create/comment/fork tools are additive;
-  update/delete/replace/remove/merge, milestone set/clear and PR ready tools are destructive.
+  update/delete/replace/remove/merge, milestone set/clear, PR ready and
+  comment-with-close/reopen tools are destructive.
   Reads, removals, milestone set/clear, assignee updates and PR ready have idempotent hints;
   other writes conservatively do not. All tools interact with external data.
 - `GITBUCKET_READ_ONLY=true` registers only the 21 read tools and rejects all other
@@ -237,7 +238,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 48 tools: 21 reads and 27 writes. The standard
+The normal server advertises 50 tools: 21 reads and 29 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -286,6 +287,8 @@ See [the posting contract](docs/review-comment-posts.md) and
 - `update_issue(owner, repo, issue_number, state?, title?, body?)`
 - `list_issue_comments(owner, repo, issue_number)`
 - `add_issue_comment(owner, repo, issue_number, body)`
+- `close_issue_with_comment(owner, repo, issue_number, body)`
+- `reopen_issue_with_comment(owner, repo, issue_number, body)`
 - `get_issue_comment(owner, repo, comment_id)`
 - `update_issue_comment(owner, repo, comment_id, body)`
 - `delete_issue_comment(owner, repo, comment_id)`
@@ -489,7 +492,7 @@ schemas. See [creation-metadata.md](docs/creation-metadata.md).
 model and support both Issue and PR numbers. Set requires an existing scoped
 milestone; clear retains its definition. IDs are positive 32-bit integers.
 Both tools reject unknown arguments and are hidden/blocked in read-only mode.
-There are now 48 tools (21 reads / 27 writes).
+There are now 50 tools (21 reads / 29 writes).
 
 Only the standard profile supports these operations. Rest-only refuses before
 HTTP; no ineffective Issue/PR PATCH is sent. Actual changes use matching PAT/Web
@@ -513,7 +516,7 @@ GitBucketApi gains two required methods with no compatibility defaults. See
 `replace_issue_assignees(owner, repo, issue_number, assignees)` add missing
 individual accounts, remove one, or replace the entire set ([] clears). IDs are
 positive 32-bit integers; MCP trims canonical logins and rejects duplicates.
-The server exposes 48 tools (21 reads / 27 writes). Existing creation/update
+The server exposes 50 tools (21 reads / 29 writes). Existing creation/update
 schemas remain unchanged. One-way readiness uses the separate tool below;
 ready-to-draft conversion remains unsupported on the verified contract.
 
@@ -540,7 +543,7 @@ See [the contract](docs/issue-assignees.md) for source evidence and limitations.
 
 `mark_pull_request_ready(owner, repo, pull_number)` returns the observed
 PullRequest model after the native one-way draft-to-ready operation. The normal
-server exposes 48 tools (21 reads / 27 writes). Unknown/reverse/guard arguments
+server exposes 50 tools (21 reads / 29 writes). Unknown/reverse/guard arguments
 are rejected, IDs are 1..2147483647, and existing create/update schemas remain
 unchanged. Rest-only refuses before HTTP; readonly mode hides and blocks it.
 
@@ -559,3 +562,27 @@ redirect, reverse transition, merge or rollback is introduced. Observations are
 sequential, without atomic/external expected-head guarantees. GitBucketApi gains
 one required method returning PullRequest, without compatibility defaults or new
 models/dependencies/settings. See [the contract](docs/pull-request-ready.md).
+
+## Comment with close/reopen (P15-5)
+
+The two Issue tools also accept unmerged PR numbers. Both profiles use one
+PAT-only native REST POST with action=close/reopen in the query and the exact
+required nonblank JSON body. No action alias or existing schema change is added.
+Require the opposite starting state; repeated requested states, merged/unknown
+PRs and incomplete snapshots are rejected before writing. Native authorization
+is base developer or opener. A readable caller without permission can still
+save the comment while action is ignored, yielding partial verification.
+
+Return CommentStateChange `{comment, issue, pull_request}` from independent
+observations. The unpaged parent comment collection establishes the created ID's
+membership, exact body and PAT author; parent Issue/PR reads verify state and
+retained fields. Record observations before each following await so later errors,
+deadline/cancellation retain verified effects. Target.number is the created
+comment ID, parent_number the requested Issue/PR and observed_parent_number a
+foreign parent read. POST404 can follow saving and is unknown; post-write GET
+errors do not establish rejection. Non-idempotent, destructive hints; readonly
+blocks both tools. No corrective write/retry/fallback/rollback or atomic snapshot
+guarantee. GitBucketApi adds two required methods using existing CreateComment
+and new CommentStateChange; OperationTarget gains optional observed_parent_number.
+See [the contract](docs/comment-state.md) for preservation scope, native sources
+and the limitations of sequential observations.

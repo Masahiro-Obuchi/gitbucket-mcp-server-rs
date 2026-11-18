@@ -11,6 +11,28 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn close_issue_with_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a CreateComment,
+    ) -> ApiFuture<'a, crate::models::comment::CommentStateChange> {
+        Box::pin(async move {
+            GitBucketClient::close_issue_with_comment(self, owner, repo, number, body).await
+        })
+    }
+    fn reopen_issue_with_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a CreateComment,
+    ) -> ApiFuture<'a, crate::models::comment::CommentStateChange> {
+        Box::pin(async move {
+            GitBucketClient::reopen_issue_with_comment(self, owner, repo, number, body).await
+        })
+    }
     fn mark_pull_request_ready<'a>(
         &'a self,
         owner: &'a str,

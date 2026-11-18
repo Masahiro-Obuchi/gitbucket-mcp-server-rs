@@ -377,6 +377,32 @@ impl MockApi {
 }
 
 impl GitBucketApi for MockApi {
+    fn close_issue_with_comment<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a str,
+        _: u64,
+        _: &'a CreateComment,
+    ) -> ApiFuture<'a, crate::models::comment::CommentStateChange> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "comment/state action is not configured in this mock".into(),
+            ))
+        })
+    }
+    fn reopen_issue_with_comment<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a str,
+        _: u64,
+        _: &'a CreateComment,
+    ) -> ApiFuture<'a, crate::models::comment::CommentStateChange> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "comment/state action is not configured in this mock".into(),
+            ))
+        })
+    }
     fn mark_pull_request_ready<'a>(
         &'a self,
         _owner: &'a str,

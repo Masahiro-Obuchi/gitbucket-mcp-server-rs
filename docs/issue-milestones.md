@@ -1,8 +1,9 @@
 # Issue/PR milestone assignments (P15-4b)
 
 This unit added two tools, bringing its count to 44. With
-[assignee updates](issue-assignees.md) and [PR readiness](pull-request-ready.md),
-the current total is 48: 21 reads / 27 writes.
+[assignee updates](issue-assignees.md), [PR readiness](pull-request-ready.md) and
+[comment/state operations](comment-state.md), the current total is 50:
+21 reads / 29 writes.
 
 | Tool | Required arguments after owner/repo | Result |
 | --- | --- | --- |

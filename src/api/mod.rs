@@ -15,6 +15,7 @@ use crate::models::user::User;
 
 mod adapter;
 pub mod client;
+pub(crate) mod comment_state;
 pub(crate) mod creation;
 pub mod http;
 pub mod issue;
@@ -45,6 +46,20 @@ mod web_html;
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
+    fn close_issue_with_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a crate::models::comment::CreateComment,
+    ) -> ApiFuture<'a, crate::models::comment::CommentStateChange>;
+    fn reopen_issue_with_comment<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        number: u64,
+        body: &'a crate::models::comment::CreateComment,
+    ) -> ApiFuture<'a, crate::models::comment::CommentStateChange>;
     fn mark_pull_request_ready<'a>(
         &'a self,
         owner: &'a str,

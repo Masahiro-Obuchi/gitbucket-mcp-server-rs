@@ -2,10 +2,26 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 comment with close/reopen
+
+- Add close_issue_with_comment and reopen_issue_with_comment for Issues and
+  unmerged PRs. There are 50 tools (21 reads / 29 writes). Both profiles use
+  PAT-only REST; a real nonblank body is required and retained exactly.
+- Send one native action-query POST and independently verify comment membership,
+  body/author, parent state and retained fields. A denied action can still create
+  a comment and return partial. Already requested states and merged PRs stop
+  before writing. There is no retry, corrective write, fallback or rollback.
+- Retain the created comment ID, parent and per-field observations across later
+  failures, deadlines and cancellation. POST 404 is uncertain because native can
+  return it after saving. Parent identity errors retain observed_parent_number.
+- Custom GitBucketApi adapters implement two new required methods using existing
+  CreateComment and new CommentStateChange. No compatibility defaults or new
+  settings/dependencies. See [the contract](docs/comment-state.md).
+
 ## Unreleased P15 pull request readiness
 
 - Add mark_pull_request_ready for the native one-way draft-to-ready transition.
-  There are 48 tools (21 reads / 27 writes). Standard profile is required;
+  That unit brought the count to 48 tools (21 reads / 27 writes). Standard profile is required;
   actual changes need matching PAT/Web credentials and head-repository developer
   permission. Already ready is a verified PAT-only no-op.
 - Recheck content/revisions before one empty cookie-only POST; verify draft=false

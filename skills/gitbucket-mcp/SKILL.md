@@ -336,3 +336,25 @@ unknown. Inspect target.number, target.commit (initial observed head) and field
 evidence on failure; readiness may already be stored. Do not automatically retry,
 undo, merge or change routes. The operation is sequential with no atomic or
 externally reviewed-head guarantee. Creating a draft uses create_pull_request.
+
+## Comment with close/reopen
+
+Use close_issue_with_comment(owner, repo, issue_number, body) for an open Issue
+or unmerged PR, or reopen_issue_with_comment for a closed one. A real nonblank
+body is required and retained without trimming. Both profiles use PAT-only REST;
+no Web credentials are needed. Do not pass action/state/draft aliases or a dummy
+body. Already requested states and merged/unknown PRs are refused before POST.
+
+Native permission is base developer or opener, including GUEST openers. A
+readable non-opener without permission can still create a comment while action
+is ignored. The tools independently verify comment membership/exact body/author,
+state and retained fields, returning {comment, issue, pull_request} on success.
+The PR field is null for Issues. Read-only MCP rejects both new tools.
+
+Both are destructive and non-idempotent. On error inspect target.number (created
+comment ID), parent_number (Issue/PR), observed_parent_number if present, and
+field evidence. A verified comment with ignored state is partial. POST404 may
+follow saving and is unknown, as are uncertain later observations. Do not retry,
+delete/compensate, PATCH the state, undo or change routes automatically. Sequential
+reads do not establish atomic state/comment effects or the actor responsible for
+the observed state. See the repository's docs/comment-state.md for exact scope.
