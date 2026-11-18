@@ -1,5 +1,6 @@
 """Observe renamed-fork and review behavior on the disposable core fixture."""
 from contextlib import closing
+import json
 import re
 import secrets
 import time
@@ -70,8 +71,12 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
     statuses = []
     for fields in ({}, {"head_repo": fork}):
         status, response = guest_api.request("POST", rest + "/pulls", data={**requested, **fields})
-        # 4.44.0 can return a successful HTTP status without a PR body.
-        assert status == 404 or (status == 200 and decode_json(response) is None), ("renamed-fork REST", status)
+        if status == 200:
+            # 4.44.0 serializes the failure as a wrapped 404.
+            wrapped = json.loads(response)
+            assert int(wrapped["status"]) == 404 and "body" in wrapped
+        else:
+            assert status == 404, ("renamed-fork REST", status)
         statuses.append(status)
         assert pull_numbers() == before
     assert statuses[0] == statuses[1]

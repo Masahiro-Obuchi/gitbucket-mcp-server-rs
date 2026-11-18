@@ -21,9 +21,10 @@ repository's name to look up the head repository under that owner. The
 guest first created a PR from a same-name private fork with a PAT. After the
 guest renamed the fork, its branch still resolved to the expected Git commit.
 Both `owner:branch` requests, with and without an additional `head_repo`, returned
-200 without a PR on 4.44.0 and 404 on 4.48.0. The set of open PR numbers stayed
-unchanged. The fixture leaves the old name vacant. HTTP status alone gives no
-reliable diagnosis on an arbitrary instance. [REST 4.44.0](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala)
+a JSON-wrapped 404 inside HTTP 200 on 4.44.0 and HTTP 404 on 4.48.0. The set of
+open PR numbers stayed unchanged. The fixture leaves the old name vacant. HTTP
+status alone gives no reliable diagnosis on an arbitrary instance.
+[REST 4.44.0](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala)
 · [REST 4.48.0](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala)
 · [REST request type](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/api/CreateAPullRequest.scala)
 
