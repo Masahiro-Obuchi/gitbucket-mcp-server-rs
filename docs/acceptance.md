@@ -170,3 +170,8 @@ P15-6 verifies organization creation and repository discovery through stdio.
 PAT-only clients verify membership, exact metadata, initial branches, and
 paged visibility of public, personal and shared repositories. See
 [the contract](repository-discovery.md).
+
+P15-7 checks same-name fork creation via REST, renamed fork creation via the
+native Web compare form, and readback through REST and stdio. It verifies the
+review route limits with ordinary and inline comments and a successful commit
+status as controls. See [the contract](pull-request-review-contract.md).

@@ -618,6 +618,11 @@ missing observations remain unknown. PR creation does not accept assignees,
 milestone or maintainer_can_modify because the verified controller does not
 apply them. Creation fields are not accepted by the update tools in this unit.
 
+For a same-name fork, set `head` to `fork-owner:branch`. For a renamed fork,
+create the PR from the fork's Compare page in GitBucket, then read it with
+`get_pull_request`. The tested REST versions look for the base repository's
+name under the fork owner. See [the fork and review contract](docs/pull-request-review-contract.md).
+
 These operations use PAT-only REST in both profiles. Supplied Issue creation
 metadata is verified by a GET after one POST. Nonempty assignments/milestone need
 developer permission: **GitBucket can create the Issue while ignoring these
@@ -787,6 +792,10 @@ verification after a write may mean the change was saved; do not retry blindly.
 See [the ordinary comment contract](docs/ordinary-comments.md).
 
 ### Inline review comments
+
+The standard GitBucket versions covered here support comments and commit status
+checks. Formal approvals, requests for changes and thread resolution are
+unavailable. See [the fork and review contract](docs/pull-request-review-contract.md).
 
 `list_pull_request_review_comments(owner, repo, pull_number)` returns `comments`
 and `coverage`. `get_pull_request_review_comment` additionally requires a
