@@ -154,6 +154,12 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
     fn list_repositories<'a>(&'a self, owner: &'a str) -> ApiFuture<'a, Vec<Repository>>;
     fn get_repository<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Repository>;
     fn create_repository<'a>(&'a self, body: &'a CreateRepository) -> ApiFuture<'a, Repository>;
+    fn create_organization_repository<'a>(
+        &'a self,
+        organization: &'a str,
+        body: &'a CreateRepository,
+    ) -> ApiFuture<'a, Repository>;
+    fn list_visible_repositories(&self) -> ApiFuture<'_, Vec<Repository>>;
     fn fork_repository<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Repository>;
     fn list_branches<'a>(&'a self, owner: &'a str, repo: &'a str) -> ApiFuture<'a, Vec<Branch>>;
     fn list_issue_labels<'a>(

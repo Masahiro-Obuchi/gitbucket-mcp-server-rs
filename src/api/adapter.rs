@@ -11,6 +11,20 @@ use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn create_organization_repository<'a>(
+        &'a self,
+        organization: &'a str,
+        body: &'a CreateRepository,
+    ) -> ApiFuture<'a, Repository> {
+        Box::pin(async move {
+            GitBucketClient::create_organization_repository(self, organization, body).await
+        })
+    }
+
+    fn list_visible_repositories(&self) -> ApiFuture<'_, Vec<Repository>> {
+        Box::pin(async move { GitBucketClient::list_visible_repositories(self).await })
+    }
+
     fn close_issue_with_comment<'a>(
         &'a self,
         owner: &'a str,

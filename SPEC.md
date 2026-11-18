@@ -164,7 +164,7 @@ Requirements:
 
 All tools return MCP tool results.
 
-All eleven list tools accept `limit?` (1..100, default 50), `cursor?` and
+All twelve list tools accept `limit?` (1..100, default 50), `cursor?` and
 `view?` (`summary` default / `full`). Array keys remain with `has_more`,
 `next_cursor` and `range`. Summary omissions and UTF-8-safe 1024-byte display
 previews are explicit in per-item `_list` metadata; Issue/PR bodies and repeated
@@ -174,7 +174,7 @@ model fields within their respective limits; full view is still paged.
 Each serialized list CallToolResult is capped at 64 KiB, including the text
 fallback. Pages contain at most the requested count and advance if more items
 remain. Cursors are server-issued positions in a cached observation, bound to
-tool/owner/repo/object number/state/view/limit and observed upstream order.
+tool/owner/repo/object number/state/view/limit and observation order.
 Invalid/expired/mismatched cursors fail before HTTP. They expire after five
 minutes or earlier eviction/restart. Cached continuations perform no HTTP and
 do not recheck permissions or changes. Initial collection uses existing source
@@ -198,7 +198,7 @@ successful partial traversal. API lists retain their Vec-returning contracts.
   comment-with-close/reopen tools are destructive.
   Reads, removals, milestone set/clear, assignee updates and PR ready have idempotent hints;
   other writes conservatively do not. All tools interact with external data.
-- `GITBUCKET_READ_ONLY=true` registers only the 21 read tools and rejects all other
+- `GITBUCKET_READ_ONLY=true` registers only the 22 read tools and rejects all other
   MCP calls and every direct Rust write handler with `read_only_error` before HTTP.
   The default is false; this env-only setting accepts only true/false. Rust server
   constructors use read/write mode until `with_access_mode(AccessMode::ReadOnly)`
@@ -238,7 +238,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 50 tools: 21 reads and 29 writes. The standard
+The normal server advertises 52 tools: 22 reads and 30 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -268,6 +268,8 @@ See [the posting contract](docs/review-comment-posts.md) and
 - `list_repositories(owner)`
 - `get_repository(owner, repo)`
 - `create_repository(name, description?, private?, auto_init?)`
+- `create_organization_repository(organization, name, description?, private?, auto_init?)`
+- `list_visible_repositories(limit?, cursor?, view?)`
 - `fork_repository(owner, repo)`
 - `list_branches(owner, repo)`
 
@@ -492,7 +494,7 @@ schemas. See [creation-metadata.md](docs/creation-metadata.md).
 model and support both Issue and PR numbers. Set requires an existing scoped
 milestone; clear retains its definition. IDs are positive 32-bit integers.
 Both tools reject unknown arguments and are hidden/blocked in read-only mode.
-There are now 50 tools (21 reads / 29 writes).
+There are now 52 tools (22 reads / 30 writes).
 
 Only the standard profile supports these operations. Rest-only refuses before
 HTTP; no ineffective Issue/PR PATCH is sent. Actual changes use matching PAT/Web
@@ -516,7 +518,7 @@ GitBucketApi gains two required methods with no compatibility defaults. See
 `replace_issue_assignees(owner, repo, issue_number, assignees)` add missing
 individual accounts, remove one, or replace the entire set ([] clears). IDs are
 positive 32-bit integers; MCP trims canonical logins and rejects duplicates.
-The server exposes 50 tools (21 reads / 29 writes). Existing creation/update
+The server exposes 52 tools (22 reads / 30 writes). Existing creation/update
 schemas remain unchanged. One-way readiness uses the separate tool below;
 ready-to-draft conversion remains unsupported on the verified contract.
 
@@ -543,7 +545,7 @@ See [the contract](docs/issue-assignees.md) for source evidence and limitations.
 
 `mark_pull_request_ready(owner, repo, pull_number)` returns the observed
 PullRequest model after the native one-way draft-to-ready operation. The normal
-server exposes 50 tools (21 reads / 29 writes). Unknown/reverse/guard arguments
+server exposes 52 tools (22 reads / 30 writes). Unknown/reverse/guard arguments
 are rejected, IDs are 1..2147483647, and existing create/update schemas remain
 unchanged. Rest-only refuses before HTTP; readonly mode hides and blocks it.
 
@@ -586,3 +588,18 @@ guarantee. GitBucketApi adds two required methods using existing CreateComment
 and new CommentStateChange; OperationTarget gains optional observed_parent_number.
 See [the contract](docs/comment-state.md) for preservation scope, native sources
 and the limitations of sequential observations.
+
+## Organization repositories and discovery (P15-6)
+
+Organization creation checks the exact Organization login before one native
+POST. Repository and branch reads verify ownership, privacy, description and
+initial branch state. The write is additive and non-idempotent, and read-only
+MCP blocks it. A failed post-write observation retains the requested locator.
+
+Discovery reads the active user and organization directories and queries each
+owner collection with the same PAT. It returns all repositories observed in that
+bounded scan, including visible private collaborator repositories. A failed source
+read or budget failure returns an error. Native owner collections are unpaged.
+MCP pages sort by full name and use the shared cache, with a discovery-specific
+cursor scope. Both profiles use REST. The [contract](docs/repository-discovery.md)
+lists the limits and native permissions.

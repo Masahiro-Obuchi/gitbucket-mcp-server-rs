@@ -184,6 +184,8 @@ def run(binary):
         verify_pr_ready(binary, base, user, password, token, repo, info["default_branch"], git)
         from probe_comment_state import verify_comment_state, verify_merged_comment_state_rejection
         verify_comment_state(binary, base, user, token, repo, number, info["default_branch"], git)
+        from probe_repository_discovery import verify_repository_discovery
+        verify_repository_discovery(binary, base, user, token, repo)
         merged = api.json("PUT", rest + f"/pulls/{number}/merge", {"merge_method": "merge-commit"})
         assert merged["merged"]
         verify_merged_ready_rejection(binary, base, user, token, repo, number)

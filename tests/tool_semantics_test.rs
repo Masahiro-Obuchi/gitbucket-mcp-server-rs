@@ -530,7 +530,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
     let normal_client = connect(normal).await;
     let all = normal_client.list_all_tools().await.unwrap();
     let tools = client.list_all_tools().await.unwrap();
-    assert_eq!(tools.len(), 21);
+    assert_eq!(tools.len(), 22);
     assert!(tools
         .iter()
         .all(|t| t.name.starts_with("get_") || t.name.starts_with("list_")));
@@ -562,6 +562,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
         }
         let result = match tool.name.as_ref() {
             "create_repository" => direct!(create_repository),
+            "create_organization_repository" => direct!(create_organization_repository),
             "fork_repository" => direct!(fork_repository),
             "create_label" => direct!(create_label),
             "update_label" => direct!(update_label),

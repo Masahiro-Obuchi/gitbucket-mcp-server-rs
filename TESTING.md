@@ -100,13 +100,13 @@ Synthetic response fixtures in `tests/fixtures/gitbucket/` cite the exact offici
 list calls, while missing metadata stays null and explicit empty arrays/false
 remain distinguishable. Closed Issue updates do not synthesize closure dates.
 
-All 50 tool schemas reject additional properties. MCP tests send otherwise-valid
+All 52 tool schemas reject additional properties. MCP tests send otherwise-valid
 arguments plus an unknown field and require invalid-parameters errors without
 HTTP. Inline-location arguments cannot silently create a normal PR comment.
 Whitespace tests cover required blank comments, optional content, code blocks,
 hard line breaks and trailing newlines. Standard web Issue updates reject a
 lossy body change before other fields are written, while an unchanged raw body
-skips the content form. Read-only tests hide all 29 writes, call each through MCP
+skips the content form. Read-only tests hide all 30 writes, call each through MCP
 and the public Rust handler, and verify that only the permitted read reached HTTP.
 
 Against a disposable standard-profile GitBucket with Git and web credentials:
@@ -199,7 +199,7 @@ without refetching and preserves partial coverage on every page.
 
 Cache unit tests cover expiry, count/byte-pressure eviction, observation limits
 and rejecting a later unpageable item before issuing any partial result/cursor.
-Existing schema/annotations/read-only tests cover all 50 tools. Full metadata
+Existing schema/annotations/read-only tests cover all 52 tools. Full metadata
 fixture tests request `view: "full"`; getters and API list contracts are unchanged.
 
 The two existing large-list live E2Es now explicitly follow MCP cursors, validate
@@ -705,7 +705,7 @@ unknown PRs, ignored actions, missing/duplicate/changed comment observations,
 unknown retained fields, definite rejection versus post-save POST404 uncertainty,
 redirect/server/JSON failures, wrong parent identity, post-write read failures,
 strict schema/readonly guards and deadline/cancel progress before/after ID capture.
-Shared schema/annotation/direct-handler tests cover all 50 tools.
+Shared schema/annotation/direct-handler tests cover all 52 tools.
 
 The core changes fixture invokes `probe_comment_state.py` through actual stdio.
 Both versions exercise PAT-only rest-only and standard, owner success, GUEST
@@ -714,3 +714,22 @@ PR, full raw body/visible metadata/revision retention, unchanged base Git tip,
 repeat/blank/readonly rejection and merged-PR refusal without added comments.
 See [the contract](docs/comment-state.md) for the native post-save 404 path and
 the limits of state/comment observations.
+
+## Organization repositories and discovery (P15-6)
+
+`cargo test --locked --test repository_discovery_test` exercises the one POST
+and independent repository/branch reads, organization type checks before HTTP
+writes, scoped errors, duplicate and foreign observations, directory limits,
+upstream failures and read-only pagination of 128 repositories. It covers
+administrator-provisioned logins with `@` and rejects logins containing path
+separators before querying owners. Continuations make no further HTTP requests
+and cannot cross into an owner list.
+
+`probe_repository_discovery.py` runs in the changes fixture on both official
+versions. It covers PAT-only organization creation, exact description, visibility
+and initialized and empty branches, plus rejection for a nonmember, personal
+owner, missing organization and read-only client. A guest with `@` in its login
+discovers its own private repository, public repositories and private
+repositories shared by a personal owner and a group across multiple pages. A
+separate organization repository stays hidden from that guest. See
+[the contract](docs/repository-discovery.md).

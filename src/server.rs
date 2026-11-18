@@ -40,6 +40,7 @@ fn is_read_tool(name: &str) -> bool {
         "get_authenticated_user"
             | "get_user"
             | "list_repositories"
+            | "list_visible_repositories"
             | "get_repository"
             | "list_branches"
             | "list_labels"

@@ -144,7 +144,7 @@ Git commands prompt for a username or password.
 
 ### Read-only access
 
-Set `GITBUCKET_READ_ONLY=true` to register only the 21 list/get tools. The server
+Set `GITBUCKET_READ_ONLY=true` to register only the 22 list/get tools. The server
 also rejects write calls with `read_only_error` before any HTTP or authentication
 requests, including calls to a known write name and direct Rust tool handlers.
 The setting is env-only; values other than `true` or `false` fail startup.
@@ -470,7 +470,7 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 
 ## Available Tools
 
-The server exposes 50 tools: 21 reads and 29 writes.
+The server exposes 52 tools: 22 reads and 30 writes.
 
 ### Repository
 
@@ -479,8 +479,23 @@ The server exposes 50 tools: 21 reads and 29 writes.
 | `list_repositories` | List repositories for a user or organization |
 | `get_repository` | Get repository details |
 | `create_repository` | Create a new repository |
+| `create_organization_repository` | Create and verify a repository under an existing organization |
+| `list_visible_repositories` | Discover repositories visible to the PAT across users and organizations |
 | `fork_repository` | Fork a repository |
 | `list_branches` | List branches for a repository |
+
+`create_organization_repository` takes `organization`, `name` and optional
+`description`, `private` and `auto_init`. It uses the PAT and GitBucket's
+organization creation permissions in both profiles. Inspect the organization
+and repository named in the operation error if creation cannot be verified.
+
+Use `list_visible_repositories` when the owner is unknown. It includes public
+repositories, personal and organization repositories, and private repositories
+shared with the PAT. This read works in read-only mode. Results are sorted by
+`full_name` and paged from a cached observation. Discovery scans up to 500 owners
+and reports errors if an owner collection fails or the observation exceeds its
+limits. Use `list_repositories(owner)` for a targeted read. See
+[the repository contract](docs/repository-discovery.md).
 
 ### Issues
 
@@ -822,6 +837,7 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | Tool | Result field |
 |------|--------------|
 | `list_repositories` | `repositories` |
+| `list_visible_repositories` | `repositories` |
 | `list_branches` | `branches` |
 | `list_issues` | `issues` |
 | `list_issue_comments` | `comments` |
@@ -833,7 +849,7 @@ MCP structured results are always JSON objects. List tools return their arrays u
 | `list_pull_request_commits` | `commits` (also `comparison`) |
 | `list_pull_request_files` | `files` (also `comparison`) |
 
-All eleven list tools accept optional `limit` (default 50, maximum 100), `cursor`
+All twelve list tools accept optional `limit` (default 50, maximum 100), `cursor`
 and `view` (`summary` by default, or `full`). Every page adds `has_more`,
 `next_cursor` and `range`. Follow cursors with identical target, filters, limit
 and view until `has_more` is false. Cursors expire after five minutes and can be

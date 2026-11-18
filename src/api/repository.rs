@@ -1,10 +1,200 @@
-use crate::error::Result;
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde::Deserialize;
+
+use crate::error::{GbMcpError, Result};
+use crate::models::pull_request::canonical_sha;
 use crate::models::repository::{Branch, CreateRepository, Repository};
 
 use super::{client::GitBucketClient, outcome::Operation, profile::Route};
 use crate::models::operation::{OperationTarget, ResourceKind};
 
+const MAX_DISCOVERY_OWNERS: usize = 500;
+const MAX_DISCOVERY_REPOSITORIES: usize = 10_000;
+
+#[derive(Deserialize)]
+struct AccountLogin {
+    login: String,
+}
+
+fn matches_repository(repository: &Repository, owner: &str, name: &str) -> bool {
+    repository.name == name && repository.full_name == format!("{owner}/{name}")
+}
+
 impl GitBucketClient {
+    /// Observe repositories visible to the PAT across the native account directories.
+    pub async fn list_visible_repositories(&self) -> Result<Vec<Repository>> {
+        let actor = self.get_authenticated_user().await?;
+        let users: Vec<AccountLogin> = self.get("/users").await?;
+        let organizations: Vec<AccountLogin> = self.get("/organizations").await?;
+        if users.len().saturating_add(organizations.len()) > MAX_DISCOVERY_OWNERS {
+            return Err(GbMcpError::Unsupported(format!(
+                "Repository discovery exceeds {MAX_DISCOVERY_OWNERS} owners; list repositories for a specific owner"
+            )));
+        }
+        if !users.iter().any(|user| user.login == actor.login) {
+            return Err(GbMcpError::ReadConflict(
+                "The authenticated account is absent from the GitBucket user directory",
+            ));
+        }
+        let mut owners = BTreeMap::new();
+        for (collection, accounts) in [("users", users), ("orgs", organizations)] {
+            for account in accounts {
+                let invalid_login = || {
+                    GbMcpError::ReadConflict(
+                        "GitBucket account directory returned an invalid owner path segment",
+                    )
+                };
+                // GitBucket can provision logins outside the interactive identifier rules.
+                if account.login.contains(['/', '\\', '%']) {
+                    return Err(invalid_login());
+                }
+                let url = super::url_safety::append(
+                    self.base_url(),
+                    &[collection, &account.login, "repos"],
+                )
+                .map_err(|_| invalid_login())?;
+                if owners.insert(account.login, url).is_some() {
+                    return Err(GbMcpError::ReadConflict(
+                        "GitBucket account directories contain duplicate owner identities",
+                    ));
+                }
+            }
+        }
+        let mut observed = BTreeSet::new();
+        let mut repos = Vec::new();
+        let mut bytes: usize = 0;
+        let byte_limit = self.http_settings().json_limit_bytes;
+        for (owner, url) in owners {
+            // The instance applies the PAT's visibility in each owner-scoped
+            // collection, including the authenticated user's own collection.
+            let path = url.path().to_owned();
+            let batch: Vec<Repository> = self.get_url(url, &path).await?;
+            if repos.len() + batch.len() > MAX_DISCOVERY_REPOSITORIES {
+                return Err(GbMcpError::Unsupported(format!(
+                    "Repository discovery exceeds {MAX_DISCOVERY_REPOSITORIES} repositories; list by owner"
+                )));
+            }
+            for repo in batch {
+                super::url_safety::identifier(&repo.name, "repo")?;
+                if !matches_repository(&repo, &owner, &repo.name)
+                    || repo.owner.as_ref().is_some_and(|user| user.login != owner)
+                    || !observed.insert(repo.full_name.clone())
+                {
+                    return Err(GbMcpError::ReadConflict(
+                        "GitBucket repository discovery returned a foreign or duplicate identity",
+                    ));
+                }
+                bytes = bytes.saturating_add(serde_json::to_vec(&repo)?.len());
+                if bytes > byte_limit {
+                    return Err(GbMcpError::ResponseTooLarge {
+                        kind: "Aggregate repository discovery (try listing by owner)",
+                        limit: byte_limit,
+                    });
+                }
+                repos.push(repo);
+            }
+        }
+        repos.sort_unstable_by(|left, right| left.full_name.cmp(&right.full_name));
+        Ok(repos)
+    }
+
+    /// Create a repository under an existing organization through its REST route.
+    pub async fn create_organization_repository(
+        &self,
+        organization: &str,
+        body: &CreateRepository,
+    ) -> Result<Repository> {
+        super::url_safety::repository(organization, &body.name)?;
+        if body.name.len() > 100 {
+            return Err(GbMcpError::InvalidInput(
+                "Repository name must contain at most 100 characters".into(),
+            ));
+        }
+        let account = self.get_user(organization).await?;
+        if account.login != organization || account.user_type.as_deref() != Some("Organization") {
+            return Err(GbMcpError::InvalidInput(
+                "organization must name an existing GitBucket organization exactly".into(),
+            ));
+        }
+        let operation = Operation::new(
+            "create_organization_repository",
+            OperationTarget::new(ResourceKind::Repository, organization, &body.name),
+            Route::Rest,
+            &[
+                ("identity", true),
+                ("description", true),
+                ("private", true),
+                ("auto_init", true),
+            ],
+        );
+        let future = async {
+            let created: Repository = self
+                .post(&format!("/orgs/{organization}/repos"), body)
+                .await?;
+            let identity_matches = |repo: &Repository| {
+                matches_repository(repo, organization, &body.name)
+                    && repo.owner.as_ref().is_some_and(|owner| {
+                        owner.login == organization
+                            && owner.user_type.as_deref() == Some("Organization")
+                    })
+            };
+            if !identity_matches(&created) {
+                return Err(GbMcpError::Other(
+                    "GitBucket returned a different or incomplete repository identity; inspect the requested repository".into(),
+                ));
+            }
+            let repo = self.get_repository(organization, &body.name).await?;
+            if !identity_matches(&repo) {
+                return Err(GbMcpError::Other(
+                    "The created repository identity could not be independently confirmed".into(),
+                ));
+            }
+            let mut checks = vec![
+                ("identity", true),
+                (
+                    "private",
+                    repo.is_private == body.is_private.unwrap_or(false),
+                ),
+            ];
+            if let Some(description) = &repo.description {
+                checks.push((
+                    "description",
+                    description == body.description.as_deref().unwrap_or(""),
+                ));
+            }
+            // Record the observed repository even if branch observation fails.
+            let metadata = operation.verify(&checks);
+            let branches = self.list_branches(organization, &body.name).await?;
+            let initialized = if body.auto_init.unwrap_or(false) {
+                repo.default_branch
+                    .as_ref()
+                    .filter(|name| !name.is_empty())
+                    .map(|default| {
+                        branches.len() == 1
+                            && branches[0].name == *default
+                            && branches[0]
+                                .commit
+                                .as_ref()
+                                .is_some_and(|commit| canonical_sha(&commit.sha))
+                    })
+            } else {
+                Some(branches.is_empty())
+            };
+            if let Some(matches) = initialized {
+                operation.verify(&[("auto_init", matches)])?;
+            }
+            metadata?;
+            if initialized.is_none() || repo.description.is_none() {
+                return Err(GbMcpError::Other(
+                    "GitBucket did not expose all requested repository fields; inspect the repository".into(),
+                ));
+            }
+            Ok(repo)
+        };
+        operation.run(future).await
+    }
+
     /// List repositories for a user. Falls back to org endpoint on 404.
     pub async fn list_repositories(&self, owner: &str) -> Result<Vec<Repository>> {
         super::url_safety::identifier(owner, "owner")?;

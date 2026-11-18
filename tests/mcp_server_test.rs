@@ -588,6 +588,26 @@ impl GitBucketApi for IntegrationMockApi {
         Box::pin(async move { Ok(repository) })
     }
 
+    fn create_organization_repository<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a CreateRepository,
+    ) -> ApiFuture<'a, Repository> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Organization repository creation is not configured in this mock".into(),
+            ))
+        })
+    }
+
+    fn list_visible_repositories(&self) -> ApiFuture<'_, Vec<Repository>> {
+        Box::pin(async {
+            Err(gitbucket_mcp_server::error::GbMcpError::Unsupported(
+                "Repository discovery is not configured in this mock".into(),
+            ))
+        })
+    }
+
     fn create_repository<'a>(&'a self, body: &'a CreateRepository) -> ApiFuture<'a, Repository> {
         self.record(RecordedCall::CreateRepository { body: body.clone() });
         let repository = self.repository.clone();
@@ -1124,6 +1144,8 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "create_milestone",
         "create_pull_request",
         "create_repository",
+        "create_organization_repository",
+        "list_visible_repositories",
         "delete_label",
         "delete_milestone",
         "fork_repository",
@@ -1167,6 +1189,10 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     ]);
 
     assert_eq!(tool_names, expected);
+    assert_eq!(
+        required_fields(&tools, "create_organization_repository"),
+        json!(["organization", "name"])
+    );
     for name in ["close_issue_with_comment", "reopen_issue_with_comment"] {
         assert_eq!(
             required_fields(&tools, name),
