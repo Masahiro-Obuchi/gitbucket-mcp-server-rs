@@ -13,11 +13,11 @@ def verify_repository_discovery(binary, base, owner, token, fixture_repo):
     admin = Http(base, basic=("root", "root"))
     suffix = secrets.token_hex(5)
     organization = "discovery-org-" + suffix
-    guest = "discovery-guest-" + suffix
+    guest = f"discovery-guest-{suffix}@example.test"
     secret = secrets.token_urlsafe(24)
     admin.json("POST", "/api/v3/admin/organizations", {"login": organization, "admin": owner})
     admin.json("POST", "/api/v3/admin/users", {
-        "login": guest, "password": secret, "email": guest + "@example.test",
+        "login": guest, "password": secret, "email": guest,
         "fullName": "Discovery collaborator", "isAdmin": False,
     })
     web = Http(base)

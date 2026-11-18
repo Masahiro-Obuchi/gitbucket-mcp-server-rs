@@ -46,10 +46,12 @@ organization directories (`/users` and `/organizations`). It queries
 `/orgs/{login}/repos` for each organization. The same PAT is used
 throughout. Native visibility filters determine the contents of each list.
 
-The scan checks owner identities before querying and rejects foreign or duplicate
-repository identities. The resulting list includes public repositories, visible
-personal and organization repositories, and private repositories shared through
-native collaborator access. Results are sorted by `full_name`.
+The scan uses each directory login as one URL path segment, including
+administrator-provisioned logins such as `builder@example.test`. Unaddressable
+or duplicate owner logins and foreign or duplicate repository identities fail
+the scan. The resulting list includes public repositories, visible personal and
+organization repositories, and private repositories shared through native
+collaborator access. Results are sorted by `full_name`.
 
 GitBucket returns unpaged owner collections. The scan is sequential and bounded
 to 500 directory entries, 10,000 repositories and the configured JSON byte
@@ -57,7 +59,8 @@ limit for the aggregate repository model data. Existing HTTP and tool timeouts
 apply. An upstream error or a limit failure fails the observation. On a larger
 instance use the owner-scoped `list_repositories` tool.
 
-MCP exposes the observation through [bounded list pages](list-continuation.md).
+MCP exposes the observation through [bounded list pages](list-continuation.md)
+and applies the shared 2 MiB budget to the chosen view before paging.
 The default view is summary with a limit of 50. Follow `next_cursor` with the
 same effective view and limit. Cursors belong to this tool and reuse cached
 results for up to five minutes, subject to cache eviction. Permissions and data

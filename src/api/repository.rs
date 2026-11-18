@@ -40,8 +40,21 @@ impl GitBucketClient {
         let mut owners = BTreeMap::new();
         for (collection, accounts) in [("users", users), ("orgs", organizations)] {
             for account in accounts {
-                super::url_safety::identifier(&account.login, "owner")?;
-                if owners.insert(account.login, collection).is_some() {
+                let invalid_login = || {
+                    GbMcpError::ReadConflict(
+                        "GitBucket account directory returned an invalid owner path segment",
+                    )
+                };
+                // GitBucket can provision logins outside the interactive identifier rules.
+                if account.login.contains(['/', '\\', '%']) {
+                    return Err(invalid_login());
+                }
+                let url = super::url_safety::append(
+                    self.base_url(),
+                    &[collection, &account.login, "repos"],
+                )
+                .map_err(|_| invalid_login())?;
+                if owners.insert(account.login, url).is_some() {
                     return Err(GbMcpError::ReadConflict(
                         "GitBucket account directories contain duplicate owner identities",
                     ));
@@ -52,11 +65,11 @@ impl GitBucketClient {
         let mut repos = Vec::new();
         let mut bytes: usize = 0;
         let byte_limit = self.http_settings().json_limit_bytes;
-        for (owner, collection) in owners {
+        for (owner, url) in owners {
             // The instance applies the PAT's visibility in each owner-scoped
             // collection, including the authenticated user's own collection.
-            let path = format!("/{collection}/{owner}/repos");
-            let batch: Vec<Repository> = self.get(&path).await?;
+            let path = url.path().to_owned();
+            let batch: Vec<Repository> = self.get_url(url, &path).await?;
             if repos.len() + batch.len() > MAX_DISCOVERY_REPOSITORIES {
                 return Err(GbMcpError::Unsupported(format!(
                     "Repository discovery exceeds {MAX_DISCOVERY_REPOSITORIES} repositories; list by owner"

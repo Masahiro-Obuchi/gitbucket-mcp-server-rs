@@ -720,13 +720,16 @@ the limits of state/comment observations.
 `cargo test --locked --test repository_discovery_test` exercises the one POST
 and independent repository/branch reads, organization type checks before HTTP
 writes, scoped errors, duplicate and foreign observations, directory limits,
-upstream failures and read-only pagination of 128 repositories. It checks that
-continuations make no further HTTP requests and cannot cross into an owner list.
+upstream failures and read-only pagination of 128 repositories. It covers
+administrator-provisioned logins with `@` and rejects logins containing path
+separators before querying owners. Continuations make no further HTTP requests
+and cannot cross into an owner list.
 
 `probe_repository_discovery.py` runs in the changes fixture on both official
 versions. It covers PAT-only organization creation, exact description, visibility
 and initialized and empty branches, plus rejection for a nonmember, personal
-owner, missing organization and read-only client. A guest discovery traverses
-multiple pages with its own private repository, public repositories and private
-repositories shared by a personal owner and a group. A separate organization
-repository stays hidden from that guest. See [the contract](docs/repository-discovery.md).
+owner, missing organization and read-only client. A guest with `@` in its login
+discovers its own private repository, public repositories and private
+repositories shared by a personal owner and a group across multiple pages. A
+separate organization repository stays hidden from that guest. See
+[the contract](docs/repository-discovery.md).

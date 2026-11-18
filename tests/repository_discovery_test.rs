@@ -235,6 +235,43 @@ async fn directories(http: &TestServer, users: Value, orgs: Value) {
 }
 
 #[tokio::test]
+async fn visibility_scan_includes_admin_provisioned_email_style_logins() {
+    let http = TestServer::start().await;
+    let login = "builder@example.test";
+    directories(&http, json!([{"login":"me"},{"login":login}]), json!([])).await;
+    reply(
+        &http,
+        "GET",
+        "/api/v3/users/builder@example.test/repos",
+        200,
+        json!([repo(login, "shared", true)]),
+    )
+    .await;
+    reply(&http, "GET", "/api/v3/users/me/repos", 200, json!([])).await;
+
+    let repositories = http.client().list_visible_repositories().await.unwrap();
+    assert_eq!(repositories.len(), 1);
+    assert_eq!(repositories[0].full_name, "builder@example.test/shared");
+    assert!(repositories[0].is_private);
+}
+
+#[tokio::test]
+async fn visibility_scan_rejects_unaddressable_logins_before_querying_owners() {
+    let http = TestServer::start().await;
+    directories(
+        &http,
+        json!([{"login":"me"},{"login":"team/member"}]),
+        json!([]),
+    )
+    .await;
+    assert!(matches!(
+        http.client().list_visible_repositories().await,
+        Err(GbMcpError::ReadConflict(_))
+    ));
+    assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
 async fn visibility_scan_rejects_duplicate_or_out_of_scope_repositories_and_directory_overflow() {
     let orgs = json!([{"login":"team"}]);
     let users = json!([{"login":"me"}]);
