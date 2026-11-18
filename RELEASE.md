@@ -2,10 +2,21 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased P15 organization repositories and discovery
+
+- Add create_organization_repository for existing GitBucket organizations and
+  list_visible_repositories for PAT-scoped discovery across user and organization
+  owners. The server has 52 tools (22 reads / 30 writes).
+- Organization creation verifies the owner, repository fields and initial
+  branch state. Discovery uses a bounded owner scan and cached MCP pages.
+  Both tools use REST in both profiles. See [the contract](docs/repository-discovery.md).
+- Custom GitBucketApi adapters implement two new required methods using
+  the existing CreateRepository and Repository models.
+
 ## Unreleased P15 comment with close/reopen
 
 - Add close_issue_with_comment and reopen_issue_with_comment for Issues and
-  unmerged PRs. There are 50 tools (21 reads / 29 writes). Both profiles use
+  unmerged PRs. That unit brought the total to 50 tools (21 reads / 29 writes). Both profiles use
   PAT-only REST; a real nonblank body is required and retained exactly.
 - Send one native action-query POST and independently verify comment membership,
   body/author, parent state and retained fields. A denied action can still create

@@ -55,6 +55,31 @@ pub struct CreateRepositoryParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CreateOrganizationRepositoryParams {
+    #[schemars(description = "Exact GitBucket organization name")]
+    pub organization: String,
+    pub name: String,
+    pub description: Option<String>,
+    #[schemars(description = "Private repository, default false")]
+    pub private: Option<bool>,
+    #[schemars(description = "Initialize the default branch with a README, default false")]
+    pub auto_init: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("required" = []))]
+pub struct ListVisibleRepositoriesParams {
+    #[schemars(description = "Page size 1..100, default 50, subject to the byte limit")]
+    pub limit: Option<u64>,
+    #[schemars(description = "Continuation from this tool; use the same limit and view")]
+    pub cursor: Option<String>,
+    #[schemars(description = "summary (default) or full")]
+    pub view: Option<ListView>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ForkRepositoryParams {
     #[schemars(description = "Owner of the repository to fork")]
     pub owner: String,
@@ -85,6 +110,70 @@ pub struct ListBranchesParams {
 
 #[tool_router(router = tool_router_repository, vis = "pub")]
 impl GitBucketMcpServer {
+    #[tool(
+        description = "Discover repositories visible to the PAT across GitBucket users and organizations, including private collaborator access. Bounded scan of at most 500 owners, ordered by full name; any source failure returns an error. Paged cached observation with limit, view and cursor. Use list_repositories for a known owner.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        )
+    )]
+    pub async fn list_visible_repositories(
+        &self,
+        Parameters(params): Parameters<ListVisibleRepositoriesParams>,
+    ) -> ToolResult {
+        self.list_response(
+            ListScope::new(ListKind::VisibleRepositories, "", None),
+            ListOptions {
+                limit: params.limit,
+                cursor: params.cursor,
+                view: params.view,
+            },
+            async { ListObservation::new(self.client.list_visible_repositories().await?, None) },
+        )
+        .await
+    }
+
+    #[tool(
+        description = "Create one repository under an existing GitBucket organization using the PAT. GitBucket decides creation permissions. Verify the owner/name, privacy, description and initial branches. On an uncertain result inspect the requested organization and repository before another write.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    pub async fn create_organization_repository(
+        &self,
+        Parameters(params): Parameters<CreateOrganizationRepositoryParams>,
+    ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
+        let (organization, name) = match repository_fields(&params.organization, &params.name) {
+            Ok(fields) => fields,
+            Err(error) => return validation_error(error),
+        };
+        if name.len() > 100 {
+            return validation_error("Repository name must contain at most 100 characters");
+        }
+        let body = CreateRepository {
+            name,
+            description: params.description,
+            is_private: params.private,
+            auto_init: params.auto_init,
+        };
+        match self
+            .client
+            .create_organization_repository(&organization, &body)
+            .await
+        {
+            Ok(repository) => success(&repository),
+            Err(error) => from_gb_error(error),
+        }
+    }
+
     #[tool(
         description = "List repositories for a user or organization in GitBucket. Paged response (default 50, max 100) with summary view, has_more/next_cursor/range; continue the same observation before expiry",
         annotations(

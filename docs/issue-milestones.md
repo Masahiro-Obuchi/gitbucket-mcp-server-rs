@@ -2,8 +2,8 @@
 
 This unit added two tools, bringing its count to 44. With
 [assignee updates](issue-assignees.md), [PR readiness](pull-request-ready.md) and
-[comment/state operations](comment-state.md), the current total is 50:
-21 reads / 29 writes.
+[comment/state operations](comment-state.md), the current total is 52:
+22 reads / 30 writes.
 
 | Tool | Required arguments after owner/repo | Result |
 | --- | --- | --- |

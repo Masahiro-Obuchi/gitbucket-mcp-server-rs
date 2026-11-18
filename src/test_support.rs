@@ -612,6 +612,26 @@ impl GitBucketApi for MockApi {
         Box::pin(async move { Ok(repository) })
     }
 
+    fn create_organization_repository<'a>(
+        &'a self,
+        _: &'a str,
+        _: &'a CreateRepository,
+    ) -> ApiFuture<'a, Repository> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Organization repository creation is not configured in this mock".into(),
+            ))
+        })
+    }
+
+    fn list_visible_repositories(&self) -> ApiFuture<'_, Vec<Repository>> {
+        Box::pin(async {
+            Err(crate::error::GbMcpError::Unsupported(
+                "Repository discovery is not configured in this mock".into(),
+            ))
+        })
+    }
+
     fn create_repository<'a>(&'a self, body: &'a CreateRepository) -> ApiFuture<'a, Repository> {
         self.record(RecordedCall::CreateRepository { body: body.clone() });
         let repository = self.repository.clone();

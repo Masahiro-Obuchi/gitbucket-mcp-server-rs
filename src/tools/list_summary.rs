@@ -82,7 +82,7 @@ pub(super) fn project(kind: ListKind, mut value: Value) -> Value {
     let mut omitted = Vec::new();
     let mut truncated = Vec::new();
     let keys: &[&str] = match kind {
-        ListKind::Repositories => &[
+        ListKind::Repositories | ListKind::VisibleRepositories => &[
             "name",
             "full_name",
             "description",

@@ -165,3 +165,8 @@ PRs in both profiles with PAT-only clients. It verifies owner/GUEST-opener succe
 GUEST-non-opener comment-only partial effects, exact body/parent membership,
 retained metadata/PR revisions/base Git tip and repeat/readonly/merged refusal.
 See [the contract](comment-state.md).
+
+P15-6 verifies organization creation and repository discovery through stdio.
+PAT-only clients verify membership, exact metadata, initial branches, and
+paged visibility of public, personal and shared repositories. See
+[the contract](repository-discovery.md).

@@ -30,6 +30,7 @@ const TTL: Duration = Duration::from_secs(300);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ListKind {
     Repositories,
+    VisibleRepositories,
     Branches,
     Labels,
     IssueLabels,
@@ -45,7 +46,7 @@ pub(crate) enum ListKind {
 impl ListKind {
     fn field(self) -> &'static str {
         match self {
-            Self::Repositories => "repositories",
+            Self::Repositories | Self::VisibleRepositories => "repositories",
             Self::Branches => "branches",
             Self::Labels | Self::IssueLabels => "labels",
             Self::Milestones => "milestones",

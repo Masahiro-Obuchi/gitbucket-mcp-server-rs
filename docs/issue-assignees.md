@@ -1,7 +1,7 @@
 # Issue/PR assignee updates (P15-4c)
 
 Three tools change individual account assignments on either an Issue or a PR.
-The server exposes 50 tools: 21 reads and 29 writes.
+The server exposes 52 tools: 22 reads and 30 writes.
 
 | Tool | Arguments after owner/repo/issue_number | Effect |
 | --- | --- | --- |

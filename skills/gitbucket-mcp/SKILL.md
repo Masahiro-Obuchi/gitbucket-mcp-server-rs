@@ -50,6 +50,7 @@ Never reveal tokens, passwords, or private instance URLs in responses.
 Repository tools:
 
 - `list_repositories`
+- `list_visible_repositories`
 - `get_repository`
 - `create_repository`
 - `fork_repository`
@@ -98,6 +99,7 @@ MCP structured results are JSON objects. List tools return arrays under stable f
 | Tool | Field |
 |------|-------|
 | `list_repositories` | `repositories` |
+| `list_visible_repositories` | `repositories` |
 | `list_branches` | `branches` |
 | `list_issues` | `issues` |
 | `list_issue_comments` | `comments` |
@@ -133,7 +135,9 @@ rather than treating truncated text as complete Markdown.
 For discovery, start with the narrowest read-only tool:
 
 - Unknown owner or identity: call `get_authenticated_user`.
-- Unknown repository names: call `list_repositories`.
+- Unknown repository names: use `list_repositories` for a known owner and
+  `list_visible_repositories` to search across owners. Follow the cursor through
+  the observed pages. The discovery scan has a 500-owner limit.
 - Unknown branch names: call `list_branches`.
 - Unknown issue or pull request numbers: call `list_issues` or `list_pull_requests`.
 
@@ -358,3 +362,10 @@ follow saving and is unknown, as are uncertain later observations. Do not retry,
 delete/compensate, PATCH the state, undo or change routes automatically. Sequential
 reads do not establish atomic state/comment effects or the actor responsible for
 the observed state. See the repository's docs/comment-state.md for exact scope.
+
+## Organization repositories
+
+Use create_organization_repository with organization and name, plus optional
+private, description and auto_init. GitBucket checks the PAT's permission for
+that organization. This uses REST in either profile. Read-only mode blocks the
+write. Inspect the organization/repository locator on an uncertain outcome.
