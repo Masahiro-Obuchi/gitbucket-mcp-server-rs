@@ -170,7 +170,7 @@ pub struct AddPullRequestCommentParams {
 #[tool_router(router = tool_router_pull_request, vis = "pub")]
 impl GitBucketMcpServer {
     #[tool(
-        description = "Create a pull request from an explicit fork, including a renamed fork, through the standard GitBucket Web compare form. Requires matching PAT/Web credentials. Checks both branch tips before one POST and verifies the created PR. Branch checks leave a race window. Inspect the result before retrying",
+        description = "Create a pull request from an explicit fork, including a renamed fork, through the standard GitBucket Web compare form. Requires matching PAT/Web credentials. Checks the branch tips and shared comparison base before one POST, then verifies the PR record and fetched Git head ref. Branch checks leave a race window. Inspect the result before retrying",
         annotations(
             read_only_hint = false,
             destructive_hint = false,

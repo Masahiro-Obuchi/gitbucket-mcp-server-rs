@@ -26,6 +26,8 @@ const RAW: &str = "日本語 **Markdown**  \n\n    code\tvalue\nend";
 const POST: &str = "/gitbucket/upstream/repo/pulls/new";
 const CREATED: &str = "/gitbucket/upstream/repo/pull/7";
 const PR_READ: &str = "/gitbucket/api/v3/repos/upstream/repo/pulls/7";
+const DESTINATION_COMMITS: &str = "/gitbucket/api/v3/repos/upstream/repo/commits";
+const PR_HEAD_REF: &str = "refs/pull/7/head";
 
 fn change() -> CreateForkPullRequest {
     CreateForkPullRequest {
@@ -128,12 +130,23 @@ async fn fixture(
             })
             .mount(server)
             .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/gitbucket/api/v3/repos/{owner}/{repo}/commits/{BASE}/branches-where-head"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"name":branch,"commit":{"sha":tip}}
+            ])))
+            .with_priority(10)
+            .mount(server)
+            .await;
     }
     Mock::given(method("GET"))
-        .and(path(format!(
-            "/gitbucket/api/v3/repos/upstream/repo/commits/{BASE}"
-        )))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"sha":BASE})))
+        .and(path(DESTINATION_COMMITS))
+        .and(query_param("sha", PR_HEAD_REF))
+        .and(query_param("per_page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"sha":HEAD}])))
+        .with_priority(10)
         .mount(server)
         .await;
     Mock::given(method("GET"))
@@ -190,10 +203,18 @@ async fn creates_from_explicit_fork_with_one_cookie_post_and_reads_with_pat() {
         .iter()
         .position(|r| r.url.path() == PR_READ)
         .unwrap();
-    assert!(post < read);
+    let ref_read = requests
+        .iter()
+        .position(|r| r.url.path() == DESTINATION_COMMITS)
+        .unwrap();
+    assert!(post < read && read < ref_read);
     assert!(!requests[post].headers.contains_key("authorization"));
     assert_eq!(requests[post].headers["cookie"], "JSESSIONID=fake");
     assert_eq!(requests[read].headers["authorization"], "token test-token");
+    assert_eq!(
+        requests[ref_read].headers["authorization"],
+        "token test-token"
+    );
     assert!(!requests.iter().any(|r| r.url.path().starts_with(CREATED)));
     let fields: BTreeMap<_, _> = url::form_urlencoded::parse(&requests[post].body)
         .into_owned()
@@ -268,6 +289,42 @@ async fn rejects_ambiguous_foreign_or_stale_compare_forms_before_post() {
         Err(GbMcpError::ReadConflict(_))
     ));
     assert_eq!(post_count(&http).await, 0);
+}
+
+#[tokio::test]
+async fn rejects_comparison_base_when_branch_or_tip_does_not_match() {
+    for (repo, containing_branches) in [
+        (
+            "upstream/repo",
+            json!([{"name":"other-branch","commit":{"sha":BASE_TIP}}]),
+        ),
+        (
+            "alice/renamed",
+            json!([{"name":"feature/topic","commit":{"sha":BASE}}]),
+        ),
+    ] {
+        let http = fixture(
+            page(),
+            false,
+            ResponseTemplate::new(302).insert_header("Location", CREATED),
+            ResponseTemplate::new(200).set_body_json(created()),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/gitbucket/api/v3/repos/{repo}/commits/{BASE}/branches-where-head"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(containing_branches))
+            .mount(&http.mock_server)
+            .await;
+        assert!(matches!(
+            client(&http, ApiProfile::Standard)
+                .create_fork_pull_request("upstream", "repo", &change())
+                .await,
+            Err(GbMcpError::ReadConflict(_))
+        ));
+        assert_eq!(post_count(&http).await, 0);
+    }
 }
 
 #[tokio::test]
@@ -399,6 +456,56 @@ async fn rejects_created_pr_with_different_head_or_body_and_preserves_observatio
         );
     }
     assert_eq!(post_count(&http).await, 1);
+}
+
+#[tokio::test]
+async fn verifies_fetched_head_ref_independently_of_matching_pr_metadata() {
+    for (response, evidence) in [
+        (
+            ResponseTemplate::new(200).set_body_json(json!([{"sha":BASE_TIP}])),
+            FieldStatus::Mismatched,
+        ),
+        (ResponseTemplate::new(500), FieldStatus::Unknown),
+        (
+            ResponseTemplate::new(200).set_body_json(json!([])),
+            FieldStatus::Unknown,
+        ),
+    ] {
+        let http = fixture(
+            page(),
+            false,
+            ResponseTemplate::new(303).insert_header("Location", CREATED),
+            ResponseTemplate::new(200).set_body_json(created()),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path(DESTINATION_COMMITS))
+            .and(query_param("sha", PR_HEAD_REF))
+            .and(query_param("per_page", "1"))
+            .respond_with(response)
+            .mount(&http.mock_server)
+            .await;
+        let error = client(&http, ApiProfile::Standard)
+            .create_fork_pull_request("upstream", "repo", &change())
+            .await
+            .unwrap_err();
+        let GbMcpError::OperationFailed { outcome, .. } = error else {
+            panic!("{error:?}")
+        };
+        assert_eq!(outcome.status, OutcomeStatus::Partial);
+        assert_eq!(outcome.target.unwrap().number, Some(7));
+        let status = |name| {
+            outcome
+                .fields
+                .iter()
+                .find(|f| f.field == name)
+                .unwrap()
+                .status
+        };
+        assert_eq!(status("head"), FieldStatus::Verified);
+        assert_eq!(status("head_ref"), evidence);
+        assert_eq!(post_count(&http).await, 1);
+    }
 }
 
 #[tokio::test]

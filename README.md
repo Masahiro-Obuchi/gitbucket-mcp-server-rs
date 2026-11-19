@@ -634,7 +634,8 @@ a different repository if the fork's previous name has been reused.
 For an explicit source including a renamed fork, use `create_fork_pull_request`
 with `head_owner`, `head_repo` and the exact `head` branch. This operation
 requires the standard profile and matching PAT/Web credentials. It checks the
-branch tips, submits the native compare form once, and verifies the created PR.
+branch tips and shared comparison base, submits the native compare form once,
+and verifies the created PR record and Git head ref.
 The checks leave a race window, and title and body must be representable without
 Web form trimming. See [the creation contract](docs/fork-pull-request-creation.md).
 

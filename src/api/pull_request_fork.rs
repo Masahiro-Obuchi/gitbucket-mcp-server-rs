@@ -86,6 +86,59 @@ async fn branch_tips(
     Ok(BranchTips { base, head })
 }
 
+async fn verify_branch_contains(
+    client: &GitBucketClient,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+    tip: &str,
+    commit: &str,
+) -> Result<()> {
+    if tip == commit {
+        return Ok(());
+    }
+    // In standard GitBucket this endpoint returns branches that contain the
+    // commit, with each branch's current tip.
+    let branches: Vec<Branch> = client
+        .get(&format!(
+            "/repos/{owner}/{repo}/commits/{commit}/branches-where-head"
+        ))
+        .await?;
+    let mut matching = branches
+        .into_iter()
+        .filter(|observed| observed.name == branch);
+    let observed_tip = matching.next().and_then(|observed| observed.commit);
+    if observed_tip.is_none_or(|observed| observed.sha != tip) || matching.next().is_some() {
+        return Err(GbMcpError::ReadConflict(
+            "The comparison base was not observed in the requested branch at its expected tip",
+        ));
+    }
+    Ok(())
+}
+
+async fn fetched_head(
+    client: &GitBucketClient,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<String> {
+    // GitBucket stores the form SHA in the PR record, but fetches the source
+    // branch at creation time for this Git ref.
+    let head_ref = format!("refs/pull/{number}/head");
+    let [commit]: [CommitIdentity; 1] = client
+        .get_with_query(
+            &format!("/repos/{owner}/{repo}/commits"),
+            &[("sha", &head_ref), ("per_page", "1")],
+        )
+        .await?;
+    if !canonical_sha(&commit.sha) {
+        return Err(GbMcpError::Other(
+            "GitBucket did not return a canonical commit for the created PR head ref".into(),
+        ));
+    }
+    Ok(commit.sha)
+}
+
 impl GitBucketClient {
     /// Create a PR from an explicit fork through GitBucket's verified Web form.
     pub async fn create_fork_pull_request(
@@ -130,17 +183,25 @@ impl GitBucketClient {
                 "The Web comparison head did not match the observed fork branch",
             ));
         }
-        // GitBucket's comparison base can be behind the current destination tip.
-        if form.base_sha != before.base {
-            let commit: CommitIdentity = self
-                .get(&format!("/repos/{owner}/{repo}/commits/{}", form.base_sha))
-                .await?;
-            if commit.sha != form.base_sha {
-                return Err(GbMcpError::ReadConflict(
-                    "GitBucket returned a different comparison base commit",
-                ));
-            }
-        }
+        // The comparison base may precede both tips, but must be in both histories.
+        tokio::try_join!(
+            verify_branch_contains(
+                self,
+                owner,
+                repo,
+                &change.base,
+                &before.base,
+                &form.base_sha
+            ),
+            verify_branch_contains(
+                self,
+                &change.head_owner,
+                &change.head_repo,
+                &change.head,
+                &before.head,
+                &form.base_sha,
+            ),
+        )?;
         if branch_tips(self, owner, repo, change).await? != before {
             return Err(GbMcpError::ReadConflict(
                 "A branch tip changed while preparing the fork pull request",
@@ -162,6 +223,7 @@ impl GitBucketClient {
                 ("merged", true),
                 ("head", true),
                 ("base", true),
+                ("head_ref", true),
             ],
         );
         operation
@@ -222,6 +284,8 @@ impl GitBucketClient {
                             .into(),
                     ));
                 }
+                let head_sha = fetched_head(self, owner, repo, number).await?;
+                operation.verify(&[("head_ref", head_sha == form.head_sha)])?;
                 Ok(pr)
             })
             .await
