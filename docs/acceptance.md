@@ -176,3 +176,8 @@ native Web compare form, and readback through REST and stdio. It checks the
 version-specific REST rejection for a renamed fork and verifies review route
 limits on a ready PR alongside ordinary and inline comments and a successful
 commit status. See [the contract](pull-request-review-contract.md).
+
+The same fixture exercises `create_fork_pull_request` through stdio with
+draft and ready results, a renamed private fork, a diverged destination, and
+refusals that leave the PR list unchanged. See
+[the creation contract](fork-pull-request-creation.md).

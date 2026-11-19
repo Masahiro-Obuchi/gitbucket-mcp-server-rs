@@ -7,7 +7,8 @@ use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{
-    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
+    CreateForkPullRequest, CreatePullRequest, MergePullRequest, MergeResult, PullRequest,
+    UpdatePullRequest,
 };
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::review_comment::{ReviewCommentList, ReviewCommentLookup};
@@ -30,6 +31,7 @@ mod milestone_write;
 pub(crate) mod outcome;
 pub mod profile;
 pub mod pull_request;
+mod pull_request_fork;
 mod pull_request_merge;
 pub(crate) mod pull_request_ready;
 mod pull_request_update;
@@ -65,6 +67,12 @@ pub trait GitBucketApi: std::fmt::Debug + Send + Sync {
         owner: &'a str,
         repo: &'a str,
         number: u64,
+    ) -> ApiFuture<'a, PullRequest>;
+    fn create_fork_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        change: &'a CreateForkPullRequest,
     ) -> ApiFuture<'a, PullRequest>;
     fn add_issue_assignees<'a>(
         &'a self,

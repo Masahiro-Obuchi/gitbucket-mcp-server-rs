@@ -584,6 +584,7 @@ async fn read_only_mode_hides_and_blocks_every_write_including_direct_handlers()
             "update_issue_comment" => direct!(update_issue_comment),
             "delete_issue_comment" => direct!(delete_issue_comment),
             "create_pull_request" => direct!(create_pull_request),
+            "create_fork_pull_request" => direct!(create_fork_pull_request),
             "update_pull_request" => direct!(update_pull_request),
             "merge_pull_request" => direct!(merge_pull_request),
             "mark_pull_request_ready" => direct!(mark_pull_request_ready),

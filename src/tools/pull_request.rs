@@ -7,7 +7,8 @@ use serde::Deserialize;
 
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{
-    CreatePullRequest, MergeHeadGuard, MergeMethod, MergePullRequest, UpdatePullRequest,
+    CreateForkPullRequest, CreatePullRequest, MergeHeadGuard, MergeMethod, MergePullRequest,
+    UpdatePullRequest,
 };
 use crate::server::GitBucketMcpServer;
 use crate::tools::response::{
@@ -84,6 +85,31 @@ pub struct CreatePullRequestParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CreateForkPullRequestParams {
+    #[schemars(description = "Owner of the destination repository")]
+    pub owner: String,
+    #[schemars(description = "Name of the destination repository")]
+    pub repo: String,
+    #[schemars(description = "Owner of the source fork, different from owner")]
+    pub head_owner: String,
+    #[schemars(description = "Exact name of the source fork, including a renamed fork")]
+    pub head_repo: String,
+    #[schemars(description = "Exact source branch name without an owner prefix")]
+    pub head: String,
+    #[schemars(description = "Exact destination branch name")]
+    pub base: String,
+    #[schemars(description = "Nonblank single-line title without outer whitespace")]
+    pub title: String,
+    #[schemars(
+        description = "Body as stored, with internal LF and tabs allowed and no outer whitespace"
+    )]
+    pub body: Option<String>,
+    #[schemars(description = "Create as draft (true) or ready (false, also the default)")]
+    pub draft: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdatePullRequestParams {
     #[schemars(description = "Repository owner")]
     pub owner: String,
@@ -143,6 +169,53 @@ pub struct AddPullRequestCommentParams {
 
 #[tool_router(router = tool_router_pull_request, vis = "pub")]
 impl GitBucketMcpServer {
+    #[tool(
+        description = "Create a pull request from an explicit fork, including a renamed fork, through the standard GitBucket Web compare form. Requires matching PAT/Web credentials. Checks both branch tips before one POST and verifies the created PR. Branch checks leave a race window. Inspect the result before retrying",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    pub async fn create_fork_pull_request(
+        &self,
+        Parameters(params): Parameters<CreateForkPullRequestParams>,
+    ) -> ToolResult {
+        if self.is_read_only() {
+            return read_only_error();
+        }
+        let (owner, repo) = match repository_fields(&params.owner, &params.repo) {
+            Ok(fields) => fields,
+            Err(err) => return validation_error(err),
+        };
+        let (head_owner, head_repo) = match repository_fields(&params.head_owner, &params.head_repo)
+        {
+            Ok(fields) => fields,
+            Err(err) => return validation_error(err),
+        };
+        let change = CreateForkPullRequest {
+            head_owner,
+            head_repo,
+            head: params.head,
+            base: params.base,
+            title: params.title,
+            body: params.body,
+            draft: params.draft,
+        };
+        if let Err(err) = change.validate() {
+            return from_gb_error(err);
+        }
+        match self
+            .client
+            .create_fork_pull_request(&owner, &repo, &change)
+            .await
+        {
+            Ok(pr) => success(&pr),
+            Err(err) => from_gb_error(err),
+        }
+    }
+
     #[tool(
         description = "Mark an open, explicitly unmerged draft PR ready for review. One-way standard-profile Web operation, not a merge or a draft toggle. Actual changes require matching PAT/Web credentials and developer permission on the head repository, including forks. A known ready PR is a PAT-only no-op. Recheck content/revisions before one POST and verify draft=false plus preserved fields afterward; no retries, redirects or rollback",
         annotations(

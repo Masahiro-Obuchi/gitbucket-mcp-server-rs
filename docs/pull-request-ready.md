@@ -2,7 +2,7 @@
 
 mark_pull_request_ready(owner, repo, pull_number) performs the verified native
 draft-to-ready transition. It returns the complete observed PullRequest model.
-The server exposes 52 tools: 22 reads and 30 writes.
+The server exposes 53 tools: 22 reads and 31 writes.
 
 This is one-way. The supported versions set isDraft to false; their REST PR
 PATCH does not apply draft. There is no boolean/toggle argument, reverse

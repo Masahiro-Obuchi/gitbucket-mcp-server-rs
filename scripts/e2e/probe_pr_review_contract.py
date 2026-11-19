@@ -1,5 +1,5 @@
 """Observe renamed-fork and review behavior on the disposable core fixture."""
-from contextlib import closing
+from contextlib import closing, ExitStack
 import json
 import re
 import secrets
@@ -38,7 +38,9 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
     base_sha = api.json("GET", rest + "/branches/" + quote(base_branch, safe=""))["commit"]["sha"]
     head_sha = git("rev-parse", "HEAD")
     control, branch = "review-same-name-" + nonce, "review-renamed-" + nonce
-    git("push", "origin", "HEAD:refs/heads/" + control, "HEAD:refs/heads/" + branch)
+    fork_branch, ready_branch = "fork/draft-" + nonce, "fork/ready-" + nonce
+    git("push", "origin", *["HEAD:refs/heads/" + ref
+                           for ref in (control, branch, fork_branch, ready_branch)])
     status, _ = guest_web.request("POST", target + "/fork", form={"account": guest})
     assert status in {302, 303}
     original_fork = f"/{guest}/{repo}"
@@ -153,3 +155,57 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
     assert current["draft"] is False
     for key in ("state", "merged", "head", "base", "title", "body"):
         assert current[key] == saved[key]
+
+    # Advance a distinct destination branch while the fork still shares the older
+    # comparison base. This leaves the main branch used by other probes intact.
+    fork_base = "fork/base-" + nonce
+    git("checkout", "-b", fork_base, base_sha)
+    git("commit", "--allow-empty", "-m", "Advance the destination for the fork creation probe")
+    base_tip = git("rev-parse", "HEAD")
+    git("push", "origin", fork_base)
+    git("checkout", "-")
+    assert base_tip != base_sha
+    decoy = guest_api.json("POST", "/api/v3/user/repos", {"name": repo, "private": True, "auto_init": True})
+    assert decoy["full_name"] == original_fork[1:]
+
+    params = {"owner": owner, "repo": repo, "head_owner": guest, "head_repo": fork,
+              "head": fork_branch, "base": fork_base, "title": "Fork PR 日本語"}
+    tool = "create_fork_pull_request"
+    with ExitStack() as clients:
+        def connect(**options):
+            return clients.enter_context(closing(McpReviewClient(
+                binary, base, match.group(1), guest, secret, **options)))
+
+        def rejected(client, arguments, kind):
+            result = client.rpc("tools/call", {"name": tool, "arguments": arguments})
+            assert result["isError"] and result["structuredContent"]["kind"] == kind
+
+        before = pull_numbers()
+        writer = connect(read_only=False)
+        rejected(connect(read_only=False, profile="rest-only"), params, "unsupported_error")
+        rejected(connect(read_only=False, web_auth=False), params, "authentication_error")
+        rejected(connect(), params, "read_only_error")
+        rejected(writer, {**params, "body": "  Unpreservable"}, "validation_error")
+        rejected(writer, {**params, "head": "fork/missing"}, "api_error")
+        rejected(writer, {**params, "head_repo": repo, "head": decoy["default_branch"]}, "api_error")
+        assert pull_numbers() == before
+
+        ids = set()
+        raw = "日本語 **Markdown**  \n\n    indented\ttext\nend"
+        for requested, expected_draft, expected_body in [
+            ({**params, "draft": True, "body": raw}, True, raw),
+            ({**params, "head": ready_branch, "title": "Ready fork PR"}, False, ""),
+        ]:
+            result = writer.call(tool, requested)
+            ids.add(result["number"])
+            read = api.json("GET", rest + "/pulls/" + str(result["number"]))
+            for observed in (result, read):
+                assert observed["title"] == requested["title"] and observed["body"] == expected_body
+                assert observed["user"]["login"] == guest and observed["state"] == "open"
+                assert observed["draft"] is expected_draft and observed["merged"] is False
+                assert observed["head"]["repo"]["full_name"] == renamed[1:]
+                assert observed["head"]["ref"] == requested["head"] and observed["head"]["sha"] == head_sha
+                assert observed["base"]["repo"]["full_name"] == target[1:]
+                assert observed["base"]["ref"] == fork_base and observed["base"]["sha"] == base_sha
+        assert len(ids) == 2 and pull_numbers() == before | ids
+        assert api.json("GET", rest + "/branches/" + fork_base)["commit"]["sha"] == base_tip

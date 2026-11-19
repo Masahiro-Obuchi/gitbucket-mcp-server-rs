@@ -166,7 +166,7 @@ are client hints, while read-only access is enforced independently by the server
 
 | Value | Behavior |
 | --- | --- |
-| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Review-comment reads/posts and Issue/PR milestone/assignee updates and PR readiness return `unsupported_error` before HTTP. |
+| `rest-only` (default) | Use REST and return its errors. Do not use the web UI, even when web credentials are configured. Explicit fork PR creation, review-comment reads/posts, Issue/PR milestone/assignee updates and PR readiness return `unsupported_error` before HTTP. |
 | `standard` | Use the common standard GitBucket contract verified on 4.44.0 and 4.48.0. Web routes require both web credentials. |
 
 Under `standard`, operations select the following routes:
@@ -175,6 +175,7 @@ Under `standard`, operations select the following routes:
 | --- | --- |
 | PR update; label rename; milestone delete | REST |
 | Mark draft PR ready | One-way Web operation; head-repository developer permission for changes |
+| Create PR from an explicit fork | Web comparison and one form POST, with PAT readback |
 | PR file list/diff | Pinned stored-base/head Web patch; binary payloads unavailable |
 | PR review-comment list/get | Web conversation page; HTML and partial coverage only |
 | PR review-comment creation | One Web POST after pinned diff/head checks, followed by own raw/commit/PR verification |
@@ -470,7 +471,7 @@ This repository includes a sample Codex Skill at [`skills/gitbucket-mcp/`](./ski
 
 ## Available Tools
 
-The server exposes 52 tools: 22 reads and 30 writes.
+The server exposes 53 tools: 22 reads and 31 writes.
 
 ### Repository
 
@@ -618,12 +619,6 @@ missing observations remain unknown. PR creation does not accept assignees,
 milestone or maintainer_can_modify because the verified controller does not
 apply them. Creation fields are not accepted by the update tools in this unit.
 
-For a same-name fork, set `head` to `fork-owner:branch`. For a renamed fork,
-create the PR from the fork's Compare page in GitBucket, then read it with
-`get_pull_request`. The tested REST versions look for the base repository's
-name under the fork owner and can select a different repository if that name
-has been reused. See [the fork and review contract](docs/pull-request-review-contract.md).
-
 These operations use PAT-only REST in both profiles. Supplied Issue creation
 metadata is verified by a GET after one POST. Nonempty assignments/milestone need
 developer permission: **GitBucket can create the Issue while ignoring these
@@ -632,6 +627,16 @@ Issue/PR, and retains its captured number in `operation.target.number`. Inspect
 that resource before another write. There is no retry, follow-up mutation or
 rollback. Explicit empty arrays are checked as empty, separately from omitted
 or unobserved arrays. See [the creation contract](docs/creation-metadata.md).
+
+For a same-name fork, `create_pull_request` accepts `head: "fork-owner:branch"`.
+REST looks up the destination name under the fork owner, which may select
+a different repository if the fork's previous name has been reused.
+For an explicit source including a renamed fork, use `create_fork_pull_request`
+with `head_owner`, `head_repo` and the exact `head` branch. This operation
+requires the standard profile and matching PAT/Web credentials. It checks the
+branch tips, submits the native compare form once, and verifies the created PR.
+The checks leave a race window, and title and body must be representable without
+Web form trimming. See [the creation contract](docs/fork-pull-request-creation.md).
 
 ### Labels
 
@@ -721,6 +726,7 @@ PR commits/files/diff are documented in [the change-read contract](docs/pull-req
 | `get_pull_request_diff` | Read exact patch text through bounded UTF-8 chunk continuations |
 | `get_pull_request` | Get PR details |
 | `create_pull_request` | Create a new pull request |
+| `create_fork_pull_request` | Create and verify a PR from an explicit fork, including renamed forks (standard profile) |
 | `mark_pull_request_ready` | Mark an open draft PR ready and verify the transition (standard profile) |
 | `update_pull_request` | Update PR state, title, body, or base branch |
 | `merge_pull_request` | Merge a pull request |

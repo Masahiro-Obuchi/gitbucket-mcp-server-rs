@@ -1,7 +1,7 @@
 # Ordinary conversation comments (P15-2)
 
-Three tools expose existing GitBucket REST operations. The server has 52 tools:
-22 reads and 30 writes. All three work with only a PAT under both `rest-only`
+Three tools expose existing GitBucket REST operations. The server has 53 tools:
+22 reads and 31 writes. All three work with only a PAT under both `rest-only`
 and `standard`. Read-only mode registers the getter and hides/rejects the writes.
 
 | Tool | Required input | Result |

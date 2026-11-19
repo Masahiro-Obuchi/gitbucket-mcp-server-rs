@@ -5,12 +5,24 @@ use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use crate::models::milestone::{CreateMilestone, Milestone, UpdateMilestone};
 use crate::models::pull_request::{
-    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
+    CreateForkPullRequest, CreatePullRequest, MergePullRequest, MergeResult, PullRequest,
+    UpdatePullRequest,
 };
 use crate::models::repository::{Branch, CreateRepository, Repository};
 use crate::models::user::User;
 
 impl GitBucketApi for GitBucketClient {
+    fn create_fork_pull_request<'a>(
+        &'a self,
+        owner: &'a str,
+        repo: &'a str,
+        change: &'a CreateForkPullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        Box::pin(async move {
+            GitBucketClient::create_fork_pull_request(self, owner, repo, change).await
+        })
+    }
+
     fn create_organization_repository<'a>(
         &'a self,
         organization: &'a str,

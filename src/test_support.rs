@@ -1029,6 +1029,16 @@ impl GitBucketApi for MockApi {
         Box::pin(async move { Ok(pull_request) })
     }
 
+    fn create_fork_pull_request<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _change: &'a crate::models::pull_request::CreateForkPullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(pull_request) })
+    }
+
     fn create_pull_request<'a>(
         &'a self,
         owner: &'a str,
