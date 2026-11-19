@@ -497,8 +497,9 @@ the verified versions. See [the upstream contract](docs/pull-request-review-cont
 `create_fork_pull_request(owner, repo, head_owner, head_repo, head, base, title, body?, draft?)`
 takes two repository names and exact branch names. The standard profile
 requires agreeing PAT and Web identities. The server validates the native
-compare form, rechecks both branch tips before one Web POST, and returns the
-independently observed PR. The comparison base can precede the destination tip.
+compare form and verifies that the comparison base is in both branch histories.
+It rechecks both branch tips before one Web POST and verifies the saved PR record
+and its Git head ref. The comparison base can precede the destination tip.
 A scoped redirect supplies the PR number even if later verification fails.
 The branch checks leave a race window. See
 [fork-pull-request-creation.md](docs/fork-pull-request-creation.md).

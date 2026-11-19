@@ -197,8 +197,12 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
             ({**params, "head": ready_branch, "title": "Ready fork PR"}, False, ""),
         ]:
             result = writer.call(tool, requested)
-            ids.add(result["number"])
-            read = api.json("GET", rest + "/pulls/" + str(result["number"]))
+            number = result["number"]
+            ids.add(number)
+            read = api.json("GET", rest + f"/pulls/{number}")
+            ref = quote(f"refs/pull/{number}/head", safe="")
+            fetched, = api.json("GET", rest + f"/commits?sha={ref}&per_page=1")
+            assert fetched["sha"] == head_sha
             for observed in (result, read):
                 assert observed["title"] == requested["title"] and observed["body"] == expected_body
                 assert observed["user"]["login"] == guest and observed["state"] == "open"

@@ -749,14 +749,15 @@ for the covered routes and the source evidence for thread state.
 ## Creation from an explicit fork
 
 `cargo test --locked --test pull_request_fork_test` checks the exact cookie-only
-form POST, PAT readback, branch changes, ambiguous or foreign comparison forms,
-invalid input, unexpected creation Locations, partial field observations and
-preservation of the captured number after a failed verification.
+form POST, PAT readback, branch changes, comparison base containment, ambiguous
+or foreign comparison forms, invalid input and unexpected creation Locations.
+It also checks that a mismatched or unreadable Git head ref preserves verified
+metadata and the captured PR number in a partial outcome.
 
 The disposable core changes fixture also exercises `create_fork_pull_request`
 through actual stdio on both official versions. A guest creates draft and ready
 PRs from a renamed private fork with slash-containing branches and a destination
-tip ahead of the comparison base. Independent REST reads verify stored text
-and metadata. The fixture covers invalid branches, unrelated repositories,
-unrepresentable input, missing Web credentials, and read-only and rest-only
-rejections. See [the contract](docs/fork-pull-request-creation.md).
+tip ahead of the comparison base. Independent REST reads verify stored text,
+metadata and the fetched Git head ref. The fixture covers invalid branches,
+unrelated repositories, unrepresentable input, missing Web credentials, and
+read-only and rest-only rejections. See [the contract](docs/fork-pull-request-creation.md).

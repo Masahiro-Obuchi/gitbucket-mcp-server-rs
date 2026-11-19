@@ -27,14 +27,17 @@ an empty string. Omitted `draft` creates a ready PR.
    and both branch tips using the PAT.
 2. Read the compare page from the named source. Require a unique native form,
    the exact destination form action and matching branch and repository inputs.
-   Require its head SHA to equal the source branch tip. If the form's comparison
-   base differs from the destination tip, check that the comparison base commit
-   resolves in the destination repository. Recheck both tips and the Web
-   identity before posting.
+   Require its head SHA to equal the source branch tip. Check that the comparison
+   base is in both branch histories at the observed tips. Recheck both tips and
+   the Web identity before posting.
 3. Submit the verified form once using the cookie. Take the PR number from a
    scoped 302 or 303 Location. Verify that number, author, title, body, open and
    unmerged state, draft, repositories, branches and comparison revisions with
-   a separate PAT GET. Return the observed `PullRequest`.
+   a separate PAT GET. Resolve `refs/pull/<number>/head` in the destination via
+   the commit API and check that it points to the expected head SHA. GitBucket
+   saves the form's SHA in the PR metadata and fetches the source branch into
+   this Git ref during creation. Return the observed `PullRequest` after both
+   reads agree.
 
 The checks can detect changes before submission. A race window remains between
 the checks and the POST, and the returned base SHA describes the comparison
@@ -45,7 +48,8 @@ follow-up Web request.
 If the POST or verification fails, inspect the operation's destination,
 observed head SHA and any captured PR number before another call. An unexpected
 redirect, a write 404 or a transport failure leaves the effect uncertain.
-Successful observations and mismatches are recorded as field evidence.
+The `head` outcome field records the PR metadata check. The `head_ref` field
+records the separate check of the fetched Git ref.
 
 Custom `GitBucketApi` implementations add the required
 `create_fork_pull_request` method with `CreateForkPullRequest` input and
