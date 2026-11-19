@@ -1001,6 +1001,16 @@ impl GitBucketApi for IntegrationMockApi {
         Box::pin(async move { Ok(pull_request) })
     }
 
+    fn create_fork_pull_request<'a>(
+        &'a self,
+        _owner: &'a str,
+        _repo: &'a str,
+        _change: &'a gitbucket_mcp_server::models::pull_request::CreateForkPullRequest,
+    ) -> ApiFuture<'a, PullRequest> {
+        let pull_request = self.pull_request.clone();
+        Box::pin(async move { Ok(pull_request) })
+    }
+
     fn create_pull_request<'a>(
         &'a self,
         owner: &'a str,
@@ -1143,6 +1153,7 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
         "create_label",
         "create_milestone",
         "create_pull_request",
+        "create_fork_pull_request",
         "create_repository",
         "create_organization_repository",
         "list_visible_repositories",
@@ -1189,6 +1200,18 @@ async fn test_mcp_lists_all_expected_tools_and_required_inputs() {
     ]);
 
     assert_eq!(tool_names, expected);
+    assert_eq!(
+        required_fields(&tools, "create_fork_pull_request"),
+        json!([
+            "owner",
+            "repo",
+            "head_owner",
+            "head_repo",
+            "head",
+            "base",
+            "title"
+        ])
+    );
     assert_eq!(
         required_fields(&tools, "create_organization_repository"),
         json!(["organization", "name"])

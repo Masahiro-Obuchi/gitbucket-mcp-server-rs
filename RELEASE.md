@@ -2,11 +2,20 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
+## Unreleased pull request creation from an explicit fork
+
+- Add `create_fork_pull_request` for an explicitly named source, including
+  renamed forks. The server exposes 53 tools (22 reads and 31 writes).
+- Use the standard Web compare form with matching PAT and Web identities.
+  Recheck both branch tips, submit once, and verify the created PR using REST.
+- Custom `GitBucketApi` adapters add one required method with
+  `CreateForkPullRequest` input. See [the contract](docs/fork-pull-request-creation.md).
+
 ## Unreleased P15 organization repositories and discovery
 
 - Add create_organization_repository for existing GitBucket organizations and
   list_visible_repositories for PAT-scoped discovery across user and organization
-  owners. The server has 52 tools (22 reads / 30 writes).
+  owners. That unit brought the server to 52 tools (22 reads / 30 writes).
 - Organization creation verifies the owner, repository fields and initial
   branch state. Discovery uses a bounded owner scan and cached MCP pages.
   Both tools use REST in both profiles. See [the contract](docs/repository-discovery.md).

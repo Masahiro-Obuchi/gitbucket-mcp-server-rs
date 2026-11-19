@@ -8,7 +8,7 @@ and [`4b2a781` for 4.48.0](https://github.com/gitbucket/gitbucket/tree/4b2a78174
 | Capability | Standard GitBucket | MCP server |
 | --- | --- | --- |
 | Create a PR from a same-name fork | PAT REST accepts `head=owner:branch` | `create_pull_request` supports it |
-| Create a PR from a renamed fork | The browser's compare form submits the head repository name separately | Creation requires the browser. `get_pull_request` can read the resulting PR |
+| Create a PR from a renamed fork | The browser's compare form submits the head repository name separately | `create_fork_pull_request` uses the verified Web form and `get_pull_request` reads the PR |
 | Comment on the conversation or on changed lines | Ordinary Issue comments and Web commit comments | Existing ordinary comment and inline review-comment tools |
 | Approve, request changes, read a review decision, or resolve a review thread | No corresponding operation or stored state in either tested version | Unsupported |
 | Report a build or validation result for a commit | A separate status is recorded by repository, SHA and context | Commit status is outside the review-comment tools |
@@ -41,16 +41,11 @@ the stored body lost its leading and trailing whitespace. [Web 4.44.0](https://g
 · [Web 4.48.0](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/PullRequestsController.scala)
 · [Compare form](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/twirl/gitbucket/core/pulls/compare.scala.html)
 
-A separate Web creation implementation would need an explicit source
-repository, distinct from the REST `head` syntax. It would need to verify PAT
-and Web identity, visibility and fork relationship, the generated form's
-action and field bindings, and current source and destination revisions before
-one POST. A comparison base SHA can be a merge base, so a future implementation
-must distinguish it from the live destination branch tip. It would need to
-reject input that the form would rewrite, and retain any PR identity from the
-response for independent verification or uncertain outcomes. These checks
-leave a race window before submission. An atomic revision guard would need
-support from the server. [Comparison and creation service](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/PullRequestService.scala)
+The MCP server uses this form through a dedicated operation with explicit
+source and destination repositories. It distinguishes the comparison base
+from the current destination branch tip. See
+[the creation contract](fork-pull-request-creation.md) and GitBucket's
+[comparison and creation service](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/service/PullRequestService.scala).
 
 ## Review and thread state
 

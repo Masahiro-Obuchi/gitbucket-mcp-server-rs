@@ -1,6 +1,6 @@
 # Comment with close/reopen (P15-5)
 
-The server exposes 52 tools: 22 reads and 30 writes. Two explicit tools use the
+The server exposes 53 tools: 22 reads and 31 writes. Two explicit tools use the
 native Issue comment endpoint for both Issues and unmerged PRs:
 
 | Tool | Required input | Required starting state | Requested result |

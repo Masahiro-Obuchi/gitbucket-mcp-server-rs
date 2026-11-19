@@ -55,6 +55,64 @@ pub struct CreatePullRequest {
     pub body: Option<String>,
 }
 
+/// Explicit source repository for the standard GitBucket Web compare form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateForkPullRequest {
+    pub head_owner: String,
+    pub head_repo: String,
+    pub head: String,
+    pub base: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub draft: Option<bool>,
+}
+
+impl CreateForkPullRequest {
+    pub(crate) fn validate(&self) -> crate::error::Result<()> {
+        use crate::error::GbMcpError;
+        for (name, branch) in [("head", &self.head), ("base", &self.base)] {
+            if branch.encode_utf16().count() > 255
+                || branch == "@"
+                || branch.starts_with('-')
+                || branch.ends_with('.')
+                || branch.contains("..")
+                || branch.contains("@{")
+                || branch
+                    .chars()
+                    .any(|c| c.is_control() || " ~^:?*[\\".contains(c))
+                || branch
+                    .split('/')
+                    .any(|part| part.is_empty() || part.starts_with('.') || part.ends_with(".lock"))
+            {
+                return Err(GbMcpError::InvalidInput(format!(
+                    "{name} must be an exact Git branch name within the Web form's length limit"
+                )));
+            }
+        }
+        if self.title.trim().is_empty()
+            || self.title.trim() != self.title
+            || self.title.chars().any(char::is_control)
+        {
+            return Err(GbMcpError::InvalidInput(
+                "title must be nonblank, with no outer whitespace or control characters".into(),
+            ));
+        }
+        if let Some(body) = &self.body {
+            if body.trim() != body
+                || body
+                    .chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
+            {
+                return Err(GbMcpError::InvalidInput(
+                    "body must be preserved by the GitBucket form: no outer whitespace or control characters other than internal tabs and LF".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdatePullRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

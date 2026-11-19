@@ -238,7 +238,7 @@ Ordinary PR comments retain their conversation-comment meaning.
 
 P10 adds `add_pull_request_review_comment(owner, repo, pull_number, body, path,
 commit, old_line?, new_line?, head_guard)` as an additive, non-idempotent write.
-The normal server advertises 52 tools: 22 reads and 30 writes. The standard
+The normal server advertises 53 tools: 22 reads and 31 writes. The standard
 profile and matching PAT/Web credentials are required. An open PR, its exact
 current full lowercase SHA-1, a repository-relative path and exactly one
 positive changed-line side are required. Only added/modified ordinary text files
@@ -340,6 +340,7 @@ mode. Cursors retain the original observation rather than refreshing revisions.
 - `list_pull_requests(owner, repo, state?)`
 - `get_pull_request(owner, repo, pull_number)`
 - `create_pull_request(owner, repo, title, head, base, body?, draft?)`
+- `create_fork_pull_request(owner, repo, head_owner, head_repo, head, base, title, body?, draft?)`
 - `update_pull_request(owner, repo, pull_number, state?, title?, body?, base?)`
 - `merge_pull_request(owner, repo, pull_number, commit_message?, merge_method?, expected_head_sha?, head_guard?)`
 - `add_pull_request_comment(owner, repo, pull_number, body)`
@@ -487,12 +488,20 @@ POST response supplies them, including later verification errors or interruption
 PR creation assignee/milestone and metadata updates remain outside these tools'
 schemas. See [creation-metadata.md](docs/creation-metadata.md).
 
-On GitBucket 4.44.0 and 4.48.0, native REST PR creation accepts
-`head=owner:branch` for same-name forks. Creation from renamed forks requires
-the browser's compare form. PR detail reads expose the resulting head
-repository. Formal reviews, review decisions and thread resolution remain
-unsupported on those versions. See
-[pull-request-review-contract.md](docs/pull-request-review-contract.md).
+Native REST PR creation accepts `head=owner:branch` for same-name forks.
+Formal reviews, review decisions and thread resolution remain unsupported on
+the verified versions. See [the upstream contract](docs/pull-request-review-contract.md).
+
+## Creation from an explicit fork
+
+`create_fork_pull_request(owner, repo, head_owner, head_repo, head, base, title, body?, draft?)`
+takes two repository names and exact branch names. The standard profile
+requires agreeing PAT and Web identities. The server validates the native
+compare form, rechecks both branch tips before one Web POST, and returns the
+independently observed PR. The comparison base can precede the destination tip.
+A scoped redirect supplies the PR number even if later verification fails.
+The branch checks leave a race window. See
+[fork-pull-request-creation.md](docs/fork-pull-request-creation.md).
 
 ## Issue/PR milestone assignment updates (P15-4b)
 
@@ -501,7 +510,7 @@ unsupported on those versions. See
 model and support both Issue and PR numbers. Set requires an existing scoped
 milestone; clear retains its definition. IDs are positive 32-bit integers.
 Both tools reject unknown arguments and are hidden/blocked in read-only mode.
-There are now 52 tools (22 reads / 30 writes).
+There are now 53 tools (22 reads / 31 writes).
 
 Only the standard profile supports these operations. Rest-only refuses before
 HTTP; no ineffective Issue/PR PATCH is sent. Actual changes use matching PAT/Web
@@ -525,7 +534,7 @@ GitBucketApi gains two required methods with no compatibility defaults. See
 `replace_issue_assignees(owner, repo, issue_number, assignees)` add missing
 individual accounts, remove one, or replace the entire set ([] clears). IDs are
 positive 32-bit integers; MCP trims canonical logins and rejects duplicates.
-The server exposes 52 tools (22 reads / 30 writes). Existing creation/update
+The server exposes 53 tools (22 reads / 31 writes). Existing creation/update
 schemas remain unchanged. One-way readiness uses the separate tool below;
 ready-to-draft conversion remains unsupported on the verified contract.
 
@@ -552,7 +561,7 @@ See [the contract](docs/issue-assignees.md) for source evidence and limitations.
 
 `mark_pull_request_ready(owner, repo, pull_number)` returns the observed
 PullRequest model after the native one-way draft-to-ready operation. The normal
-server exposes 52 tools (22 reads / 30 writes). Unknown/reverse/guard arguments
+server exposes 53 tools (22 reads / 31 writes). Unknown/reverse/guard arguments
 are rejected, IDs are 1..2147483647, and existing create/update schemas remain
 unchanged. Rest-only refuses before HTTP; readonly mode hides and blocks it.
 

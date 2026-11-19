@@ -4,6 +4,7 @@ use super::{
     url_safety, web_html,
 };
 use crate::error::{GbMcpError, Result};
+use crate::models::pull_request::CreateForkPullRequest;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
 use url::Url;
@@ -47,6 +48,114 @@ enum Reply {
 }
 
 impl GitBucketWebSession {
+    pub(super) fn login(&self) -> &str {
+        &self.login
+    }
+
+    pub(super) async fn fork_pull_request_form(
+        &self,
+        owner: &str,
+        repo: &str,
+        change: &CreateForkPullRequest,
+    ) -> Result<web_html::PullRequestForm> {
+        let comparison = format!("{owner}:{}...{}", change.base, change.head);
+        let mut tail = vec!["compare"];
+        tail.extend(comparison.split('/'));
+        let mut url = self.repo_url(&change.head_owner, &change.head_repo, &tail)?;
+        url.query_pairs_mut().append_pair("check", "true");
+        let page = self.verification_read(url.clone(), true).await?;
+        web_html::fork_pull_request_form(
+            &page,
+            &url,
+            &self.repo_url(owner, repo, &["pulls", "new"])?,
+            &[
+                ("targetUserName", owner),
+                ("targetBranch", &change.base),
+                ("requestUserName", &change.head_owner),
+                ("requestRepositoryName", &change.head_repo),
+                ("requestBranch", &change.head),
+                ("isDraft", "false"),
+            ],
+        )
+    }
+
+    pub(super) async fn post_fork_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        change: &CreateForkPullRequest,
+        form: &web_html::PullRequestForm,
+    ) -> Result<u64> {
+        let action = self.repo_url(owner, repo, &["pulls", "new"])?;
+        let pull = self.repo_url(owner, repo, &["pull"])?;
+        let request = self
+            .client
+            .post(action)
+            .form(&[
+                ("title", change.title.as_str()),
+                ("content", change.body.as_deref().unwrap_or_default()),
+                ("targetUserName", owner),
+                ("targetBranch", &change.base),
+                ("requestUserName", &change.head_owner),
+                ("requestRepositoryName", &change.head_repo),
+                ("requestBranch", &change.head),
+                ("commitIdFrom", &form.base_sha),
+                ("commitIdTo", &form.head_sha),
+                (
+                    "isDraft",
+                    if change.draft.unwrap_or(false) {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                ),
+            ])
+            .build()
+            .map_err(GbMcpError::from)?;
+        self.check_identity().await?;
+        let response = http::mutation("Fork pull request creation", async {
+            let response = self
+                .client
+                .execute(request)
+                .await
+                .map_err(GbMcpError::from)?;
+            let status = response.status();
+            if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                return Err(GbMcpError::Api {
+                    status: status.as_u16(),
+                    message: "GitBucket rejected the fork pull request creation".into(),
+                });
+            }
+            Ok(response)
+        })
+        .await?;
+        // Preserve an unexpected HTTP status in the error without classifying
+        // the write as rejected. Only the authenticator responses above do that.
+        let status = response.status();
+        if !matches!(status, StatusCode::FOUND | StatusCode::SEE_OTHER) {
+            return Err(GbMcpError::Api {
+                status: status.as_u16(),
+                message: "GitBucket did not return a PR redirect after fork creation".into(),
+            });
+        }
+        let unknown = || {
+            GbMcpError::Other(
+                "GitBucket did not return a scoped pull request number after creation".into(),
+            )
+        };
+        let redirect = self.location(&response)?;
+        if redirect.query().is_some() || redirect.fragment().is_some() {
+            return Err(unknown());
+        }
+        redirect
+            .path()
+            .strip_prefix(pull.path())
+            .and_then(|tail| tail.strip_prefix('/'))
+            .and_then(crate::models::review_comment::positive_decimal)
+            .filter(|number| *number <= i32::MAX as u64)
+            .ok_or_else(unknown)
+    }
+
     pub(crate) async fn mark_pull_request_ready(
         &self,
         owner: &str,

@@ -75,6 +75,7 @@ Pull request tools:
 - `mark_pull_request_ready`
 - `list_pull_request_commits`, `list_pull_request_files`, `get_pull_request_diff`
 - `create_pull_request`
+- `create_fork_pull_request`
 - `update_pull_request`
 - `merge_pull_request`
 - `add_pull_request_comment`
@@ -282,11 +283,16 @@ fields or emulate them with follow-up mutations without a separate user request.
 Explicit empty arrays differ from omitted/unobserved metadata. All of these
 operations are PAT-only in either profile; read-only MCP mode rejects creation.
 
-For same-name forks, pass `head: "fork-owner:branch"`. For renamed forks, use
-the fork's Compare page in GitBucket to create the PR and `get_pull_request`
-to read it. REST can select a different repository if the fork's previous
-name has been reused. Approval, change requests and resolving review threads
-are unsupported on the tested standard versions.
+For same-name forks, `create_pull_request` accepts `head: "fork-owner:branch"`.
+REST may select a different repository if the fork's former name was reused.
+For a named source, including a renamed fork, call `create_fork_pull_request`
+with destination `owner/repo`, source `head_owner/head_repo`, exact branch names
+in `head` and `base`, and `title`. It requires `standard` and matching PAT/Web
+credentials. Supply a title and optional body without leading/trailing
+whitespace. Use `draft: true` to create a draft. The branch checks leave a race
+window. Inspect the destination and captured PR number before retrying an
+uncertain creation. Approval, change requests and thread resolution are
+unsupported on the tested standard versions.
 
 ## Issue/PR milestone assignment updates
 

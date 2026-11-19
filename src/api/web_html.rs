@@ -8,6 +8,89 @@ fn selector(value: &str) -> Selector {
     Selector::parse(value).expect("static HTML selector")
 }
 
+pub(super) struct PullRequestForm {
+    pub base_sha: String,
+    pub head_sha: String,
+}
+
+pub(super) fn fork_pull_request_form(
+    body: &str,
+    page: &Url,
+    action: &Url,
+    expected: &[(&str, &str)],
+) -> Result<PullRequestForm> {
+    use scraper::ElementRef;
+
+    let invalid = || {
+        GbMcpError::Unsupported(
+            "GitBucket did not expose a unique compare form for the requested repositories and branches".into(),
+        )
+    };
+    let html = Html::parse_document(body);
+    let markers: Vec<_> = html.select(&selector("#pull-request-form")).collect();
+    let [marker] = markers.as_slice() else {
+        return Err(invalid());
+    };
+    // The 4.44 form encloses the marker and the 4.48 form is inside it.
+    let forms: Vec<_> = marker
+        .ancestors()
+        .filter_map(ElementRef::wrap)
+        .filter(|element| element.value().name() == "form")
+        .chain(marker.select(&selector("form")))
+        .collect();
+    let [form] = forms.as_slice() else {
+        return Err(invalid());
+    };
+    if form
+        .value()
+        .attr("method")
+        .is_none_or(|m| !m.eq_ignore_ascii_case("post"))
+        || form
+            .value()
+            .attr("action")
+            .and_then(|value| page.join(value).ok())
+            .as_ref()
+            != Some(action)
+    {
+        return Err(invalid());
+    }
+    let inputs: Vec<_> = form.select(&selector("input[name]")).collect();
+    let hidden = |name| -> Result<&str> {
+        let matching: Vec<_> = inputs
+            .iter()
+            .filter(|input| input.value().attr("name") == Some(name))
+            .collect();
+        let [input] = matching.as_slice() else {
+            return Err(invalid());
+        };
+        let value = input.value();
+        if value.attr("type") != Some("hidden")
+            || value.attr("disabled").is_some()
+            || value.attr("form").is_some()
+        {
+            return Err(invalid());
+        }
+        value.attr("value").ok_or_else(invalid)
+    };
+    for (name, value) in expected {
+        if hidden(name)? != *value {
+            return Err(invalid());
+        }
+    }
+    let base_sha = hidden("commitIdFrom")?;
+    let head_sha = hidden("commitIdTo")?;
+    if !crate::models::pull_request::canonical_sha(base_sha)
+        || !crate::models::pull_request::canonical_sha(head_sha)
+        || base_sha == head_sha
+    {
+        return Err(invalid());
+    }
+    Ok(PullRequestForm {
+        base_sha: base_sha.into(),
+        head_sha: head_sha.into(),
+    })
+}
+
 /// The native sidebar includes raw assignment rows even when REST omits a
 /// disabled/deleted account. Require a canonical profile link in every row.
 pub(super) fn issue_assignees(
