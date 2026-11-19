@@ -733,3 +733,15 @@ discovers its own private repository, public repositories and private
 repositories shared by a personal owner and a group across multiple pages. A
 separate organization repository stays hidden from that guest. See
 [the contract](docs/repository-discovery.md).
+
+## Renamed forks and review state (P15-7)
+
+Run [Docker contract acceptance](docs/acceptance.md#reproduce-and-inspect-evidence)
+with `--domains-json '["core"]'` on each official GitBucket version.
+`probe_pr_review_contract.py` runs in the core changes fixture. A guest creates a
+same-name fork PR with a PAT, renames the fork, observes both REST rejections, and
+submits the rendered Web compare form as a draft. REST and stdio verify the new
+PR's repository names, refs, SHAs, draft and saved body. The fixture marks the
+PR ready, then checks the review routes, ordinary and inline comments, and a
+successful commit status. See [the contract](docs/pull-request-review-contract.md)
+for the covered routes and the source evidence for thread state.

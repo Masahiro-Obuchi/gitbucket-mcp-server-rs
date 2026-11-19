@@ -282,6 +282,12 @@ fields or emulate them with follow-up mutations without a separate user request.
 Explicit empty arrays differ from omitted/unobserved metadata. All of these
 operations are PAT-only in either profile; read-only MCP mode rejects creation.
 
+For same-name forks, pass `head: "fork-owner:branch"`. For renamed forks, use
+the fork's Compare page in GitBucket to create the PR and `get_pull_request`
+to read it. REST can select a different repository if the fork's previous
+name has been reused. Approval, change requests and resolving review threads
+are unsupported on the tested standard versions.
+
 ## Issue/PR milestone assignment updates
 
 Use `set_issue_milestone(owner, repo, issue_number, milestone_number)` to assign

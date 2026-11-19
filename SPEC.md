@@ -487,6 +487,13 @@ POST response supplies them, including later verification errors or interruption
 PR creation assignee/milestone and metadata updates remain outside these tools'
 schemas. See [creation-metadata.md](docs/creation-metadata.md).
 
+On GitBucket 4.44.0 and 4.48.0, native REST PR creation accepts
+`head=owner:branch` for same-name forks. Creation from renamed forks requires
+the browser's compare form. PR detail reads expose the resulting head
+repository. Formal reviews, review decisions and thread resolution remain
+unsupported on those versions. See
+[pull-request-review-contract.md](docs/pull-request-review-contract.md).
+
 ## Issue/PR milestone assignment updates (P15-4b)
 
 `set_issue_milestone(owner, repo, issue_number, milestone_number)` and
