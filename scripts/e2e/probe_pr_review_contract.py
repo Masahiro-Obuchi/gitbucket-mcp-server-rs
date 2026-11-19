@@ -10,7 +10,7 @@ from mcp_review_client import McpReviewClient
 from probe_inline_comments import Http, Parser, decode_json
 
 
-def verify_pr_review_contract(binary, base, owner, password, token, repo, base_branch, git):
+def verify_pr_review_contract(binary, base, owner, password, token, repo, base_branch, git, *, version):
     nonce = secrets.token_hex(5)
     guest = "review-fork-" + nonce
     secret = secrets.token_urlsafe(24)
@@ -68,18 +68,15 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
     before = pull_numbers()
     assert original_pr["number"] in before
     requested = {"title": "Renamed fork contract", "head": f"{guest}:{branch}", "base": base_branch}
-    statuses = []
+    expected_status = {"4.44.0": 200, "4.48.0": 404}[version]
     for fields in ({}, {"head_repo": fork}):
         status, response = guest_api.request("POST", rest + "/pulls", data={**requested, **fields})
-        if status == 200:
+        assert status == expected_status, ("renamed-fork REST", version, status)
+        if expected_status == 200:
             # 4.44.0 serializes the failure as a wrapped 404.
             wrapped = json.loads(response)
             assert int(wrapped["status"]) == 404 and "body" in wrapped
-        else:
-            assert status == 404, ("renamed-fork REST", status)
-        statuses.append(status)
         assert pull_numbers() == before
-    assert statuses[0] == statuses[1]
 
     # Fetch the compare form rendered for this fork and use its actual bindings.
     compare = renamed + "/compare/" + quote(f"{owner}:{base_branch}...{branch}", safe=":") + "?check=true"
@@ -115,8 +112,6 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
         assert saved[side]["repo"]["full_name"] == full_name
         assert saved[side]["ref"] == ref and saved[side]["sha"] == sha
 
-    comments = rest + f"/issues/{number}/comments"
-    api.json("POST", comments, {"body": "Ordinary conversation comment"})
     args = {"owner": owner, "repo": repo, "pull_number": number}
     with closing(McpReviewClient(binary, base, token, owner, password, read_only=False)) as client:
         observed = client.call("get_pull_request", args)
@@ -125,6 +120,12 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
         for side in ("head", "base"):
             assert observed[side]["repo"]["full_name"] == saved[side]["repo"]["full_name"]
             assert observed[side]["ref"] == saved[side]["ref"] and observed[side]["sha"] == saved[side]["sha"]
+
+        # A draft could reject reviews even if ready PRs supported them.
+        ready = client.call("mark_pull_request_ready", args)
+        assert ready["state"] == "open" and ready["draft"] is False and ready["merged"] is False
+        comments = rest + f"/issues/{number}/comments"
+        api.json("POST", comments, {"body": "Ordinary conversation comment"})
         inline = client.call("add_pull_request_review_comment", {
             **args, "commit": head_sha, "path": "review.txt", "new_line": 2,
             "head_guard": "preflight", "body": "Inline discussion comment",
@@ -149,5 +150,6 @@ def verify_pr_review_contract(binary, base, owner, password, token, repo, base_b
     statuses = api.json("GET", rest + "/commits/" + head_sha + "/statuses")
     assert any(status["context"] == check and status["state"] == "success" for status in statuses)
     current = api.json("GET", pull)
-    for key in ("state", "draft", "merged", "head", "base"):
+    assert current["draft"] is False
+    for key in ("state", "merged", "head", "base", "title", "body"):
         assert current[key] == saved[key]

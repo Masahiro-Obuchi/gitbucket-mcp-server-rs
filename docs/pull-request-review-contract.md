@@ -22,8 +22,10 @@ guest first created a PR from a same-name private fork with a PAT. After the
 guest renamed the fork, its branch still resolved to the expected Git commit.
 Both `owner:branch` requests, with and without an additional `head_repo`, returned
 a JSON-wrapped 404 inside HTTP 200 on 4.44.0 and HTTP 404 on 4.48.0. The set of
-open PR numbers stayed unchanged. The fixture leaves the old name vacant. HTTP
-status alone gives no reliable diagnosis on an arbitrary instance.
+open PR numbers stayed unchanged. The fixture leaves the old name vacant.
+If that name is reused and the requested branch exists there, the REST lookup
+can select the replacement repository as the PR head. Use the renamed fork's
+Compare page to select the intended source repository explicitly.
 [REST 4.44.0](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala)
 · [REST 4.48.0](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala)
 · [REST request type](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/api/CreateAPullRequest.scala)
@@ -66,13 +68,13 @@ with the review-protection sections left as comments. The Web control labeled
 · [Webhook event](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/model/WebHook.scala)
 · [Branch protection API](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/controller/api/ApiRepositoryBranchControllerBase.scala)
 
-On the same readable PR, owner PAT requests to list reviews, requested
+After marking the same PR ready, owner PAT requests to list reviews, requested
 reviewers and PR review comments returned 404. Review submissions using
 `APPROVE` and `REQUEST_CHANGES` returned 404 and left the observed ordinary
 and inline comments intact. The same owner could create an ordinary comment
 with REST, post and read an inline comment through stdio, and separately record
-and read a successful commit status. The PR's draft, open state and revisions
-remained observable throughout. The missing thread-resolution operation is
+and read a successful commit status. The PR stayed open and ready with the
+same revisions. The missing thread-resolution operation is
 established by inspecting the standard Web routes and storage model. Commit
 statuses describe checks for a SHA. An approval or a request for changes would
 require a stored reviewer decision and its reviewed revision. A resolved

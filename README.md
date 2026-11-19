@@ -621,7 +621,8 @@ apply them. Creation fields are not accepted by the update tools in this unit.
 For a same-name fork, set `head` to `fork-owner:branch`. For a renamed fork,
 create the PR from the fork's Compare page in GitBucket, then read it with
 `get_pull_request`. The tested REST versions look for the base repository's
-name under the fork owner. See [the fork and review contract](docs/pull-request-review-contract.md).
+name under the fork owner and can select a different repository if that name
+has been reused. See [the fork and review contract](docs/pull-request-review-contract.md).
 
 These operations use PAT-only REST in both profiles. Supplied Issue creation
 metadata is verified by a GET after one POST. Nonempty assignments/milestone need

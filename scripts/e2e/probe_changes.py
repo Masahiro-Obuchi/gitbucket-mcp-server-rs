@@ -11,6 +11,7 @@ import tempfile
 import time
 from urllib.parse import quote
 
+from ci_plan import VERSIONS
 from mcp_review_client import McpReviewClient
 from probe_inline_comments import Http, loopback_url
 
@@ -37,7 +38,7 @@ def collect(client, tool, args, first=None):
         data = page(client, tool, {**args, "cursor": data["next_cursor"]})
 
 
-def run(binary):
+def run(binary, version):
     base = loopback_url(os.environ["GITBUCKET_E2E_URL"])
     user, password, token = (os.environ[k] for k in ("GITBUCKET_E2E_GIT_USERNAME", "GITBUCKET_E2E_GIT_PASSWORD", "GITBUCKET_E2E_TOKEN"))
     api = Http(base, token=token)
@@ -187,7 +188,7 @@ def run(binary):
         from probe_repository_discovery import verify_repository_discovery
         verify_repository_discovery(binary, base, user, token, repo)
         from probe_pr_review_contract import verify_pr_review_contract
-        verify_pr_review_contract(binary, base, user, password, token, repo, info["default_branch"], git)
+        verify_pr_review_contract(binary, base, user, password, token, repo, info["default_branch"], git, version=version)
         merged = api.json("PUT", rest + f"/pulls/{number}/merge", {"merge_method": "merge-commit"})
         assert merged["merged"]
         verify_merged_ready_rejection(binary, base, user, token, repo, number)
@@ -202,10 +203,11 @@ def run(binary):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-disposable-writes", action="store_true", required=True)
+    parser.add_argument("--version-label", choices=VERSIONS, required=True)
     parser.add_argument("--mcp-binary", type=Path, required=True)
     args = parser.parse_args()
     os.umask(0o077)
-    run(args.mcp_binary)
+    run(args.mcp_binary, args.version_label)
 
 
 if __name__ == "__main__":

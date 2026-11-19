@@ -741,7 +741,7 @@ with `--domains-json '["core"]'` on each official GitBucket version.
 `probe_pr_review_contract.py` runs in the core changes fixture. A guest creates a
 same-name fork PR with a PAT, renames the fork, observes both REST rejections, and
 submits the rendered Web compare form as a draft. REST and stdio verify the new
-PR's repository names, refs, SHAs, draft and saved body. The fixture contrasts
-absent review routes with ordinary and inline comments and a successful commit
-status. See [the contract](docs/pull-request-review-contract.md) for the covered
-routes and the source evidence for thread state.
+PR's repository names, refs, SHAs, draft and saved body. The fixture marks the
+PR ready, then checks the review routes, ordinary and inline comments, and a
+successful commit status. See [the contract](docs/pull-request-review-contract.md)
+for the covered routes and the source evidence for thread state.
