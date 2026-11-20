@@ -54,22 +54,23 @@ migration and [release steps](RELEASE.md#create-a-release) for the maintainer wo
 
 ### cargo install
 
-Install the latest published version from crates.io:
+Install v0.3.0 from its Git tag once the tag is published:
 
 ```bash
-cargo install gitbucket-mcp-server --locked
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.3.0 --locked
 ```
 
-To install directly from Git:
+To install the latest source directly from Git:
 
 ```bash
 cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --locked
 ```
 
-To install the v0.3.0 release once its tag is published:
+crates.io versions are published separately from GitHub Releases. Once v0.3.0
+is available there, install that version with:
 
 ```bash
-cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.3.0 --locked
+cargo install gitbucket-mcp-server --version 0.3.0 --locked
 ```
 
 `cargo install` places the binary in `$CARGO_HOME/bin`, which is usually `~/.cargo/bin` on Linux/macOS and `%CARGO_HOME%\bin` on Windows (by default `%USERPROFILE%\.cargo\bin`).

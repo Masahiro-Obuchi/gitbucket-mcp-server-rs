@@ -31,16 +31,16 @@ Web経路を調べた結果、閲覧者が他者のMarkdown原文を取得でき
 
 公式4.44.0・4.48.0のソースと、両版の使い捨てDocker環境を調べた。
 ファイル別のGit blob・URLは
-[sources.json](../tests/fixtures/inline_comments/sources.json)、
+[sources.json](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/b959fff32055747f29cc4207ea7cd2d93a54ca98/tests/fixtures/inline_comments/sources.json)、
 実行日時・image digest・観測値は
-[4.44.0](../tests/fixtures/inline_comments/4.44.0/environment.json) /
-[4.48.0](../tests/fixtures/inline_comments/4.48.0/environment.json) に記録した。
+[4.44.0](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/b959fff32055747f29cc4207ea7cd2d93a54ca98/tests/fixtures/inline_comments/4.44.0/environment.json) /
+[4.48.0](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/b959fff32055747f29cc4207ea7cd2d93a54ca98/tests/fixtures/inline_comments/4.48.0/environment.json) に記録した。
 標準同梱イメージを使用し、追加プラグインは導入していない。コンテキストパスは `/`、
 HTTPはloopback限定。所有者PATと、所有者・GUESTの別々のWebセッションを用いた。
 非公開リポジトリに `permission=pull` でGUESTを追加し、権限応答も記録した。
 
 再現手順は[TESTING.md](../TESTING.md#inline-comment-contract-probe-p08)、
-実行用コードは[probe_inline_comments.py](../scripts/e2e/probe_inline_comments.py)。
+実行用コードは[probe_inline_comments.py](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/scripts/e2e/probe_inline_comments.py)。
 コミット・ユーザー・コメントはすべて調査専用に生成した。
 ホスト名・ユーザー名・リポジトリ名・完全長commit SHAを正規化し、本文・行・保存IDは保持した。
 fixtureは完全なHTTP録画ではなく、実応答のDOM断片とそこから抽出した観測値である。

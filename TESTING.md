@@ -1,5 +1,8 @@
 # Testing Guide
 
+Run the development and Docker commands below from a Git checkout of the version
+you want to test.
+
 This repository uses layered tests so failures can be isolated quickly:
 
 - Unit tests in `src/**` cover models, config loading, validation, and tool behavior.
@@ -77,7 +80,7 @@ messages; malformed initialization cannot echo the client's private payload.
 Tests need loopback port binding but no external GitBucket or real credentials.
 
 The local TLS server uses the synthetic localhost identity in
-[`tests/fixtures/tls`](tests/fixtures/tls/README.md). An untrusted connection fails;
+[`tests/fixtures/tls`](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/tests/fixtures/tls/README.md). An untrusted connection fails;
 `SSL_CERT_FILE` plus an isolated `SSL_CERT_DIR` then trusts the test CA. The same
 process proves diagnostics, a REST write and a verified Web cookie session use
 that CA policy. No TLS verification bypass is used. Certificates and the server
@@ -582,7 +585,7 @@ Editing requires a matching conversation-comment GET before PATCH; preflight
 failures retain their operation evidence.
 
 The core acceptance `changes` stage also calls
-[`probe_comment_items.py`](scripts/e2e/probe_comment_items.py) using its fresh
+[`probe_comment_items.py`](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/scripts/e2e/probe_comment_items.py) using its fresh
 private PR fixture. Actual stdio clients with PAT-only `rest-only` configuration
 check Issue and PR comments, full raw text, owner/GUEST authors, GUEST own edits
 and deletion, developer edits of another author's comment, denied writes to
@@ -603,7 +606,7 @@ cursors bound to the Issue/PR and tool. Shared MCP tests cover required inputs,
 strict schemas, annotations and enforced read-only access including handlers.
 
 Core acceptance's `changes` stage calls
-[`probe_issue_labels.py`](scripts/e2e/probe_issue_labels.py) in its disposable
+[`probe_issue_labels.py`](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/scripts/e2e/probe_issue_labels.py) in its disposable
 private repository. Actual PAT-only rest-only stdio clients check Issue and PR
 assignments, automatically created definitions and colors, exact Unicode/special
 names, repeated add, replacement and clear, removal preserving definitions,
@@ -622,7 +625,7 @@ or MCP deadline. Unknown request fields and unsupported update fields are
 rejected by strict schemas/models. No failure triggers another mutation.
 
 The core `changes` stage invokes
-[`probe_creation_metadata.py`](scripts/e2e/probe_creation_metadata.py) against
+[`probe_creation_metadata.py`](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/scripts/e2e/probe_creation_metadata.py) against
 its disposable private repository. Actual PAT-only rest-only stdio clients check
 open/closed milestones, two assignees and an exact existing label, invalid and
 foreign references without extra Issues, GUEST creation whose assignment is

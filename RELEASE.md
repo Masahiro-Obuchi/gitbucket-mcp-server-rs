@@ -338,13 +338,15 @@ python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
 
 ## Create a Release
 
-Create and push an annotated tag from the release commit on `main`:
+From the release commit on `main`, create and push an annotated tag:
 
 ```bash
-./scripts/release/create_tag.sh v0.2.0
+./scripts/release/create_tag.sh
 ```
 
-Pushing the tag starts `.github/workflows/release.yml`.
+The script derives the tag from the package version and requires local `main`
+to match the fetched `origin/main`. Pushing the tag starts
+`.github/workflows/release.yml`.
 
 The workflow:
 
@@ -372,19 +374,26 @@ After the workflow finishes:
 4. Verify the checksum:
 
 ```bash
-shasum -a 256 -c gitbucket-mcp-server-0.2.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+shasum -a 256 -c gitbucket-mcp-server-0.3.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
 5. Follow `VERIFICATION.md` from the archive to confirm the binary starts and the MCP client can list tools.
 
-## Failed Releases
+## Publish the Cargo Crate
 
-If the release workflow fails before publishing, fix the problem on `main`, delete the local and remote tag, then create the tag again from the corrected commit:
+Publish to crates.io separately from the GitHub release. Check out the verified
+release tag and run the package verification before publishing:
 
 ```bash
-git tag -d v0.2.0
-git push origin :refs/tags/v0.2.0
-./scripts/release/create_tag.sh v0.2.0
+cargo publish --locked --dry-run
+cargo publish --locked
 ```
 
-If a GitHub Release was already published, prefer creating a new patch version instead of replacing released artifacts.
+## Failed Releases
+
+For a transient failure, rerun the failed jobs on the existing tag. If a fix
+requires a new commit, check that the failed tag's version matches the corrected
+package version on `main` and that the version has not been published. Delete
+that specific tag locally and on `origin`, then rerun the tag script from the
+corrected `main`. Use a new patch version for a release already published on
+GitHub or crates.io.
