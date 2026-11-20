@@ -4,7 +4,7 @@
 
 根拠: [REVIEW.md](REVIEW.md)のF01〜F30と「Webフォールバックを本当に必要とする操作」。本書の作業定義は計画であり、実施状態は次の進捗欄で管理する。従来の[PLAN.md](PLAN.md)は開発履歴として残し、今回の修正の順序・完了条件は本書を正とする。
 
-## 実施状況（2026-11-20）
+## 実施状況（2026-11-21）
 
 | 作業 | 状態・証拠 |
 | --- | --- |
@@ -58,7 +58,7 @@
 | P15-7検証 | Rust 521件・Python 26件・fmt・Clippy・Rust 1.88.0 locked all-targets/all-features成功。head `47182f8` 時点で公式4.44.0／4.48.0の全5ドメイン、各23既存E2E、新しい契約テストとcleanupを確認。[push CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/runs/44409422533)・[PR CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/runs/44409432463/attempts/2)成功。4.48.0の既存コメント削除テストの `operation_unknown` は同じコミットの再実行で通過。成果物 `14478354727` の `summary.json` のみ、検証用マージコミット `6c86903`、クリーンな作業ツリーと全ステージ成功を照合済み。 |
 | P15-7 follow-up | [PR #46](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/pull/46) はマージ済み（main `9a1f213`、最終head `e8e9f83`）。`create_fork_pull_request` に作成元 `head_owner/head_repo` と両ブランチを渡す。標準Webの比較フォームと両tipを照合し1回POST、PATで作者・原文・draft・リポジトリ・ref/SHAを確認。比較元SHAとベース先端を区別し、未確認結果には捕捉したPR番号と項目状態を保持。53ツール（22読取り・31書込み）。 |
 | P15-7 follow-up検証 | Rust 527件（新規6件）・Python 26件・fmt・Clippy・Rust 1.88.0 locked all-targets/all-features成功。最終head `e8e9f83` のクリーンな作業ツリーで公式4.44.0／4.48.0の全5ドメインと各23既存E2E・cleanup成功。実stdioで改名した非公開forkのdraft／ready、slash ref、ベース先端と比較元SHAの差、原文保持、別リポジトリ・欠けたref・rest-only・資格情報なし・readonlyの拒否を確認。[push CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/runs/44542195600)と[PR CI](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/actions/runs/44542317722)が成功し、成果物 `14539780229` のsummaryのみ、検証用マージコミット `5371e06`、全ステージ成功を照合済み。 |
-| P15-7 レビュー後の修正 | [PR #47](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/pull/47)（head `d34f37d`）。POST前に比較ベースが両ブランチの履歴に含まれることを確認し、作成後はPRメタデータに加えて実際のGit head refを照合する。不一致や読取り不能時はPR番号と確認済みの項目を保持する。Rust 529件、Python 26件、fmt、Clippy、Rust 1.88.0のチェック、公式4.44.0／4.48.0の全5受入ドメインと各23既存E2Eがローカルで成功。 |
+| P15-7 レビュー後の修正 | [PR #47](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/pull/47) はマージ済み（main `3e25d13`、head `d34f37d`）。POST前に比較ベースが両ブランチの履歴に含まれることを確認し、作成後はPRメタデータに加えて実際のGit head refを照合する。不一致や読取り不能時はPR番号と確認済みの項目を保持する。Rust 529件、Python 26件、fmt、Clippy、Rust 1.88.0のチェック、公式4.44.0／4.48.0の全5受入ドメインと各23既存E2Eがローカルで成功。 |
 
 ## 1. 優先順位と基本方針
 

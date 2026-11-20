@@ -2,31 +2,69 @@
 
 This project publishes GitHub Releases from version tags. The release workflow builds platform archives, attaches checksums, and publishes the GitHub Release.
 
-## Unreleased pull request creation from an explicit fork
+## v0.3.0
+
+This release exposes 53 MCP tools, including 22 reads. It adds repository
+discovery and organization repository creation, Issue/PR assignments and
+comment operations, fork PR creation, draft readiness, PR change reads and
+inline comments. The standard GitBucket contracts are verified on 4.44.0 and
+4.48.0. Source builds use Rust 1.88 or newer.
+
+### Upgrading from v0.2.3
+
+- Keep the existing URL and PAT configuration. For operations that use the Web
+  UI, set `GITBUCKET_API_PROFILE=standard` and supply `GITBUCKET_USERNAME` and
+  `GITBUCKET_PASSWORD` for the same account as the PAT. The default
+  `rest-only` profile uses REST. See the [profile and route table](README.md#gitbucket-api-profiles).
+- Refresh any cached MCP tool schemas. Remove unsupported arguments, such as
+  label `description` or inline positions on a conversation comment. Use the
+  dedicated tools and preserve the distinction between omitted metadata and
+  explicit empty values. See the [input and model changes](#p07-input-and-model-changes).
+- Traverse list results using `has_more` and `next_cursor`. The default returns
+  up to 50 summary items per page. Request `view: "full"` or a detail getter
+  for fields omitted from summaries. Treat missing `closed_at` and nullable
+  metadata as unknown. See the [pagination contract](docs/list-continuation.md).
+- Update error handling for `operation_unknown`, `operation_not_verified`,
+  `operation_partial` and `operation_not_applied`. Inspect the target and
+  recorded field results after an uncertain write before retrying. See
+  [write outcomes](README.md#write-outcomes).
+- PR merge callers can choose merge, squash or rebase. For an expected head,
+  use `expected_head_sha` with `head_guard: "preflight"`. This check leaves a
+  race window. Rust callers must migrate from the old `sha` field. See the
+  [merge contract](docs/pull-request-merges.md).
+- Custom Rust adapters must implement the current `GitBucketApi` methods and
+  update struct literals, response types and exhaustive error matches. Replace
+  `Config::from_env` with `Config::load` or `Config::load_with_file`. See the
+  per-feature notes below.
+- Run `--check-config` and `--check-connection` after upgrading. The stdio
+  process reports readiness after the MCP initialization handshake. See
+  [the installation checks](VERIFICATION.md).
+
+### Pull request creation from an explicit fork
 
 - Add `create_fork_pull_request` for an explicitly named source, including
-  renamed forks. The server exposes 53 tools (22 reads and 31 writes).
+  renamed forks.
 - Use the standard Web compare form with matching PAT and Web identities.
-  Recheck both branch tips, submit once, and verify the created PR using REST.
+  Check the comparison base against both branch histories and recheck both
+  tips before one submission. Read back PR metadata and the fetched head ref.
 - Custom `GitBucketApi` adapters add one required method with
   `CreateForkPullRequest` input. See [the contract](docs/fork-pull-request-creation.md).
 
-## Unreleased P15 organization repositories and discovery
+### P15 organization repositories and discovery
 
 - Add create_organization_repository for existing GitBucket organizations and
   list_visible_repositories for PAT-scoped discovery across user and organization
-  owners. That unit brought the server to 52 tools (22 reads / 30 writes).
+  owners.
 - Organization creation verifies the owner, repository fields and initial
   branch state. Discovery uses a bounded owner scan and cached MCP pages.
   Both tools use REST in both profiles. See [the contract](docs/repository-discovery.md).
 - Custom GitBucketApi adapters implement two new required methods using
   the existing CreateRepository and Repository models.
 
-## Unreleased P15 comment with close/reopen
+### P15 comment with close/reopen
 
 - Add close_issue_with_comment and reopen_issue_with_comment for Issues and
-  unmerged PRs. That unit brought the total to 50 tools (21 reads / 29 writes). Both profiles use
-  PAT-only REST; a real nonblank body is required and retained exactly.
+  unmerged PRs. Both profiles use PAT-only REST; a real nonblank body is required and retained exactly.
 - Send one native action-query POST and independently verify comment membership,
   body/author, parent state and retained fields. A denied action can still create
   a comment and return partial. Already requested states and merged PRs stop
@@ -38,11 +76,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
   CreateComment and new CommentStateChange. No compatibility defaults or new
   settings/dependencies. See [the contract](docs/comment-state.md).
 
-## Unreleased P15 pull request readiness
+### P15 pull request readiness
 
 - Add mark_pull_request_ready for the native one-way draft-to-ready transition.
-  That unit brought the count to 48 tools (21 reads / 27 writes). Standard profile is required;
-  actual changes need matching PAT/Web credentials and head-repository developer
+  The standard profile is required. Actual changes need matching PAT/Web credentials and head-repository developer
   permission. Already ready is a verified PAT-only no-op.
 - Recheck content/revisions before one empty cookie-only POST; verify draft=false
   and preserved fields afterward. Retain target/head/evidence on uncertainty,
@@ -51,11 +88,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
   existing PullRequest type. No compatibility defaults or new settings/models/
   dependencies. See [the contract](docs/pull-request-ready.md).
 
-## Unreleased P15 Issue/PR assignee updates
+### P15 Issue/PR assignee updates
 
 - Add add_issue_assignees, remove_issue_assignee and replace_issue_assignees for
-  individual accounts on Issues/PRs. That unit brought the count to 47 tools
-  (21 reads / 26 writes).
+  individual accounts on Issues and PRs.
 - Require standard profile and matching PAT/Web credentials even for no-ops;
   reconcile complete REST/sidebar observations to protect hidden suspended-account
   relations. Add missing accounts before removing extras, verifying every step
@@ -65,11 +101,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
   three new required methods using AssigneeNames, without compatibility defaults.
   See [the contract](docs/issue-assignees.md).
 
-## Unreleased P15 Issue/PR milestone assignment updates
+### P15 Issue/PR milestone assignment updates
 
-- Add set_issue_milestone and clear_issue_milestone for Issue/PR assignments,
-  bringing that unit to 44 tools (21 reads / 23 writes). Milestone definitions
-  are preserved. The standard profile is required; rest-only refuses before HTTP.
+- Add set_issue_milestone and clear_issue_milestone for Issue/PR assignments.
+  Milestone definitions are preserved. The standard profile is required; rest-only refuses before HTTP.
 - Check target/reference identity, use one cookie-only Web POST and verify
   stored milestone plus retained raw content, state, labels and assignees.
   Clear requires the native explicit empty marker as well as the REST read.
@@ -78,10 +113,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
 - Custom GitBucketApi adapters must implement the two new required methods.
   See [the contract](docs/issue-milestones.md) and [tests](TESTING.md#issuepr-milestone-assignments-p15-4b).
 
-## Unreleased P15 creation metadata
+### P15 creation metadata
 
 - Add optional milestone to create_issue and draft to create_pull_request.
-  That creation unit kept 42 tools (21 reads / 21 writes); both profiles use PAT-only REST.
+  Both profiles use PAT-only REST.
 - Preflight supplied Issue reference names/IDs; verify supplied assignees,
   labels and milestone after one POST. Verify explicit PR draft true/false.
   Do not infer unobserved arrays/flags or retry a creation after verification fails.
@@ -95,11 +130,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
   multiple assignees, ignored GUEST metadata, explicit empty arrays, draft
   true/false/default and get/list observations. See [the contract](docs/creation-metadata.md).
 
-## Unreleased P15 Issue/PR label assignments
+### P15 Issue/PR label assignments
 
 - Add list_issue_labels, add_issue_labels, remove_issue_label and
-  replace_issue_labels (PAT-only REST in both profiles). The server exposes
-  42 tools / 21 reads / 21 writes.
+  replace_issue_labels (PAT-only REST in both profiles).
 - Add only missing assignments; verify the entire resulting set. Replacement
   removes omitted assignments and [] clears them all. Unknown names create
   repository definitions with generated colors; removal preserves definitions.
@@ -112,11 +146,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
   special names, replacement/clear and cached pages across assignment changes.
   See [the contract](docs/issue-labels.md).
 
-## Unreleased P15 ordinary comment operations
+### P15 ordinary comment operations
 
 - Add `get_issue_comment`, `update_issue_comment` and `delete_issue_comment` for
-  Issue and PR conversation comments. The server exposes 38 tools / 20 reads.
-  All three use PAT-only REST in both profiles.
+  Issue and PR conversation comments. All three use PAT-only REST in both profiles.
 - Edit verifies the complete stored body and returns the original author via
   GET, avoiding upstream PATCH's editor attribution. A preflight GET prevents
   PATCH from editing non-conversation timeline entries. Delete verifies preflight existence,
@@ -129,11 +162,10 @@ This project publishes GitHub Releases from version tags. The release workflow b
   other-author edits and verified deletion on both supported GitBucket versions.
   See [the contract](docs/ordinary-comments.md).
 
-## Unreleased P15 PR change reads
+### P15 PR change reads
 
 - Add three read tools: list_pull_request_commits (PAT-only unpaged REST),
   list_pull_request_files and get_pull_request_diff (standard verified Web patch).
-  The server exposes 35 tools / 19 read-only tools. Existing write tools are unchanged.
 - Preserve stored base/head, exact commit messages, file paths/modes/statuses and
   patch text. Binary payload omissions and upstream rename limitations are explicit.
   Diff text uses bounded UTF-8 chunks and the existing cursor/cache limits.
@@ -143,7 +175,7 @@ This project publishes GitHub Releases from version tags. The release workflow b
 - Core acceptance now runs a real stdio/Git change-read probe in both supported
   GitBucket versions, including 28 commits, head advance, exact diff and merged PR.
 
-## Unreleased P14 regression and acceptance gates
+### P14 regression and acceptance gates
 
 - PR changes select live contract domains on official GitBucket 4.48.0 after
   fast checks; docs-only changes skip live checks. Unknown/shared code and CI/
@@ -162,7 +194,7 @@ This project publishes GitHub Releases from version tags. The release workflow b
 - See [the acceptance policy](docs/acceptance.md) for reproduction, scope limits,
   cleanup behavior and separately authorized staged production acceptance.
 
-## Unreleased P13 configuration, CLI and minimum Rust
+### P13 configuration, CLI and minimum Rust
 
 - Raise `rust-version` and source-build documentation to 1.88, the minimum
   required by the existing locked dependency graph. Linux CI builds/checks with
@@ -184,7 +216,7 @@ This project publishes GitHub Releases from version tags. The release workflow b
   replace platform root discovery. TLS verification remains required by the
   production CLI. See [README.md](README.md#https-and-custom-certificate-authorities).
 
-## Unreleased P12 verified pull request merges
+### P12 verified pull request merges
 
 - Expose `merge_method` (`merge` default / `squash` / `rebase`) and explicit
   `head_guard` (`none` default / `preflight` / unsupported `atomic`). A reviewed
@@ -205,9 +237,9 @@ This project publishes GitHub Releases from version tags. The release workflow b
   verification. No legacy aliases, automatic retries or rollback are added.
   See [the contract](docs/pull-request-merges.md).
 
-## Unreleased P11 bounded list responses
+### P11 bounded list responses
 
-- All eight MCP lists now default to summary pages of at most 50 items. Optional
+- All twelve MCP lists default to summary pages of at most 50 items. Optional
   `limit` accepts 1..100; `cursor` continues the same observation; `view: "full"`
   requests all existing model fields within limits. Array keys remain, with
   `has_more`, `next_cursor`, `range` and per-summary omission/truncation metadata.
@@ -223,11 +255,11 @@ This project publishes GitHub Releases from version tags. The release workflow b
   helper. API/adapter Vec methods and detail models remain unchanged. No legacy
   mode or environment setting is added. See [the contract](docs/list-continuation.md).
 
-## Unreleased P10 review-comment posting
+### P10 review-comment posting
 
 - Add `add_pull_request_review_comment` for one changed line on an open PR's
-  exact current head under the standard profile. The server advertises 32 tools,
-  including 16 reads. Read-only mode hides and rejects all 16 writes.
+  exact current head under the standard profile. Read-only mode hides and rejects
+  the posting tool.
 - Require explicit `head_guard: "preflight"`, accepting its race window;
   `atomic` is unsupported before HTTP. Lossy outer body/path whitespace, control
   characters, historical/context/file-wide positions and unsupported diffs are
@@ -243,21 +275,21 @@ This project publishes GitHub Releases from version tags. The release workflow b
   commit/path/old_line/new_line reconciliation fields, omitted when absent.
   Update exhaustive matches and struct literals; no compatibility shim is added.
 
-## Unreleased P09 review-comment reads
+### P09 review-comment reads
 
 - Add read-only `list_pull_request_review_comments` and
-  `get_pull_request_review_comment`. The server now advertises 31 tools, including
-  16 reads. The tools require the standard profile and matching PAT/Web credentials.
+  `get_pull_request_review_comment`. These tools require the standard profile and
+  matching PAT/Web credentials.
 - Review results distinguish commit/file/line comments and use `commit:<ID>`
   identities. Results contain HTML and explicit partial coverage; unknown raw
   text, original positions and timestamps remain null. Missing lookups return
-  `not_observed` rather than asserting deletion. No inline write tool is added.
+  `not_observed`.
 - Add public review model types and two required `GitBucketApi` methods. Custom
   Rust adapters must implement them. `GbMcpError::ReadConflict` and the MCP
   `read_conflict` kind report observed PR changes during a read. No legacy shim
   or invented HTTP status is provided. See [the contract](docs/review-comment-reads.md).
 
-## Unreleased P07 input and model changes
+### P07 input and model changes
 
 - All MCP tools reject unknown arguments before HTTP. Clients must remove
   unsupported fields, including inline locations on ordinary comment tools.
@@ -277,10 +309,6 @@ This project publishes GitHub Releases from version tags. The release workflow b
   public Rust tool handlers. Rust servers use `with_access_mode(AccessMode::ReadOnly)`.
 - Every tool now carries behavioral annotations. They are advisory; read-only
   enforcement is independent, and writes are never automatically retried.
-
-These changes intentionally correct the protocol and public response models;
-there are no legacy aliases or synthetic timestamp/boolean fallbacks. Include
-these migration notes in the next release. No version tag is created by this work.
 
 ## Versioning
 
@@ -310,13 +338,15 @@ python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
 
 ## Create a Release
 
-Create and push an annotated tag from the release commit on `main`:
+From the release commit on `main`, create and push an annotated tag:
 
 ```bash
-./scripts/release/create_tag.sh v0.2.0
+./scripts/release/create_tag.sh
 ```
 
-Pushing the tag starts `.github/workflows/release.yml`.
+The script derives the tag from the package version and requires local `main`
+to match the fetched `origin/main`. Pushing the tag starts
+`.github/workflows/release.yml`.
 
 The workflow:
 
@@ -325,7 +355,8 @@ The workflow:
    Docker contract acceptance on official GitBucket 4.44.0 and 4.48.0;
 3. verifies that the tag matches `Cargo.toml`;
 4. builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows;
-5. packages archives with `README.md`, `LICENSE`, and `VERIFICATION.md`;
+5. packages archives with the binary, license, installation and upgrade guides,
+   contract documentation, and the sample Skill;
 6. generates `.sha256` checksum files;
 7. publishes a GitHub Release with generated release notes.
 
@@ -343,19 +374,26 @@ After the workflow finishes:
 4. Verify the checksum:
 
 ```bash
-shasum -a 256 -c gitbucket-mcp-server-0.2.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+shasum -a 256 -c gitbucket-mcp-server-0.3.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
 5. Follow `VERIFICATION.md` from the archive to confirm the binary starts and the MCP client can list tools.
 
-## Failed Releases
+## Publish the Cargo Crate
 
-If the release workflow fails before publishing, fix the problem on `main`, delete the local and remote tag, then create the tag again from the corrected commit:
+Publish to crates.io separately from the GitHub release. Check out the verified
+release tag and run the package verification before publishing:
 
 ```bash
-git tag -d v0.2.0
-git push origin :refs/tags/v0.2.0
-./scripts/release/create_tag.sh v0.2.0
+cargo publish --locked --dry-run
+cargo publish --locked
 ```
 
-If a GitHub Release was already published, prefer creating a new patch version instead of replacing released artifacts.
+## Failed Releases
+
+For a transient failure, rerun the failed jobs on the existing tag. If a fix
+requires a new commit, check that the failed tag's version matches the corrected
+package version on `main` and that the version has not been published. Delete
+that specific tag locally and on `origin`, then rerun the tag script from the
+corrected `main`. Use a new patch version for a release already published on
+GitHub or crates.io.

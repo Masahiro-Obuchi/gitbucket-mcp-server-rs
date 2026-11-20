@@ -2,6 +2,9 @@
 
 Use this checklist after installing `gitbucket-mcp-server` from GitHub Releases, `cargo install`, or a local build.
 
+For v0.3.0, `--version` reports `gitbucket-mcp-server 0.3.0`. See
+[upgrading from v0.2.3](RELEASE.md#upgrading-from-v023) for MCP and configuration changes.
+
 ## 1. Confirm the binary location
 
 Check that the command resolves to the binary you intended to install:
@@ -98,7 +101,7 @@ configure the client to launch it without arguments:
 - the client starts the process without a configuration error
 - the client sends `initialize` and then `notifications/initialized`; only then
   does stderr report `gitbucket-mcp-server ready (MCP initialized)`
-- the tool list is visible (52 normally, 22 with `GITBUCKET_READ_ONLY=true`)
+- the tool list is visible (53 normally, 22 with `GITBUCKET_READ_ONLY=true`)
 - `get_authenticated_user` succeeds
 - `list_repositories` or `get_repository` succeeds against your target GitBucket
 

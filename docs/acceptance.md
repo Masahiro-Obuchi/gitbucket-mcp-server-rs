@@ -31,9 +31,9 @@ cancelled or unexpectedly skipped prerequisite. It permits live contracts to be
 skipped only for a successfully computed docs-only plan. Repository maintainers
 can use this stable job name for branch protection; this change does not alter
 repository protection settings. The shared workflow is
-[`contract-e2e.yml`](../.github/workflows/contract-e2e.yml).
+[`contract-e2e.yml`](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/.github/workflows/contract-e2e.yml).
 
-The [selector](../scripts/e2e/ci_plan.py) compares PR base/head commit IDs using
+The [selector](https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs/blob/main/scripts/e2e/ci_plan.py) compares PR base/head commit IDs using
 NUL-delimited Git paths with rename detection disabled. Deleted and renamed
 source paths remain visible. Documentation/Skill-only changes skip live tests.
 Changes to CI, harnesses, Docker, dependencies, shared/unknown code run all
