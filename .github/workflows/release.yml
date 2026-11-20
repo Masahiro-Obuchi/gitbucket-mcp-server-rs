@@ -173,9 +173,11 @@ jobs:
           version="${{ needs.release-checks.outputs.version }}"
           archive_base="gitbucket-mcp-server-${version}-${{ matrix.target }}"
           archive_dir="dist/${archive_base}"
-          mkdir -p "${archive_dir}"
+          mkdir -p "${archive_dir}/skills"
           cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "${archive_dir}/gitbucket-mcp-server"
-          cp README.md LICENSE VERIFICATION.md "${archive_dir}/"
+          cp README.md LICENSE RELEASE.md TESTING.md VERIFICATION.md "${archive_dir}/"
+          cp -r docs "${archive_dir}/"
+          cp -r skills/gitbucket-mcp "${archive_dir}/skills/"
           tar -C dist -czf "dist/${archive_base}.${{ matrix.archive_ext }}" "${archive_base}"
           (
             cd dist
@@ -191,7 +193,11 @@ jobs:
           $archiveDir = Join-Path "dist" $archiveBase
           New-Item -ItemType Directory -Force -Path $archiveDir | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" (Join-Path $archiveDir "gitbucket-mcp-server.exe")
-          Copy-Item README.md, LICENSE, VERIFICATION.md $archiveDir
+          Copy-Item README.md, LICENSE, RELEASE.md, TESTING.md, VERIFICATION.md $archiveDir
+          Copy-Item -Recurse docs $archiveDir
+          $skillDir = Join-Path $archiveDir "skills"
+          New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
+          Copy-Item -Recurse skills/gitbucket-mcp $skillDir
           Push-Location "dist"
           try {
             Compress-Archive -Path $archiveBase -DestinationPath "$archiveBase.${{ matrix.archive_ext }}" -Force
@@ -206,7 +212,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: dist/*
+          path: |
+            dist/*.${{ matrix.archive_ext }}
+            dist/*.${{ matrix.archive_ext }}.sha256
+          if-no-files-found: error
 
   publish-github-release:
     name: Publish GitHub Release

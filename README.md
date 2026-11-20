@@ -49,7 +49,8 @@ gitbucket-mcp-server-<version>-<target>.zip
 
 Each release also includes a `.sha256` checksum file.
 
-For maintainer release steps, see [RELEASE.md](./RELEASE.md).
+See [upgrading from v0.2.3](RELEASE.md#upgrading-from-v023) for the v0.3.0
+migration and [release steps](RELEASE.md#create-a-release) for the maintainer workflow.
 
 ### cargo install
 
@@ -65,10 +66,10 @@ To install directly from Git:
 cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --locked
 ```
 
-To install a tagged release:
+To install the v0.3.0 release once its tag is published:
 
 ```bash
-cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.1.0 --locked
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-mcp-server-rs --tag v0.3.0 --locked
 ```
 
 `cargo install` places the binary in `$CARGO_HOME/bin`, which is usually `~/.cargo/bin` on Linux/macOS and `%CARGO_HOME%\bin` on Windows (by default `%USERPROFILE%\.cargo\bin`).
@@ -772,7 +773,7 @@ parents and the base tip. Success returns canonical `sha`, `merged: true`,
 that the expected original head is provably in the resulting history. Any failed
 or interrupted verification retains known IDs and observations without replay.
 See [the merge contract](docs/pull-request-merges.md) and
-[migration notes](RELEASE.md#unreleased-p12-verified-pull-request-merges).
+[migration notes](RELEASE.md#p12-verified-pull-request-merges).
 
 ### User
 
@@ -885,7 +886,7 @@ the observed total, offsets, limit reason and source completeness. Continuations
 serve a cached observation without HTTP; initial collection and later detail
 reads are not an atomic snapshot. The last review page retains partial coverage.
 See [the paging contract](docs/list-continuation.md) and
-[migration notes](RELEASE.md#unreleased-p11-bounded-list-responses).
+[migration notes](RELEASE.md#p11-bounded-list-responses).
 
 All tool inputs reject unknown fields before HTTP with an MCP invalid-parameters
 error. In particular, `path`, `line` and `commit_id` do not turn an ordinary PR
@@ -934,7 +935,7 @@ Standard-profile web color changes reject label names containing a comma or lead
 GitBucket's Issue API does not expose `closed_at` on the tested official versions.
 Missing closure times remain `null`, even after later edits to a closed Issue;
 `updated_at` is never substituted. A closure time supplied by an API is retained.
-See [unreleased migration notes](RELEASE.md#unreleased-p07-input-and-model-changes)
+See [migration notes](RELEASE.md#p07-input-and-model-changes)
 for the affected protocol and Rust response types.
 
 ## Development
