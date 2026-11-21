@@ -6,6 +6,7 @@ import unittest
 
 
 VERIFY_TAG = Path(__file__).with_name("verify_tag.sh").resolve()
+PUBLISH_DRAFT = VERIFY_TAG.with_name("publish_draft.sh")
 TAG = "refs/tags/v0.3.0"
 
 
@@ -43,6 +44,34 @@ class VerifyReleaseTag(unittest.TestCase):
             ("bash", str(VERIFY_TAG), ref, version), cwd=self.checkout,
             env=self.env, text=True, capture_output=True,
         )
+
+    def publish(self, draft="v0.3.0\ttrue"):
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        gh = bin_dir / "gh"
+        gh.write_text(
+            '#!/usr/bin/env bash\n'
+            'set -eu\n'
+            'printf "%s\\n" "$*" >> "$RELEASE_FIXTURE_CALLS"\n'
+            'if [[ "$2" != --method ]]; then\n'
+            '  printf "%s\\n" "$RELEASE_FIXTURE_DRAFT"\n'
+            'fi\n'
+        )
+        gh.chmod(0o700)
+        calls = self.root / "api-calls"
+        calls.write_text("")
+        env = dict(
+            self.env,
+            PATH=str(bin_dir) + os.pathsep + self.env.get("PATH", os.defpath),
+            GITHUB_REPOSITORY="fixture/project",
+            RELEASE_FIXTURE_CALLS=str(calls),
+            RELEASE_FIXTURE_DRAFT=draft,
+        )
+        result = subprocess.run(
+            ("bash", str(PUBLISH_DRAFT), TAG, "0.3.0", "123"), cwd=self.checkout,
+            env=env, text=True, capture_output=True,
+        )
+        return result, calls.read_text().splitlines()
 
     def assert_rejected(self, result, message):
         self.assertNotEqual(result.returncode, 0, result.stdout)
@@ -99,6 +128,42 @@ class VerifyReleaseTag(unittest.TestCase):
         for ref, version in (("refs/heads/main", "0.3.0"), (TAG, "0.3.1")):
             with self.subTest(ref=ref, version=version):
                 self.assert_rejected(self.verify(ref, version), "tag matching the package version")
+
+    def test_publishes_the_verified_draft_by_id_with_the_checked_out_target(self):
+        self.git("commit", "-q", "--allow-empty", "-m", "Advance main")
+        self.git("push", "-q", "origin", "main")
+
+        result, calls = self.publish()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls, [
+            "api repos/fixture/project/releases/123 --jq [.tag_name, .draft] | @tsv",
+            "api --method PATCH repos/fixture/project/releases/123 -F draft=false "
+            f"-f tag_name=v0.3.0 -f target_commitish={self.release_commit} --jq .html_url",
+        ])
+
+    def test_refuses_publication_if_the_tag_moves_or_disappears_after_staging(self):
+        staged = self.verify()
+        self.assertEqual(staged.returncode, 0, staged.stderr)
+        self.git("commit", "-q", "--allow-empty", "-m", "Different main commit")
+        self.git("tag", "-f", "v0.3.0", "HEAD")
+        self.git("push", "-q", "origin", "main", "+" + TAG)
+
+        result, calls = self.publish()
+        self.assert_rejected(result, "does not point to the checked-out release commit")
+        self.assertEqual(len(calls), 1, calls)
+
+        self.git("push", "-q", "origin", ":" + TAG)
+        result, calls = self.publish()
+        self.assert_rejected(result, "Could not fetch the release tag and main")
+        self.assertEqual(len(calls), 1, calls)
+
+    def test_refuses_to_publish_the_wrong_draft_or_an_already_published_release(self):
+        for draft in ("v0.3.1\ttrue", "v0.3.0\tfalse"):
+            with self.subTest(draft=draft):
+                result, calls = self.publish(draft)
+                self.assert_rejected(result, "not a draft for the expected tag")
+                self.assertEqual(len(calls), 1, calls)
 
 
 if __name__ == "__main__":

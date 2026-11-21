@@ -352,9 +352,14 @@ to match the fetched `origin/main`. Pushing the tag starts
 For a publishing run, GitHub Actions fetches the tag and `main` from
 `origin`. It verifies that the tag matches the package version, points to the
 commit being built, and is reachable from `origin/main`. The workflow checks
-the live refs before packaging and again just before publication. A release
-commit can still pass when later commits have advanced `main`. A moved or
-deleted tag stops publication for the original run.
+the live refs before packaging and before staging the assets. A release commit
+can still pass when later commits have advanced `main`.
+
+The workflow uploads assets to a draft release and fetches both live refs again
+after the upload. A failed recheck leaves the release as a draft. If a rerun
+finds a published release for that tag, it leaves its assets in place. The last
+ref check and the GitHub publication request are separate operations, so a ref
+can still change between them.
 
 The workflow:
 
@@ -366,7 +371,8 @@ The workflow:
 5. packages archives with the binary, license, installation and upgrade guides,
    contract documentation, and the sample Skill;
 6. generates `.sha256` checksum files;
-7. publishes a GitHub Release with generated release notes.
+7. stages a GitHub Release with generated release notes, rechecks the refs, and
+   publishes the draft.
 
 Manual `workflow_dispatch` defaults to dry-run mode (`publish=false`), which runs checks and packaging and uploads workflow artifacts without publishing a GitHub Release.
 

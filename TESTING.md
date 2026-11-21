@@ -758,9 +758,11 @@ python3 -m unittest discover -s scripts/release -p 'test_*.py'
 The tests use temporary Git repositories. They cover an annotated tag after
 `main` advances, a tag outside the fetched main history, a moved or deleted
 tag, a branch ref or version mismatch, and a recheck after main history changes.
-Both CI and the release workflow run this suite. A release dry run from a
-branch with `publish=false` exercises the checks and packaging without using a
-live release tag.
+Publication tests stub the GitHub CLI. They verify that an uploaded draft is
+published by its ID using the checked-out commit, and that a ref change or
+wrong draft prevents the publish request. Both CI and the release workflow run
+this suite. A release dry run from a branch with `publish=false` exercises the
+checks and packaging without using a live release tag.
 
 ## Creation from an explicit fork
 

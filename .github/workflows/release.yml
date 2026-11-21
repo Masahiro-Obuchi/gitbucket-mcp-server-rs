@@ -256,21 +256,50 @@ jobs:
           fetch-depth: 0
           path: release-source
 
-      - name: Recheck release tag before publishing
+      - name: Check release tag before staging
+        id: staging
         working-directory: release-source
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.release-checks.outputs.version }}
-        run: bash scripts/release/verify_tag.sh "$GITHUB_REF" "$RELEASE_VERSION"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash scripts/release/verify_tag.sh "$GITHUB_REF" "$RELEASE_VERSION"
+          published_tags=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '.[] | select(.draft == false) | .tag_name')
+          if grep -Fxq -- "$GITHUB_REF_NAME" <<< "$published_tags"; then
+            echo "The release for $GITHUB_REF_NAME is already published."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            commit=$(git rev-parse --verify HEAD)
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Publish GitHub Release
+      - name: Upload assets to a draft GitHub Release
+        if: steps.staging.outputs.needed == 'true'
+        id: draft
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          target_commitish: ${{ steps.staging.outputs.commit }}
+          draft: true
           generate_release_notes: true
           prerelease: ${{ contains(needs.release-checks.outputs.version, '-') }}
+          fail_on_unmatched_files: true
           files: |
             dist/*.tar.gz
             dist/*.tar.gz.sha256
             dist/*.zip
             dist/*.zip.sha256
+
+      - name: Recheck the tag and publish the draft
+        if: steps.staging.outputs.needed == 'true'
+        working-directory: release-source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.release-checks.outputs.version }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+        run: bash scripts/release/publish_draft.sh "$GITHUB_REF" "$RELEASE_VERSION" "$RELEASE_ID"
