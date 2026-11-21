@@ -1,4 +1,6 @@
-use crate::error::Result;
+use std::time::Duration;
+
+use crate::error::{GbMcpError, Result};
 use crate::models::comment::{Comment, CreateComment, UpdateComment};
 use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 
@@ -198,30 +200,51 @@ impl GitBucketClient {
             .run(async {
                 self.get_issue_comment(owner, repo, comment_id).await?;
                 let path = format!("/repos/{owner}/{repo}/issues/comments/{comment_id}");
-                let sent = self.delete_comment_once(&path, comment_id).await;
+                // Native GitBucket can return the ID as a lone 1xx response,
+                // leaving the HTTP client waiting for a final status.
+                let sent = tokio::select! {
+                    biased;
+                    sent = self.delete_comment_once(&path, comment_id) => sent,
+                    Ok(true) = async {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        self.comment_deleted(owner, repo, comment_id).await
+                    }, if (100..=199).contains(&comment_id) => {
+                        return operation.verify(&[("existence", true)]);
+                    }
+                };
                 // A 4xx different from this ID is a definite REST rejection;
                 // http::mutation already treats HTTP 408 as uncertain.
                 // Protocol errors (e.g. HTTP 001) and ID-shaped statuses can
                 // follow deletion, so inspect the effect without a second write.
-                if let Err(crate::error::GbMcpError::Api { status: 400..=499, .. }) = &sent {
+                if let Err(GbMcpError::Api {
+                    status: 400..=499, ..
+                }) = &sent
+                {
                     return sent;
                 }
-                match self.get_issue_comment(owner, repo, comment_id).await {
-                    Err(crate::error::GbMcpError::Api { status: 404, .. }) => {
-                        let visible = self.get_repository(owner, repo).await?;
-                        if visible.full_name != format!("{owner}/{repo}") {
-                            return Err(crate::error::GbMcpError::Other("Repository visibility could not be verified after comment deletion".into()));
-                        }
-                        operation.verify(&[("existence", true)])
-                    }
-                    Ok(_) => {
-                        sent?;
-                        operation.verify(&[("existence", false)])
-                    },
-                    Err(error) => Err(error),
+                let deleted = self.comment_deleted(owner, repo, comment_id).await?;
+                if !deleted {
+                    sent?;
                 }
+                operation.verify(&[("existence", deleted)])
             })
             .await
+    }
+
+    async fn comment_deleted(&self, owner: &str, repo: &str, comment_id: u64) -> Result<bool> {
+        match self.get_issue_comment(owner, repo, comment_id).await {
+            Err(GbMcpError::Api { status: 404, .. }) => {
+                let visible = self.get_repository(owner, repo).await?;
+                if visible.full_name != format!("{owner}/{repo}") {
+                    return Err(GbMcpError::Other(
+                        "Repository visibility could not be verified after comment deletion".into(),
+                    ));
+                }
+                Ok(true)
+            }
+            Ok(_) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 }
 
