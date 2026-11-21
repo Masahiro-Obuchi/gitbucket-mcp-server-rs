@@ -299,10 +299,25 @@ async fn id_shaped_error_status_can_follow_a_saved_delete() {
 
 #[tokio::test]
 async fn malformed_http_status_after_a_saved_delete_is_verified_without_replaying() {
+    verify_delete_with_unusable_response(7, "007 007", false).await;
+}
+
+#[tokio::test]
+async fn informational_status_without_a_final_response_allows_early_verification() {
+    verify_delete_with_unusable_response(110, "110 110", true).await;
+}
+
+async fn verify_delete_with_unusable_response(
+    id: u64,
+    delete_status: &'static str,
+    keep_open: bool,
+) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let fixture = tokio::spawn(async move {
+        let route = format!("/api/v3/repos/owner/repo/issues/comments/{id}");
+        let mut pending_delete = None;
         for index in 0..4 {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut request = Vec::new();
@@ -318,18 +333,28 @@ async fn malformed_http_status_after_a_saved_delete_is_verified_without_replayin
                 .next()
                 .unwrap();
             let expected = match index {
-                0 | 2 => format!("GET {ROUTE} HTTP/1.1"),
-                1 => format!("DELETE {ROUTE} HTTP/1.1"),
+                0 | 2 => format!("GET {route} HTTP/1.1"),
+                1 => format!("DELETE {route} HTTP/1.1"),
                 _ => "GET /api/v3/repos/owner/repo HTTP/1.1".into(),
             };
             assert_eq!(line, expected);
+            if index == 1 && keep_open {
+                let response = format!("HTTP/1.1 {delete_status}\r\n\r\n");
+                socket.write_all(response.as_bytes()).await.unwrap();
+                pending_delete = Some(socket);
+                continue;
+            }
             let body = match index {
-                0 => comment("author", RAW).to_string(),
+                0 => {
+                    let mut value = comment("author", RAW);
+                    value["id"] = json!(id);
+                    value.to_string()
+                }
                 3 => json!({"name":"repo","full_name":"owner/repo","private":true}).to_string(),
                 _ => String::new(),
             };
             let status = match index {
-                1 => "007 007",
+                1 => delete_status,
                 2 => "404 Not Found",
                 _ => "200 OK",
             };
@@ -340,6 +365,11 @@ async fn malformed_http_status_after_a_saved_delete_is_verified_without_replayin
             socket.write_all(response.as_bytes()).await.unwrap();
             socket.shutdown().await.unwrap();
         }
+        if let Some(mut socket) = pending_delete {
+            // The client must finish verification and close the original
+            // request while the fixture still withholds the final response.
+            assert_eq!(socket.read(&mut [0]).await.unwrap(), 0);
+        }
     });
     let client = gitbucket_mcp_server::api::client::GitBucketClient::new(
         &format!("http://{address}"),
@@ -348,12 +378,41 @@ async fn malformed_http_status_after_a_saved_delete_is_verified_without_replayin
     .unwrap();
     tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        client.delete_issue_comment("owner", "repo", 7),
+        client.delete_issue_comment("owner", "repo", id),
     )
     .await
     .unwrap()
     .unwrap();
-    fixture.await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), fixture)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn missing_comment_during_pending_delete_requires_repository_visibility() {
+    let http = TestServer::start().await;
+    let id = 110;
+    Mock::given(method("DELETE"))
+        .and(path(format!(
+            "/api/v3/repos/owner/repo/issues/comments/{id}"
+        )))
+        .respond_with(ResponseTemplate::new(403).set_delay(std::time::Duration::from_secs(2)))
+        .expect(1)
+        .mount(&http.mock_server)
+        .await;
+    deletion_reads(&http, id, ResponseTemplate::new(404), 404).await;
+    let error = http
+        .client()
+        .delete_issue_comment("owner", "repo", id)
+        .await
+        .unwrap_err();
+    let GbMcpError::OperationFailed { outcome, cause } = error else {
+        panic!("missing write evidence")
+    };
+    assert_eq!(outcome.status, OutcomeStatus::NotApplied);
+    assert!(matches!(*cause, GbMcpError::Api { status: 403, .. }));
+    assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 4);
 }
 
 #[tokio::test]
