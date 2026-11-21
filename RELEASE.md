@@ -332,6 +332,7 @@ cargo fmt --all --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked
 python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
+python3 -m unittest discover -s scripts/release -p 'test_*.py'
 ```
 
 5. Confirm the CI workflow is green on `main`.
@@ -347,6 +348,13 @@ From the release commit on `main`, create and push an annotated tag:
 The script derives the tag from the package version and requires local `main`
 to match the fetched `origin/main`. Pushing the tag starts
 `.github/workflows/release.yml`.
+
+For a publishing run, GitHub Actions fetches the tag and `main` from
+`origin`. It verifies that the tag matches the package version, points to the
+commit being built, and is reachable from `origin/main`. The workflow checks
+the live refs before packaging and again just before publication. A release
+commit can still pass when later commits have advanced `main`. A moved or
+deleted tag stops publication for the original run.
 
 The workflow:
 

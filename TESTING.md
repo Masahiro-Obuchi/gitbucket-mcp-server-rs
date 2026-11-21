@@ -749,6 +749,19 @@ PR ready, then checks the review routes, ordinary and inline comments, and a
 successful commit status. See [the contract](docs/pull-request-review-contract.md)
 for the covered routes and the source evidence for thread state.
 
+## Release tag verification
+
+```bash
+python3 -m unittest discover -s scripts/release -p 'test_*.py'
+```
+
+The tests use temporary Git repositories. They cover an annotated tag after
+`main` advances, a tag outside the fetched main history, a moved or deleted
+tag, a branch ref or version mismatch, and a recheck after main history changes.
+Both CI and the release workflow run this suite. A release dry run from a
+branch with `publish=false` exercises the checks and packaging without using a
+live release tag.
+
 ## Creation from an explicit fork
 
 `cargo test --locked --test pull_request_fork_test` checks the exact cookie-only

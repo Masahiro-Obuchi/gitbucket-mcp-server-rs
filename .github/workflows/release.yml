@@ -31,26 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Run clippy
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
-
-      - name: Run tests
-        run: cargo test --locked
-
-      - name: Validate acceptance scripts
-        run: |
-          bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
-          python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
+        with:
+          fetch-depth: 0
 
       - name: Read package version
         id: version
@@ -67,9 +49,11 @@ jobs:
       - name: Validate release tag
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          expected="v${{ steps.version.outputs.value }}"
+          expected="v${RELEASE_VERSION}"
           if [[ "${GITHUB_REF_NAME}" != "${expected}" ]]; then
             echo "Release tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${expected}" >&2
             exit 1
@@ -95,6 +79,34 @@ jobs:
           fi
 
           echo "value=${should_publish}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release tag and main history
+        if: steps.publish.outputs.value == 'true'
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: bash scripts/release/verify_tag.sh "$GITHUB_REF" "$RELEASE_VERSION"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Validate release and E2E scripts
+        run: |
+          bash -n scripts/e2e/common.sh scripts/e2e/bootstrap.sh scripts/e2e/down.sh
+          python3 -m unittest discover -s scripts/e2e -p 'test_*.py'
+          python3 -m unittest discover -s scripts/release -p 'test_*.py'
 
   release-e2e:
     name: Release GitBucket ${{ matrix.version }} acceptance
@@ -236,6 +248,20 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
+
+      - name: Checkout the release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          path: release-source
+
+      - name: Recheck release tag before publishing
+        working-directory: release-source
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.release-checks.outputs.version }}
+        run: bash scripts/release/verify_tag.sh "$GITHUB_REF" "$RELEASE_VERSION"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
