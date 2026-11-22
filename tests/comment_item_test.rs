@@ -299,26 +299,34 @@ async fn id_shaped_error_status_can_follow_a_saved_delete() {
 
 #[tokio::test]
 async fn malformed_http_status_after_a_saved_delete_is_verified_without_replaying() {
-    verify_delete_with_unusable_response(7, "007 007", false).await;
+    verify_delete_with_unusable_response(7, "007 007", None).await;
 }
 
 #[tokio::test]
 async fn informational_status_without_a_final_response_allows_early_verification() {
-    verify_delete_with_unusable_response(110, "110 110", true).await;
+    verify_delete_with_unusable_response(110, "110 110", Some(0)).await;
+}
+
+#[tokio::test]
+async fn pending_delete_is_verified_when_the_first_probe_still_sees_the_comment() {
+    verify_delete_with_unusable_response(110, "110 110", Some(1)).await;
 }
 
 async fn verify_delete_with_unusable_response(
     id: u64,
     delete_status: &'static str,
-    keep_open: bool,
+    visible_probes: Option<usize>,
 ) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let fixture = tokio::spawn(async move {
         let route = format!("/api/v3/repos/owner/repo/issues/comments/{id}");
+        let missing_read = 2 + visible_probes.unwrap_or(0);
+        let repository_read = missing_read + 1;
+        let informational = format!("HTTP/1.1 {delete_status}\r\n\r\n");
         let mut pending_delete = None;
-        for index in 0..4 {
+        for index in 0..=repository_read {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut request = Vec::new();
             while !request.ends_with(b"\r\n\r\n") {
@@ -333,30 +341,30 @@ async fn verify_delete_with_unusable_response(
                 .next()
                 .unwrap();
             let expected = match index {
-                0 | 2 => format!("GET {route} HTTP/1.1"),
                 1 => format!("DELETE {route} HTTP/1.1"),
-                _ => "GET /api/v3/repos/owner/repo HTTP/1.1".into(),
+                i if i == repository_read => "GET /api/v3/repos/owner/repo HTTP/1.1".into(),
+                _ => format!("GET {route} HTTP/1.1"),
             };
             assert_eq!(line, expected);
-            if index == 1 && keep_open {
-                let response = format!("HTTP/1.1 {delete_status}\r\n\r\n");
-                socket.write_all(response.as_bytes()).await.unwrap();
+            if index == 1 && visible_probes.is_some() {
+                if missing_read == 2 {
+                    socket.write_all(informational.as_bytes()).await.unwrap();
+                }
                 pending_delete = Some(socket);
                 continue;
             }
-            let body = match index {
-                0 => {
+            let (status, body) = match index {
+                1 => (delete_status, String::new()),
+                i if i == missing_read => ("404 Not Found", String::new()),
+                i if i == repository_read => (
+                    "200 OK",
+                    json!({"name":"repo","full_name":"owner/repo","private":true}).to_string(),
+                ),
+                _ => {
                     let mut value = comment("author", RAW);
                     value["id"] = json!(id);
-                    value.to_string()
+                    ("200 OK", value.to_string())
                 }
-                3 => json!({"name":"repo","full_name":"owner/repo","private":true}).to_string(),
-                _ => String::new(),
-            };
-            let status = match index {
-                1 => delete_status,
-                2 => "404 Not Found",
-                _ => "200 OK",
             };
             let response = format!(
                 "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -364,6 +372,12 @@ async fn verify_delete_with_unusable_response(
             );
             socket.write_all(response.as_bytes()).await.unwrap();
             socket.shutdown().await.unwrap();
+            // A delayed deletion can finish after an early GET still sees it.
+            if index + 1 == missing_read {
+                if let Some(socket) = pending_delete.as_mut() {
+                    socket.write_all(informational.as_bytes()).await.unwrap();
+                }
+            }
         }
         if let Some(mut socket) = pending_delete {
             // The client must finish verification and close the original
@@ -377,7 +391,7 @@ async fn verify_delete_with_unusable_response(
     )
     .unwrap();
     tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(8),
         client.delete_issue_comment("owner", "repo", id),
     )
     .await

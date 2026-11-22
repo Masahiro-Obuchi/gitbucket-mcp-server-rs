@@ -205,9 +205,15 @@ impl GitBucketClient {
                 let sent = tokio::select! {
                     biased;
                     sent = self.delete_comment_once(&path, comment_id) => sent,
-                    Ok(true) = async {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                        self.comment_deleted(owner, repo, comment_id).await
+                    _ = async {
+                        let mut delay = Duration::from_secs(1);
+                        loop {
+                            tokio::time::sleep(delay).await;
+                            if matches!(self.comment_deleted(owner, repo, comment_id).await, Ok(true)) {
+                                break;
+                            }
+                            delay = (delay * 2).min(Duration::from_secs(4));
+                        }
                     }, if (100..=199).contains(&comment_id) => {
                         return operation.verify(&[("existence", true)]);
                     }

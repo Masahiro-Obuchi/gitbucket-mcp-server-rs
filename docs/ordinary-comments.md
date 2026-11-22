@@ -69,10 +69,11 @@ responses also allow read-only verification. A later comment GET must return
 A still-visible comment or failed verification cannot succeed. Losing repository
 visibility after a possible write leaves the result unknown. For IDs 100–199,
 if the DELETE is still pending after one second, the client starts the same
-read-only verification. Confirmed absence ends the wait for the HTTP response.
-If the early reads cannot confirm absence, the client continues waiting for
-the DELETE and handles its result normally. There is no second DELETE or Web
-fallback.
+read-only verification. Inconclusive reads are repeated while the request is
+pending, waiting two seconds after the first check and four seconds after each
+later check. Confirmed absence ends the wait. If the DELETE completes before
+confirmation, its result follows the normal rules above. There is no second
+DELETE or Web fallback.
 A repeated delete encounters the missing preflight comment and returns API 404
 without sending a write. The delete annotation describes its idempotent effect;
 repeated calls can return different results.
