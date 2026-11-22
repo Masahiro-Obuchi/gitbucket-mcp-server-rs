@@ -52,10 +52,11 @@ an unsupported endpoint, and never triggers Web fallback.
 
 The controller returns the deleted Int directly. Scalatra interprets it as an
 HTTP status: a deletion of ID 1 emits `HTTP/1.1 001 001`, rather than JSON `1`.
-Other IDs can yield informational, redirect, error or nonstandard statuses,
-without a response body. Informational statuses can delay verification until
-the configured HTTP request timeout expires (30 seconds by default). A saved delete can therefore look like a transport
-failure, 401 or 404. The client never follows a write redirect.
+Other IDs can yield informational, redirect, error or nonstandard statuses
+without a response body. For example, deleting ID 110 can send only
+`HTTP/1.1 110 110` and leave the connection open while the client waits for a
+final status. A saved delete can also look like a transport failure, 401 or
+404. The client never follows a write redirect.
 
 The client first GETs the exact comment; a missing/inaccessible comment stops
 before DELETE. It sends one DELETE. A 4xx different from the requested ID, except
@@ -66,7 +67,13 @@ responses also allow read-only verification. A later comment GET must return
 404 and a repository GET must return the same visible `full_name` before
 `deleted: true` is returned. The DELETE body is not used as confirmation.
 A still-visible comment or failed verification cannot succeed. Losing repository
-visibility leaves the result unknown. There is no second DELETE or Web fallback.
+visibility after a possible write leaves the result unknown. For IDs 100–199,
+if the DELETE is still pending after one second, the client starts the same
+read-only verification. Inconclusive reads are repeated while the request is
+pending, waiting two seconds after the first check and four seconds after each
+later check. Confirmed absence ends the wait. If the DELETE completes before
+confirmation, its result follows the normal rules above. There is no second
+DELETE or Web fallback.
 A repeated delete encounters the missing preflight comment and returns API 404
 without sending a write. The delete annotation describes its idempotent effect;
 repeated calls can return different results.
