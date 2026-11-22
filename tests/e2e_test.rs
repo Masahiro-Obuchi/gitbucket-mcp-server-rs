@@ -1092,6 +1092,17 @@ async fn test_e2e_create_repository() {
         created["description"].as_str()
     );
 
+    let empty_name = format!("mcp-e2e-empty-{}", unique_suffix());
+    let empty = call_tool_json(&client, "create_repository", json!({"name":empty_name})).await;
+    assert_eq!(empty["full_name"], format!("{owner}/{empty_name}"));
+    assert_eq!(empty["description"], "");
+    assert_eq!(empty["private"], false);
+    assert!(api
+        .list_branches(&owner, &empty_name)
+        .await
+        .unwrap()
+        .is_empty());
+
     client.cancel().await.unwrap();
 }
 

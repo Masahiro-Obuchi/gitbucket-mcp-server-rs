@@ -273,6 +273,11 @@ See [the posting contract](docs/review-comment-posts.md) and
 - `fork_repository(owner, repo)`
 - `list_branches(owner, repo)`
 
+Both repository creation tools determine the owner through REST before sending
+one POST. They return repository details read back under the expected owner
+after verifying the name, description, privacy and initial branch state. See
+[the repository contract](docs/repository-discovery.md#create-a-repository).
+
 ### 6.2 Label Tools
 
 - `list_labels(owner, repo)`

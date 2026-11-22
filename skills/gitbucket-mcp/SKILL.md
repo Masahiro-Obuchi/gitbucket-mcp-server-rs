@@ -52,7 +52,7 @@ Repository tools:
 - `list_repositories`
 - `list_visible_repositories`
 - `get_repository`
-- `create_repository`
+- `create_repository` (creates under the PAT user and verifies repository settings)
 - `fork_repository`
 - `list_branches`
 

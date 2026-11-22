@@ -142,13 +142,29 @@ async fn optional_markdown_and_commit_messages_reach_http_unchanged() {
         .expect(1)
         .mount(&http.mock_server)
         .await;
+    let owner = json!({"login":"owner","type":"User"});
+    for (route, body) in [
+        ("/api/v3/user", owner.clone()),
+        (
+            "/api/v3/repos/owner/repo",
+            json!({"name":"repo","full_name":"owner/repo","private":false,"description":text,"owner":owner}),
+        ),
+        ("/api/v3/repos/owner/repo/branches", json!([])),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .expect(1)
+            .mount(&http.mock_server)
+            .await;
+    }
     for verb in ["POST", "PATCH", "PUT"] {
         Mock::given(method(verb)).respond_with(|request: &wiremock::Request| {
             let body: Value = serde_json::from_slice(&request.body).unwrap();
             let value = if request.url.path().ends_with("/merge") {
                 json!({"merged":true,"sha":"c".repeat(40),"message":"merged"})
             } else if request.url.path().ends_with("/user/repos") {
-                json!({"name":"repo","full_name":"owner/repo","private":false,"description":body["description"]})
+                json!({"name":"repo","full_name":"owner/repo","private":false,"description":body["description"],"owner":{"login":"owner","type":"User"}})
             } else {
                 json!({"number":7,"title":body["title"],"state":"open","body":body["body"],"description":body["description"],"due_on":body["due_on"]})
             };
