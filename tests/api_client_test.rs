@@ -199,15 +199,46 @@ async fn test_get_repository() {
 async fn test_create_repository() {
     let server = TestServer::start().await;
     let client = server.client();
+    let owner = serde_json::json!({"login": "testuser", "type": "User"});
+    Mock::given(method("GET"))
+        .and(path("/api/v3/user"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&owner))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
 
     Mock::given(method("POST"))
         .and(path("/api/v3/user/repos"))
+        .and(wiremock::matchers::body_json(
+            serde_json::json!({"name": "new-repo", "private": true}),
+        ))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "name": "new-repo",
             "full_name": "testuser/new-repo",
             "private": true,
-            "fork": false
+            "fork": false,
+            "owner": owner
         })))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/new-repo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": "new-repo",
+            "full_name": "testuser/new-repo",
+            "private": true,
+            "description": "",
+            "html_url": "https://example.test/testuser/new-repo",
+            "owner": owner
+        })))
+        .expect(1)
+        .mount(&server.mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/repos/testuser/new-repo/branches"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+        .expect(1)
         .mount(&server.mock_server)
         .await;
 
@@ -220,6 +251,10 @@ async fn test_create_repository() {
     let repo = client.create_repository(&body).await.unwrap();
     assert_eq!(repo.name, "new-repo");
     assert!(repo.is_private);
+    assert_eq!(
+        repo.html_url.as_deref(),
+        Some("https://example.test/testuser/new-repo")
+    );
 }
 
 #[tokio::test]

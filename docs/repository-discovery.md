@@ -1,13 +1,14 @@
-# Organization repositories and repository discovery (P15-6)
+# Repository creation and discovery
 
-Both tools use PAT authentication through native REST in either API profile.
+These tools use PAT authentication through native REST in either API profile.
 
 | Tool | Input | Result |
 | --- | --- | --- |
+| `create_repository` | `name`, optional `description`, `private`, `auto_init` | Verified repository details |
 | `create_organization_repository` | `organization`, `name`, optional `description`, `private`, `auto_init` | Verified repository details |
 | `list_visible_repositories` | Optional `limit`, `view`, `cursor` | Page of repositories visible to the PAT |
 
-## Create under an organization
+## Create a repository
 
 The MCP tool trims organization and repository identifiers. Rust callers supply
 canonical identifiers directly. Repository names follow GitBucket's character
@@ -15,21 +16,21 @@ rules and are limited to 100 characters. Both APIs preserve the description as
 supplied. Omitted description, privacy and initialization use GitBucket's
 defaults of empty description, public visibility and no initial branch.
 
-First read `/users/{organization}` and require the exact login with type
-`Organization`. GitBucket accounts share a namespace and the native creation
-permission function allows the authenticated account name as a repository
-owner. The explicit type check keeps this tool scoped to organizations.
+For personal creation, `GET /user` identifies the PAT account and confirms its
+type is `User`. Send one `POST /user/repos` to create under that account.
+For organization creation, `GET /users/{organization}` must return the exact
+login with type `Organization` before sending one `POST /orgs/{organization}/repos`.
 GitBucket applies its creation policy to the authenticated user, including
 organization membership and site administrator permissions.
 
-Send one `POST /orgs/{organization}/repos`. Confirm the acknowledged owner and
-name, then read the repository and its branches independently. The repository
-read confirms the owner, name, description and privacy. Initialization expects
-one default branch with a canonical commit SHA. An empty repository expects
-no branches. The live fixture also checks the initialized README.
+Confirm the acknowledged owner and name, then read the repository and its
+branches independently. The repository read confirms the owner, name,
+description and privacy. Initialization expects one default branch with a
+canonical commit SHA. An empty repository expects no branches. The organization
+fixture also checks the initialized README.
 
 The tool returns the independently read repository. Post-write failures retain
-the requested organization and repository and any verified fields. An error
+the expected owner and repository and any verified fields. An error
 after POST can leave a repository in place. Inspect that locator before calling
 the tool again. The sequential reads can also detect concurrent changes to
 metadata or branches. No request switches API route after a failure.
@@ -82,7 +83,7 @@ expose the active directories, and
 [ApiUser](https://github.com/gitbucket/gitbucket/blob/4.48.0/src/main/scala/gitbucket/core/api/ApiUser.scala)
 identifies groups as organizations.
 
-`GitBucketApi` adds two required methods. Organization creation takes the
-existing `CreateRepository` model and returns `Repository`. Discovery returns
-`Vec<Repository>` to Rust callers. The MCP layer applies the shared paging and
+`GitBucketApi` exposes both creation methods with the `CreateRepository` model
+and returns `Repository`. Discovery returns `Vec<Repository>` to Rust callers.
+The MCP layer applies the shared paging and
 summary projection. See [TESTING](../TESTING.md#organization-repositories-and-discovery-p15-6).

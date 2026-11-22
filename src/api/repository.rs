@@ -21,6 +21,16 @@ fn matches_repository(repository: &Repository, owner: &str, name: &str) -> bool 
     repository.name == name && repository.full_name == format!("{owner}/{name}")
 }
 
+pub(crate) fn validate_new_repository_name(name: &str) -> Result<()> {
+    super::url_safety::identifier(name, "repo")?;
+    if name.len() > 100 {
+        return Err(GbMcpError::InvalidInput(
+            "Repository name must contain at most 100 characters".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl GitBucketClient {
     /// Observe repositories visible to the PAT across the native account directories.
     pub async fn list_visible_repositories(&self) -> Result<Vec<Repository>> {
@@ -105,21 +115,49 @@ impl GitBucketClient {
         organization: &str,
         body: &CreateRepository,
     ) -> Result<Repository> {
-        super::url_safety::repository(organization, &body.name)?;
-        if body.name.len() > 100 {
-            return Err(GbMcpError::InvalidInput(
-                "Repository name must contain at most 100 characters".into(),
-            ));
-        }
+        super::url_safety::identifier(organization, "owner")?;
+        validate_new_repository_name(&body.name)?;
         let account = self.get_user(organization).await?;
         if account.login != organization || account.user_type.as_deref() != Some("Organization") {
             return Err(GbMcpError::InvalidInput(
                 "organization must name an existing GitBucket organization exactly".into(),
             ));
         }
-        let operation = Operation::new(
+        self.create_verified_repository(
             "create_organization_repository",
-            OperationTarget::new(ResourceKind::Repository, organization, &body.name),
+            &format!("/orgs/{organization}/repos"),
+            organization,
+            "Organization",
+            body,
+        )
+        .await
+    }
+
+    async fn create_verified_repository(
+        &self,
+        operation_name: &'static str,
+        create_path: &str,
+        owner: &str,
+        owner_type: &str,
+        body: &CreateRepository,
+    ) -> Result<Repository> {
+        // GitBucket can authenticate provisioned logins such as user@example.test.
+        // The login must still be safe to address as a single path segment.
+        let invalid_owner =
+            || GbMcpError::ReadConflict("GitBucket returned an unaddressable repository owner");
+        if owner.contains(['/', '\\', '%']) {
+            return Err(invalid_owner());
+        }
+        let repo_url = super::url_safety::append(self.base_url(), &["repos", owner, &body.name])
+            .map_err(|_| invalid_owner())?;
+        let branches_url = super::url_safety::append(repo_url.as_str(), &["branches"])
+            .map_err(|_| invalid_owner())?;
+        let repo_path = repo_url.path().to_owned();
+        let branches_path = branches_url.path().to_owned();
+
+        let operation = Operation::new(
+            operation_name,
+            OperationTarget::new(ResourceKind::Repository, owner, &body.name),
             Route::Rest,
             &[
                 ("identity", true),
@@ -129,14 +167,11 @@ impl GitBucketClient {
             ],
         );
         let future = async {
-            let created: Repository = self
-                .post(&format!("/orgs/{organization}/repos"), body)
-                .await?;
+            let created: Repository = self.post(create_path, body).await?;
             let identity_matches = |repo: &Repository| {
-                matches_repository(repo, organization, &body.name)
-                    && repo.owner.as_ref().is_some_and(|owner| {
-                        owner.login == organization
-                            && owner.user_type.as_deref() == Some("Organization")
+                matches_repository(repo, owner, &body.name)
+                    && repo.owner.as_ref().is_some_and(|account| {
+                        account.login == owner && account.user_type.as_deref() == Some(owner_type)
                     })
             };
             if !identity_matches(&created) {
@@ -144,7 +179,7 @@ impl GitBucketClient {
                     "GitBucket returned a different or incomplete repository identity; inspect the requested repository".into(),
                 ));
             }
-            let repo = self.get_repository(organization, &body.name).await?;
+            let repo = self.get_url(repo_url, &repo_path).await?;
             if !identity_matches(&repo) {
                 return Err(GbMcpError::Other(
                     "The created repository identity could not be independently confirmed".into(),
@@ -165,7 +200,7 @@ impl GitBucketClient {
             }
             // Record the observed repository even if branch observation fails.
             let metadata = operation.verify(&checks);
-            let branches = self.list_branches(organization, &body.name).await?;
+            let branches: Vec<Branch> = self.get_url(branches_url, &branches_path).await?;
             let initialized = if body.auto_init.unwrap_or(false) {
                 repo.default_branch
                     .as_ref()
@@ -219,13 +254,21 @@ impl GitBucketClient {
 
     /// Create a new repository for the authenticated user.
     pub async fn create_repository(&self, body: &CreateRepository) -> Result<Repository> {
-        let operation = Operation::new(
+        validate_new_repository_name(&body.name)?;
+        let actor = self.get_authenticated_user().await?;
+        if actor.user_type.as_deref() != Some("User") {
+            return Err(GbMcpError::ReadConflict(
+                "GitBucket did not identify the authenticated account as a user",
+            ));
+        }
+        self.create_verified_repository(
             "create_repository",
-            OperationTarget::new(ResourceKind::Repository, "", &body.name),
-            Route::Rest,
-            &[],
-        );
-        operation.run(self.post("/user/repos", body)).await
+            "/user/repos",
+            &actor.login,
+            "User",
+            body,
+        )
+        .await
     }
 
     /// Fork a repository.

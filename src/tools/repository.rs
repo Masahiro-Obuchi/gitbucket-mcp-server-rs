@@ -43,7 +43,7 @@ pub struct GetRepositoryParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateRepositoryParams {
-    #[schemars(description = "Name of the new repository")]
+    #[schemars(description = "Name of the new repository (at most 100 characters)")]
     pub name: String,
     #[schemars(description = "Description of the repository")]
     pub description: Option<String>,
@@ -229,7 +229,7 @@ impl GitBucketMcpServer {
     }
 
     #[tool(
-        description = "Create a new repository in GitBucket for the authenticated user",
+        description = "Create one repository for the authenticated GitBucket user. Verify the owner, name, privacy, description and initial branches with the same PAT. If verification fails after creation, inspect the named repository before another write.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -248,6 +248,9 @@ impl GitBucketMcpServer {
             Ok(name) => name,
             Err(err) => return validation_error(err),
         };
+        if let Err(error) = crate::api::repository::validate_new_repository_name(&name) {
+            return from_gb_error(error);
+        }
 
         let body = CreateRepository {
             name,

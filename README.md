@@ -481,16 +481,17 @@ The server exposes 53 tools: 22 reads and 31 writes.
 |------|-------------|
 | `list_repositories` | List repositories for a user or organization |
 | `get_repository` | Get repository details |
-| `create_repository` | Create a new repository |
+| `create_repository` | Create and verify a repository owned by the PAT user |
 | `create_organization_repository` | Create and verify a repository under an existing organization |
 | `list_visible_repositories` | Discover repositories visible to the PAT across users and organizations |
 | `fork_repository` | Fork a repository |
 | `list_branches` | List branches for a repository |
 
-`create_organization_repository` takes `organization`, `name` and optional
-`description`, `private` and `auto_init`. It uses the PAT and GitBucket's
-organization creation permissions in both profiles. Inspect the organization
-and repository named in the operation error if creation cannot be verified.
+`create_repository` uses the PAT account as the owner. To create under an
+organization, use `create_organization_repository` with its exact name. Both
+tools accept optional `description`, `private` and `auto_init` and confirm
+repository settings and initial branches through REST. Inspect the owner and
+repository named in the operation error if creation cannot be verified.
 
 Use `list_visible_repositories` when the owner is unknown. It includes public
 repositories, personal and organization repositories, and private repositories

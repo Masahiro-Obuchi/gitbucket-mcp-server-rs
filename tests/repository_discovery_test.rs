@@ -4,7 +4,10 @@ use common::TestServer;
 use gitbucket_mcp_server::{
     api::profile::ApiProfile,
     error::GbMcpError,
-    models::{operation::OutcomeStatus, repository::CreateRepository},
+    models::{
+        operation::{FieldStatus, OutcomeStatus},
+        repository::CreateRepository,
+    },
     server::{AccessMode, GitBucketMcpServer},
 };
 use rmcp::{model::CallToolRequestParams, ServiceExt};
@@ -226,6 +229,133 @@ async fn post_acknowledgement_alone_does_not_verify_repository_options_or_initia
             }
         );
     }
+}
+
+#[tokio::test]
+async fn personal_creation_rejects_invalid_names_and_unaddressable_pat_owners_before_post() {
+    let http = TestServer::start().await;
+    for name in ["..".into(), "name/extra".into(), "x".repeat(101)] {
+        let error = http
+            .client()
+            .create_repository(&CreateRepository { name, ..request() })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, GbMcpError::InvalidInput(_)));
+    }
+    assert!(http
+        .mock_server
+        .received_requests()
+        .await
+        .unwrap()
+        .is_empty());
+
+    for account in [
+        json!({"login":"team","type":"Organization"}),
+        json!({"login":"owner/name","type":"User"}),
+    ] {
+        let http = TestServer::start().await;
+        reply(&http, "GET", "/api/v3/user", 200, account).await;
+        let error = http
+            .client()
+            .create_repository(&request())
+            .await
+            .unwrap_err();
+        assert!(matches!(error, GbMcpError::ReadConflict(_)));
+        assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn personal_creation_fails_when_post_or_readback_returns_a_different_owner() {
+    for foreign_acknowledgement in [true, false] {
+        let http = TestServer::start().await;
+        let owner = json!({"login":"me","type":"User"});
+        let mut expected = repo("me", "example", true);
+        expected["owner"] = owner.clone();
+        let mut foreign = repo("other", "example", true);
+        foreign["owner"] = json!({"login":"other","type":"User"});
+        reply(&http, "GET", "/api/v3/user", 200, owner).await;
+        reply(
+            &http,
+            "POST",
+            "/api/v3/user/repos",
+            200,
+            if foreign_acknowledgement {
+                foreign.clone()
+            } else {
+                expected
+            },
+        )
+        .await;
+        if !foreign_acknowledgement {
+            reply(&http, "GET", "/api/v3/repos/me/example", 200, foreign).await;
+        }
+
+        let error = http
+            .client()
+            .create_repository(&request())
+            .await
+            .unwrap_err();
+        let GbMcpError::OperationFailed { outcome, .. } = error else {
+            panic!("missing operation outcome");
+        };
+        assert_eq!(outcome.status, OutcomeStatus::Unknown);
+        let target = outcome.target.unwrap();
+        assert_eq!(target.owner.as_deref(), Some("me"));
+        assert_eq!(target.repo, "example");
+        let expected_requests = if foreign_acknowledgement { 2 } else { 3 };
+        assert_eq!(
+            http.mock_server.received_requests().await.unwrap().len(),
+            expected_requests
+        );
+    }
+}
+
+#[tokio::test]
+async fn personal_creation_keeps_pat_owner_and_verified_metadata_when_initialization_fails() {
+    let http = TestServer::start().await;
+    let login = "builder@example.test";
+    let account = json!({"login":login,"type":"User"});
+    let mut created = repo(login, "example", true);
+    created["owner"] = account.clone();
+    created["description"] = json!(RAW);
+    created["default_branch"] = json!("trunk");
+    reply(&http, "GET", "/api/v3/user", 200, account).await;
+    reply(&http, "POST", "/api/v3/user/repos", 200, created.clone()).await;
+    let repo_path = format!("/api/v3/repos/{login}/example");
+    reply(&http, "GET", &repo_path, 200, created).await;
+    reply(
+        &http,
+        "GET",
+        &format!("{repo_path}/branches"),
+        200,
+        json!([]),
+    )
+    .await;
+    let error = http
+        .client()
+        .with_api_profile(ApiProfile::RestOnly)
+        .create_repository(&request())
+        .await
+        .unwrap_err();
+    let GbMcpError::OperationFailed { outcome, .. } = error else {
+        panic!("missing operation outcome");
+    };
+    assert_eq!(outcome.status, OutcomeStatus::Partial);
+    let target = outcome.target.unwrap();
+    assert_eq!(target.owner.as_deref(), Some(login));
+    assert_eq!(target.repo, "example");
+    for field in outcome.fields {
+        assert_eq!(
+            field.status,
+            if field.field == "auto_init" {
+                FieldStatus::Mismatched
+            } else {
+                FieldStatus::Verified
+            }
+        );
+    }
+    assert_eq!(http.mock_server.received_requests().await.unwrap().len(), 4);
 }
 
 async fn directories(http: &TestServer, users: Value, orgs: Value) {
